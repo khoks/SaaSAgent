@@ -28,12 +28,22 @@
 - **FR-O-002** — Thinking layer reasons over current context + memory before action.
 - **FR-O-003** — Widget-selection layer chooses appropriate widget(s) to render given current step + host registry.
 
-## FR-R — Registries (seed)
+## FR-R — Registries (refined per ADR-004, ADR-005)
 - **FR-R-001** — AI Skills registry: catalog of executable skills with input/output schemas.
 - **FR-R-002** — Sub-Agents registry: catalog of specialized agents with capability descriptors.
 - **FR-R-003** — Tools registry: catalog of callable tools (host APIs, external APIs).
-- **FR-R-004** — UI Widgets registry: catalog of composable, theme-aware widgets.
-- **FR-R-005** — Features/Services registry: declarative workflow documents authored by host domain devs.
+- **FR-R-004** — **Atomic UI Components registry:** the host's design-system primitives, registered with name, props schema, slots, semantic role, usage examples, and source framework (React / Vue / Svelte / Angular / vanilla WC). The agent's UI vocabulary.
+- **FR-R-005** — **Theme & Branding tokens registry:** color palette, typography scale, spacing scale, radii, motion, voice/tone hints. Drives composition style.
+- **FR-R-006** — Features/Services registry: declarative workflow documents authored by host domain devs in **natural language or typed JSON** (the runtime compiles NL → typed JSON). Documents declare: experience, workflow steps, preconditions, hints (sub-agents/skills/tools to prefer, UI experience to compose).
+- **FR-R-007** — All registries are **hot-reloadable** without redeploying the agent runtime.
+
+## FR-COMP — UI composition (new — per ADR-005)
+- **FR-COMP-001** — Runtime UI Composer accepts: conversation context, memory recall, atomic-component registry, theme tokens, Feature/Service hints — and emits a typed-JSON layout tree referencing host components.
+- **FR-COMP-002** — Composed layout tree includes data-wiring spec (which component slots receive which data shape from which source).
+- **FR-COMP-003** — WC shell renderer mounts referenced components (multi-framework), applies theme tokens, injects data, subscribes to interaction events.
+- **FR-COMP-004** — Each composed artifact emits typed-JSON instructions back to the runtime on user interaction (FR-C-002 refined).
+- **FR-COMP-005** — Composition is causality-tracked: each artifact carries a compose-cycle ID for memory + observability replay.
+- **FR-COMP-006** — Constrained composition: the composer only references primitives that exist in the registry; off-brand or off-vocabulary output is impossible by construction.
 
 ## FR-M — Memory (seed)
 - **FR-M-001** — Cross-session per-user memory.
