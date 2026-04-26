@@ -15,8 +15,10 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 - docs/decisions/decision-log.md has ADRs for the ≥10 most load-bearing decisions.
 - docs/novel-ideas/ideas.md has all novel ideas surfaced so far.
 
-## Child epics
-- (TBD as grooming proceeds)
+## Child tasks
+- [TASK-001 — Bootstrap project skeleton, repo, and tooling](../tasks/TASK-001-bootstrap-project-skeleton.md) — done
+- [TASK-002 — Groom Batch 1 decisions (Q1–Q5)](../tasks/TASK-002-groom-batch-1-decisions.md) — done
+- [TASK-003 — Groom Batch 2 decisions (Q6–Q17)](../tasks/TASK-003-groom-batch-2-decisions.md) — in-progress
 
 ## Grooming questions
 
