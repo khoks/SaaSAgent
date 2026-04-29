@@ -45,11 +45,57 @@
 - **FR-COMP-005** — Composition is causality-tracked: each artifact carries a compose-cycle ID for memory + observability replay.
 - **FR-COMP-006** — Constrained composition: the composer only references primitives that exist in the registry; off-brand or off-vocabulary output is impossible by construction.
 
-## FR-M — Memory (seed)
+## FR-M — Memory (refined per ADR-008; see [docs/architecture/memory.md](../architecture/memory.md))
 - **FR-M-001** — Cross-session per-user memory.
 - **FR-M-002** — Tracks: interests, pain points, common queries, problems-discussed, solutions-given, solutions-accepted, feedback received.
-- **FR-M-003** — Tracks workflows initiated from Features/Services registry — completed and abandoned.
-- **FR-M-004** — Time-windowed behavior queries (last 2m / 10m / day / week / year).
+- **FR-M-003** — Tracks workflows initiated from Features/Services registry — `active` / `completed` / `abandoned` / `superseded`, with resumability across sessions.
+- **FR-M-004** — Time-tiered summaries: **session, day, week, month, year** — agent-queryable per tier.
+
+## FR-MEM — Memory stores (new — per ADR-008)
+- **FR-MEM-001** — Raw interaction log: append-only, immutable, ∞ retention, in traditional DB (Postgres default).
+- **FR-MEM-002** — Continuous derivation pipeline: raw log → derived stores (profiles, summaries, graph, signals).
+- **FR-MEM-003** — Customer interaction profile (personalization + empathy): communication style, expertise level, frustration triggers, success patterns.
+- **FR-MEM-004** — SaaS service usage profile: features used, depth, frequency, sequences (within the host's product).
+- **FR-MEM-005** — SaaS domain profile: domain-specific persona traits.
+- **FR-MEM-006** — Workflow state store: per-user workflow progress + status + resumability.
+- **FR-MEM-007** — Semantic recall via vector embeddings (Qdrant in default deployment; pluggable adapter).
+- **FR-MEM-008** — All stores partitioned by `(tenant_id, user_id)` for isolation, GDPR right-to-erasure, per-user analytics.
+- **FR-MEM-009** — Source-of-truth invariant: all derived stores rebuildable from the raw log.
+- **FR-MEM-010** — Pluggable adapter interface per store; defaults ship as PG / Qdrant / ClickHouse / Neo4j; enterprises can swap.
+
+## FR-PSG — Problem-Solution Graph (new — per ADR-008)
+- **FR-PSG-001** — Continuous extraction of (problem, solution, context, outcome) tuples from interactions.
+- **FR-PSG-002** — Semantic deduplication into canonical entries (intra-tenant scope: across the enterprise's user base; never cross-enterprise per ADR-006).
+- **FR-PSG-003** — Graph relations: problem ↔ solution ↔ feature ↔ pain-point ↔ user-type, stored in Neo4j.
+- **FR-PSG-004** — Agent-queryable: planner can recall canonical solutions for new users with semantically similar problems.
+- **FR-PSG-005** — Outcome attribution: track which solutions worked for which user types, update graph weights accordingly.
+
+## FR-FB — Feedback (new — per ADR-008)
+- **FR-FB-001** — Active feedback: explicit user signals (thumbs, ratings, written comments).
+- **FR-FB-002** — Deduced feedback: inferred from behavior — acceptance, abandonment, retry, revisit, deepening.
+- **FR-FB-003** — Unified feedback substrate: active + deduced flow through one ingest pipeline; downstream consumers are eval scoring AND personalization profile updates.
+- **FR-FB-004** — Conflict resolution policy when active and deduced feedback diverge.
+
+## FR-EVAL — Eval (new — per ADR-008)
+- **FR-EVAL-001** — Live per-interaction eval (lightweight, on-stream).
+- **FR-EVAL-002** — Offline per-session eval (batch, deeper).
+- **FR-EVAL-003** — Eval datapoints stored in ClickHouse for trend analysis and regression detection.
+- **FR-EVAL-004** — Eval target metrics TBD (Batch 3): groundedness, helpfulness, intent-alignment, latency, completion-rate, etc.
+- **FR-EVAL-005** — Live scoring approach TBD (Batch 3): LLM-as-judge / heuristics / embedded eval models.
+- **FR-EVAL-006** — Eval informs both quality dashboards (host ops team) AND personalization (per-user adjustments).
+
+## FR-VOC — Voice-of-Customer (new — per ADR-008)
+- **FR-VOC-001** — Continuous extraction of feature pain points from interactions.
+- **FR-VOC-002** — Continuous extraction of feature/capability requests (explicit and implied).
+- **FR-VOC-003** — Continuous extraction of friction patterns (UX dead ends, repeated user struggles).
+- **FR-VOC-004** — Aggregation with prioritization weighting (frequency, severity, customer-segment).
+- **FR-VOC-005** — Surface to host's product team: format TBD (dashboard / webhook / digest / auto-PR), see Batch 3.
+- **FR-VOC-006** — Per-user consent model for upstream surfacing.
+
+## FR-TEL — Agent self-telemetry (new — per ADR-008)
+- **FR-TEL-001** — Usage statistics about the agent platform itself: turns per session, composition cycles, tool invocations, sub-agent invocations, latency distributions, model spend.
+- **FR-TEL-002** — Stored in ClickHouse for analytics; dashboards for the host's ops team.
+- **FR-TEL-003** — Per-tenant cost caps and circuit breakers (FR-COST follow-up).
 
 ## FR-I — Multimodal I/O (seed)
 - **FR-I-001** — DOM observation (what the user is seeing on the host page).

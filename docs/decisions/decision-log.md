@@ -116,3 +116,90 @@
 - **Decision:** A. Claude Agent SDK at the substrate, behind a thin internal interface so the substrate model can be swapped if needed. Differentiation lives in the orchestrator / planner / thinker / **UI composer** layers we build on top.
 - **Consequences:** 2–3 months saved on undifferentiated heavy lifting (sessions, tool use, memory primitives, streaming). Provider coupling at the substrate is acceptable given the self-hosted distribution model (enterprise can swap their Anthropic provider for Bedrock/Vertex without affecting our interface). Upgrade-path management for SDK changes is now an operational concern.
 - **Source:** Conversation 2026-04-26 (Rahul Q5 answer).
+
+## ADR-008 — Polyglot memory architecture (Postgres + Qdrant + ClickHouse + Neo4j), phased
+- **Date:** 2026-04-26
+- **Status:** accepted
+- **Context:** Memory must support: (1) forever-immutable raw interaction storage; (2) continuous derivation of customer interaction / SaaS-usage / SaaS-domain profiles; (3) workflow progress tracking with resumability; (4) per-session / day / week / month / year summaries; (5) intra-tenant cross-customer problem-solution KB; (6) product-team-facing pain-point + recommendation extraction (voice-of-customer); (7) live + offline eval datapoints; (8) agent self-telemetry; (9) active and deduced feedback driving both eval and personalization. Constraint: enterprise self-hosts (ADR-006), so stores must be embeddable + pluggable.
+- **Options considered:**
+  - A. Single embedded vector DB (Chroma/Qdrant local) — simple ops, loses time-window queries.
+  - B. Postgres + pgvector + KG-as-relations — single ops surface, weaker on each axis vs. specialized stores.
+  - C. **Polyglot — Postgres + Qdrant + ClickHouse + Neo4j** — each store optimized for its purpose.
+  - D. Custom AI-native tiered store from day one — high-novelty, high-build-cost, high-risk.
+- **Decision:** C, **phased**. **MVP = Postgres + Qdrant only** (raw log, workflow state, basic profiles, active feedback, semantic recall). **v1 adds ClickHouse + Neo4j** (time-tiered summaries, problem-solution graph, eval, telemetry, deduced feedback, voice-of-customer). v2 = federated learning state (opt-in cross-enterprise).
+- **Consequences:**
+  - MVP ops surface stays at 2 systems; v1 grows to 4. Reference deployment ships all four (Docker compose / Helm).
+  - Each store earns its slot: PG (truth + structured profiles + workflow), Qdrant (semantic recall), ClickHouse (time-tiered summaries + eval + telemetry + VoC analytics), Neo4j (problem-solution graph + VoC relations).
+  - All stores behind adapter interfaces; enterprises can swap defaults to Pinecone / Weaviate / Snowflake / BigQuery / etc.
+  - Continuous derivation pipeline reads from PG raw log → writes to derived stores. Stream-processing tech is a separate decision (Batch 3).
+  - Source-of-truth invariant: all derived stores can be rebuilt from PG raw log.
+  - "Cross-customer" = intra-tenant (across the enterprise's user base); never cross-enterprise per ADR-006.
+- **Novelty:** medium-high — see novel-ideas entries on (a) in-product self-improving problem-solution graph, (b) agent as voice-of-customer pipeline, (c) unified active+deduced feedback substrate.
+- **See:** [docs/architecture/memory.md](../architecture/memory.md) for the full layout.
+- **Source:** Conversation 2026-04-26 (Rahul Q6 answer).
+
+## ADR-009 — Hybrid DS-registration: manual JSON + Storybook auto-extract + component-metadata extract + manual augmentation layer
+- **Date:** 2026-04-26
+- **Status:** accepted
+- **Context:** Domain devs need flexible paths to register the host's atomic design-system primitives. Hosts vary in tooling maturity (some have full Storybook, some have only TS types, some have neither).
+- **Options considered:**
+  - A. Manual JSON entries only — explicit, high friction.
+  - B. Storybook auto-extract only — fast for Storybook-using hosts; locks out the rest.
+  - C. Component metadata extract only — works without Storybook; lower-quality semantic data.
+  - D. **Hybrid: all three intake paths + manual augmentation layer for LLM semantics**.
+- **Decision:** D.
+- **Consequences:**
+  - All three paths coexist; all normalize to the same internal registry schema.
+  - Manual augmentation layer carries LLM-friendly semantics (semantic role, when-to-use examples, composition constraints, accessibility hints) — itself a small but novel translation surface between a design system and an LLM's understanding.
+  - More integration code to maintain; mitigated by having a single normalized internal registry.
+- **Source:** Conversation 2026-04-26 (Rahul Q7 answer).
+
+## ADR-010 — Multi-framework rendering: WC-wrap by default + native-renderer escape hatch
+- **Date:** 2026-04-26
+- **Status:** accepted (MVP framework scope still open)
+- **Context:** ADR-004 commits to a multi-framework component registry. How do we actually render React + Vue + Svelte + Angular + vanilla WC components in one shell?
+- **Options considered:**
+  - A. Custom-element wrap each framework (Lit/Stencil/per-framework wrappers) — single render API; some perf hit.
+  - B. Module Federation per framework — native lifecycle + perf; multiple framework runtimes loaded per page (heavy).
+  - C. Per-framework universal renderer adapter — flexible; most code to maintain.
+  - D. **Hybrid: WC-wrap by default + native-renderer escape hatch for performance-critical primitives**.
+- **Decision:** D.
+- **Consequences:**
+  - Lightest default footprint (no all-frameworks-loaded baseline).
+  - Performance escape hatch when needed (large lists, complex animations, intricate state).
+  - Two render paths to debug; mitigated by the WC-wrap path being the default 80% case.
+  - **Open: MVP framework scope** — should MVP support React + vanilla WC only and defer Vue/Svelte/Angular to v1.5? (Batch 3 follow-up.)
+- **Source:** Conversation 2026-04-26 (Rahul Q8 answer).
+
+## ADR-011 — Feature/Service docs as `.feature.md` (Markdown + YAML frontmatter + inline JSON)
+- **Date:** 2026-04-26
+- **Status:** accepted (NL→JSON compilation timing still open)
+- **Context:** Domain devs author Feature/Service workflow declarations. Format choice locks in DX, parsability, LLM-readability, git-diff-ability.
+- **Options considered:**
+  - A. Pure YAML.
+  - B. Pure JSON.
+  - C. **Markdown + YAML frontmatter (id, name, version, owner, preconditions) + NL-first body + optional inline JSON code blocks for typed steps**.
+- **Decision:** C. File extension `.feature.md` (or `.service.md`).
+- **Consequences:**
+  - LLM-friendly (NL body) + human-friendly (Markdown rendering) + git-friendly (diffable text).
+  - Parser must compile NL → typed JSON for runtime consumption.
+  - Matches the Claude-skill authoring pattern (familiar to anyone using Claude Code).
+  - **Open: compilation timing** — at registration time (pre-compiled, fast at runtime, predictable, slower author iteration) vs. at runtime (always re-interpreted, more flexible, more model spend). My recommendation: registration-time with re-compile on doc change. Pending Rahul's confirmation in Batch 3.
+- **Source:** Conversation 2026-04-26 (Rahul Q10 answer, sub-question (a) only).
+
+## ADR-012 — UI Composer: Haiku + cached layout templates per intent + Sonnet fallback
+- **Date:** 2026-04-26
+- **Status:** accepted
+- **Context:** UI composition is a per-turn structured-output task (more if user interactions cascade). Cost and latency stack across turns; need a strategy that doesn't scale linearly with usage.
+- **Options considered:**
+  - A. Same model as planner (Sonnet) — best quality, costliest, latency stacks.
+  - B. Smaller model (Haiku) end-to-end — fast/cheap, may miss subtle composition.
+  - C. **Haiku composer + cached layout templates per canonical intent + Sonnet fallback for novel intents**.
+  - D. Fine-tuned model — optimal but brittle to design-system changes.
+- **Decision:** C. Sonnet remains the planner.
+- **Consequences:**
+  - Best amortized cost on common e-commerce flows (product comparison, cart review, returns, recommendations).
+  - Cache invalidation strategy needed (DS version change, theme token change, Feature/Service doc edit → invalidate affected templates).
+  - Cold-start cases use Sonnet — slightly slower first paint for novel intents, acceptable tradeoff.
+  - Cached templates are themselves typed-JSON layout trees keyed by canonical intent — supports the bidirectional-emit patentability story.
+- **Source:** Conversation 2026-04-26 (Rahul Q14 answer).

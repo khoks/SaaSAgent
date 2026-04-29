@@ -115,18 +115,35 @@ User turn / proactive trigger
 - **Causality-tracked.** Every emit carries the parent compose-cycle ID for memory + observability.
 - **Replayable.** Memory captures the full trajectory: composed artifact → user interaction → re-plan → next artifact.
 
-## Open architectural questions (Batch 2)
+## Memory architecture
 
-1. **Atomic-design-system registration format** — Storybook-CSF? CDD JSON schema? Custom DSL?
-2. **Theme-tokens schema** — Style Dictionary? Adobe Spectrum tokens? CSS variables?
-3. **Multi-framework rendering** — Module Federation? Wrap each framework as Web Components? Universal renderer per framework?
-4. **Feature/Service doc format** — Markdown w/ frontmatter? YAML? JSON? Hybrid NL/JSON?
-5. **Memory store architecture** — vector DB + KG + structured events; embeddable so enterprise can host.
-6. **Time-windowed-behavior store** — separate primitive vs. summarization tiers in a unified store?
-7. **Sub-agent isolation** — process / iframe / VM / none?
-8. **Eventing model for DOM observation** — MutationObserver + IntersectionObserver + custom?
-9. **UI-Composer LLM step** — same model as planner? Smaller faster model? Cached layout templates per intent?
-10. **Federated cross-enterprise learning** — opt-in mechanism design.
+See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdrant at MVP; ClickHouse + Neo4j added at v1; federated learning state at v2. Per [ADR-008](../decisions/decision-log.md). Continuous derivation pipeline reads from the PG raw log and writes to: profiles, time-tiered summaries, problem-solution graph, eval datapoints, telemetry, voice-of-customer aggregations.
+
+## Open architectural questions (Batch 3)
+
+### Closed in Batch 2 (2026-04-26)
+- ✅ DS registration intake — hybrid (manual + Storybook + metadata + augmentation) [ADR-009]
+- ✅ Multi-framework rendering — WC-wrap default + native escape hatch [ADR-010]
+- ✅ Feature/Service doc format — `.feature.md` (MD + frontmatter + inline JSON) [ADR-011]
+- ✅ Memory architecture — polyglot phased (PG + Qdrant → +ClickHouse + Neo4j) [ADR-008]
+- ✅ UI Composer LLM — Haiku + cached templates + Sonnet fallback [ADR-012]
+
+### Still open
+1. **Stream processing for derivation pipeline** — in-process / Redpanda / Kafka / Temporal.
+2. **Theme-tokens schema** — Style Dictionary? Spectrum tokens? CSS variables? Custom?
+3. **MVP framework scope** — React + WC at MVP, defer Vue/Svelte/Angular?
+4. **Feature/Service NL→JSON compilation timing** — registration-time vs. runtime.
+5. **Voice-of-Customer surface** — dashboard / webhook / digest / auto-PR / multi.
+6. **Eval target metrics + scoring approach** — LLM-as-judge / heuristics / embedded eval models.
+7. **Sub-agent isolation** — process / iframe / VM / none.
+8. **Eventing model for DOM observation** — MutationObserver + IntersectionObserver + custom.
+9. **Mobile embedding strategy** — React Native / native SDKs / WebView bridge.
+10. **Distribution / packaging** — Docker / Helm / standalone / installer.
+11. **Pricing model under self-hosted** — license / per-seat / capacity tier.
+12. **Proactive engine confidence + attention budget** — gating policies, signals, default thresholds.
+13. **Federated cross-enterprise learning** — opt-in mechanism design (v2).
+14. **Embedding model choice** — Anthropic / OSS / host-supplied.
+15. **Cross-store consistency failure-recovery semantics**.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

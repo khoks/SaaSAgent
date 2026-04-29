@@ -50,6 +50,41 @@
 - **Patentability hint:** **strong** — system claim covering: (1) a registry of atomic UI primitives + theme/branding tokens belonging to a host application, (2) an LLM-driven composer that emits typed-JSON layout trees referencing those primitives based on conversation context and Feature/Service hints, (3) runtime mounting + data wiring of composed artifacts inside an embeddable shell, (4) bidirectional typed-JSON instruction emit from composed artifacts back to the planner. Recommend formal prior-art search before any disclosure.
 - **Open questions:** Component registration schema (what does an "atomic primitive" entry look like)? How is the LLM constrained to compose only valid primitive arrangements? Does the composer use the same model as the planner or a smaller/cheaper model? How are composition templates cached for repeated intents? How does composition handle versioning when the host upgrades a primitive?
 
+### [2026-04-26] In-product self-improving problem-solution knowledge graph
+- **Originator:** Rahul
+- **Source:** Q6 answer 2026-04-26: "I want it to extract the problems discussed and solutions given and generate a cross customer unique problem-solution database as well which will benefit everyone."
+- **Description:** The agent continuously extracts (problem, solution, context, outcome) tuples from end-user interactions, semantically deduplicates them into canonical entries, and stores them in a knowledge graph organized by relations: problem ↔ solution ↔ feature ↔ pain-point ↔ user-type. The graph is queryable by the planner: when a new user arrives with a problem similar to one already in the graph, the agent can recall the canonical solution(s) and the contexts in which they worked. The graph improves itself with every interaction. **Intra-tenant only** (across the enterprise's own user base) per ADR-006 — never cross-enterprise.
+- **Prior-art assessment:**
+  - **Support BI tools** (Zendesk Explore, Intercom AI, etc.) generate aggregate analytics from conversations — offline, dashboard-facing, not agent-queryable.
+  - **Help-center KBs** are manually authored or LLM-summarized in batch — not continuously distilled from live agent conversations.
+  - **RAG over conversation history** is a primitive form of this idea but lacks the canonicalization, dedup, graph structuring, and outcome-tracking framing.
+  - The combination of (a) live extraction from agent conversations, (b) semantic dedup into canonical entries, (c) graph-organized by problem/solution/feature/pain/user-type relations, (d) queryable by the same agent that produces the data, (e) intra-tenant scope, appears uncommon as a packaged primitive.
+- **Novelty signal:** medium-high.
+- **Patentability hint:** possible — system claim covering: (1) continuous (problem, solution, context, outcome) extraction from agent-user interactions, (2) semantic deduplication into canonical entries, (3) multi-relation graph storage, (4) agent-queryable recall for new users with semantically similar problems, (5) intra-tenant scoping.
+- **Open questions:** Extraction model (LLM-as-extractor — same as planner or dedicated)? Dedup similarity threshold? Outcome attribution when solutions are partially adopted? Graph schema versioning?
+
+### [2026-04-26] Agent as continuous voice-of-customer pipeline for the host's product team
+- **Originator:** Rahul
+- **Source:** Q6 answer 2026-04-26: "I want it to extract product recommendations for the development team from the interactions and the product and feature pain points."
+- **Description:** The agent observes end-user struggles, requests, and feedback in real conversations. A continuous extraction pipeline distills these into: feature pain points, requested capabilities, friction patterns, and prioritization signals (frequency, severity, customer-segment weighting). These flow to a product-team-facing surface (dashboard / feed / webhook / Slack-or-email digest / auto-PR — TBD). The agent thereby serves **two audiences simultaneously**: end users (its primary surface) AND the host's product team (a continuous research instrument). Most agents output to users only; this one is also a structured product-research output stream.
+- **Prior-art assessment:**
+  - Some chatbots tag conversations into category buckets for analytics — coarse-grained, not actionable as product input.
+  - Customer-feedback platforms (Productboard, Canny) collect manual feedback — not extracted from live agent interactions.
+  - Conversation-analytics tools (Gong for sales, Ada for support) summarize for managers — not framed as a continuous product-feedback stream from a deployed agent.
+  - The framing of "agent as a first-class continuous voice-of-customer pipeline alongside its primary user-facing role" — packaged as a single deployable that delivers both audiences — appears uncommon.
+- **Novelty signal:** medium-high.
+- **Patentability hint:** possible — method claim covering continuous extraction of product-team-facing signals (pain points, capability requests, friction patterns, prioritization) from agent-user interactions, with structured surfacing to product-team workflows.
+- **Open questions:** Surface format (dashboard / webhook / digest / auto-PR)? Per-user consent model for upstream surfacing? Severity / frequency weighting algorithm? Integration with existing product-management tools (Linear / Jira / GitHub Issues)?
+
+### [2026-04-26] Unified active + deduced feedback substrate driving both eval and personalization
+- **Originator:** Rahul
+- **Source:** Q6 answer 2026-04-26: "I want it to have active and deduced feedback mechanisms with loop as well."
+- **Description:** Combine **active feedback** (explicit user signals: thumbs, ratings, written comments) with **deduced feedback** (inferred from behavior: did the user accept the suggestion? abandon the workflow? retry? revisit later? deepen?) into a single feedback substrate that simultaneously powers (a) live + offline **eval scoring** AND (b) per-user **personalization adjustments**. Most systems treat eval (quality measurement) and personalization (user-specific tailoring) as separate pipelines reading separate signals; unifying them via a shared feedback substrate creates faster, tighter loops in both directions.
+- **Prior-art assessment:** Eval frameworks (Langfuse, Helicone, Ragas) collect feedback for scoring. Personalization systems (recommender systems, user-modeling stacks) collect feedback for ranking. The unified substrate framing — one ingest path, dual-use downstream — is uncommon as a packaged design.
+- **Novelty signal:** medium.
+- **Patentability hint:** possible — system claim covering unified active + deduced feedback ingestion driving both eval scoring and personalization model updates in an embedded agent context.
+- **Open questions:** Deduction inference rules for each behavior signal? Conflict resolution when active and deduced feedback diverge? Decay model for feedback weight over time?
+
 ### [2026-04-26] Multi-framework component registry under a single Web Component shell
 - **Originator:** Rahul
 - **Source:** Q2 answer 2026-04-26: "this web component will also have a widget registry as well where the enterprise can register their standard widgets and components for rendering with the data in the UI of the agent, and these registered widgets/components could be in React/Vue/Svelte/Angular etc. Plus this webcomponent needs to be able to interact with the rest of the website/app so it needs to have an integration framerwork with the enterprise's UI framework."
@@ -63,14 +98,14 @@
 - **Patentability hint:** possible — system claim covering a Web Component shell hosting a multi-framework component registry feeding an LLM-driven UI composer, with two-way host-framework integration.
 - **Open questions:** Rendering mechanism (Module Federation vs. per-framework custom-element wrappers vs. universal renderer)? How are framework-specific lifecycle hooks unified? Performance overhead of multi-framework runtime in one page?
 
-### [2026-04-26] AI-native time-windowed behavior stores
-- **Originator:** Rahul
-- **Source:** "what the user was doing in the past two minutes 10 minutes week year etc."
-- **Description:** Purpose-built stores that answer time-bounded behavioral queries natively, optimized for agent retrieval rather than analytics dashboards. Different windows (2m / 10m / day / week / year) may use different storage tiers, summarization granularities, and retrieval models, with the agent able to pick the right window for the right question.
-- **Prior-art assessment:** Time-series DBs (Timescale, ClickHouse) handle the storage but are not AI-native (no semantic retrieval, no summarization tiers, no agent-optimized query interface). Vector DBs handle semantics but not time-windowed behavior natively. Combining the two with summarization tiers per window appears uncommon as a packaged primitive.
+### [2026-04-26] AI-native time-tiered summarization stores with agent-driven tier selection
+- **Originator:** Rahul (refined 2026-04-26 in Q6 answer)
+- **Source:** Initial vision dump + Q6: "It should also generate summaries per session, per day, week, month and year."
+- **Description:** Purpose-built stores that answer time-bounded behavioral queries natively, optimized for agent retrieval rather than analytics dashboards. Tiers: **session / day / week / month / year**, each with its own summarization granularity. The agent picks the right tier for the right question (e.g., "what did the user just do?" → session summary; "what's their long-term pattern?" → month/year summary).
+- **Prior-art assessment:** Time-series DBs (Timescale, ClickHouse) handle the storage but are not AI-native (no semantic retrieval, no summarization tiers, no agent-optimized query interface). Vector DBs handle semantics but not time-windowed behavior natively. Combining the two with summarization tiers per window plus agent-driven tier selection appears uncommon as a packaged primitive.
 - **Novelty signal:** medium — the building blocks exist, but the packaged tiered abstraction for agent consumption is non-obvious.
-- **Patentability hint:** possible — system claim around tiered summarization stores indexed by window with agent-driven window selection.
-- **Open questions:** Storage tech per tier? Summarization cadence and trigger? Privacy boundaries?
+- **Patentability hint:** possible — system claim around tiered summarization stores indexed by temporal window with agent-driven tier selection at query time.
+- **Open questions:** Summarization cadence and trigger per tier? Privacy boundaries? Cross-tier consistency on backfill?
 
 ### [2026-04-26] Declarative Feature/Service registry as the LLM-consumable surface for host workflows
 - **Originator:** Rahul

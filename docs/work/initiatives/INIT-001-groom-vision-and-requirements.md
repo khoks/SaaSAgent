@@ -27,16 +27,28 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 4. ✅ Deployment / multi-tenancy — **self-hosted only inside enterprise's ecosystem** ([ADR-006](../../decisions/decision-log.md)).
 5. ✅ Agent runtime — **Claude Agent SDK behind thin internal interface** ([ADR-007](../../decisions/decision-log.md)).
 
-### Batch 2 — open
-6. **Memory store architecture** — vector + KG + structured events; embeddable since enterprise hosts.
-7. **Atomic-design-system registration protocol** — manual entries vs. auto-extraction from Storybook / Figma / component metadata (or both).
-8. **Multi-framework component integration mechanism** — Module Federation? Universal renderer? Per-framework custom-element wrappers?
-9. **Theme/branding tokens schema** — Style Dictionary? Spectrum tokens? CSS variables? Custom?
-10. **Feature/Service document format** — Markdown w/ frontmatter? YAML? JSON? Hybrid NL/JSON?
-11. **Mobile embedding strategy** — React Native? Native SDKs (iOS/Android)? WebView bridge?
-12. **Pricing model** under self-hosted constraint — license / per-seat / capacity tier?
-13. **Proactive-engine confidence and attention-budget model** — heuristics, signals, gating policies.
-14. **UI Composer LLM step** — same model as planner or smaller/cheaper? Cached templates per intent?
-15. **Sub-agent isolation model** — process / iframe / VM / none.
-16. **Distribution / packaging** — Docker / Helm / standalone binary / installer.
-17. **Federated cross-enterprise learning** — opt-in mechanism design (future).
+### Batch 2 — closed 2026-04-26
+6. ✅ **Memory store architecture** — polyglot (PG + Qdrant + ClickHouse + Neo4j), phased ([ADR-008](../../decisions/decision-log.md)). See [memory.md](../../architecture/memory.md). Q6 expanded scope substantially: workflow progress, customer interaction profile, SaaS service usage profile, SaaS domain profile, time-tiered summaries (session/day/week/month/year), intra-tenant problem-solution graph, eval (live + offline), agent self-telemetry, active + deduced feedback, voice-of-customer extraction.
+7. ✅ **DS registration protocol** — hybrid (manual JSON + Storybook auto-extract + component-metadata extract + manual augmentation) ([ADR-009](../../decisions/decision-log.md)).
+8. ✅ **Multi-framework rendering** — WC-wrap default + native-renderer escape hatch ([ADR-010](../../decisions/decision-log.md)). MVP framework scope sub-question still open.
+10. ✅ **Feature/Service document format** — `.feature.md` (MD + YAML frontmatter + inline JSON) ([ADR-011](../../decisions/decision-log.md)). NL→JSON compilation-timing sub-question still open.
+14. ✅ **UI Composer LLM step** — Haiku + cached templates + Sonnet fallback ([ADR-012](../../decisions/decision-log.md)).
+
+### Batch 3 — open
+- **Q3.1 Compilation timing for Feature/Service NL→JSON** — registration-time vs. runtime (follow-up to ADR-011).
+- **Q3.2 MVP framework scope** — React + WC only at MVP, defer Vue/Svelte/Angular to v1.5? (follow-up to ADR-010).
+- **Q3.3 Stream processing for derivation pipeline** — in-process / Redpanda / Kafka / Temporal.
+- **Q3.4 Voice-of-Customer surface for dev team** — dashboard / webhook / Slack-or-email digest / auto-PR / multi.
+- **Q3.5 Mobile embedding strategy** — React Native / native SDKs / WebView bridge.
+- **Q3.6 Proactive engine confidence + attention-budget model** — heuristics, signals, gating policies.
+
+### Batch 4+ — deferred
+- Theme/branding tokens schema (Style Dictionary / Spectrum / custom).
+- Pricing model (license / per-seat / capacity).
+- Distribution / packaging (Docker / Helm / standalone).
+- Sub-agent isolation (process / iframe / VM / none).
+- Eventing model for DOM observation.
+- Eval target metrics + scoring approach.
+- Embedding model choice.
+- Cross-store consistency failure-recovery.
+- Federated cross-enterprise learning (v2).
