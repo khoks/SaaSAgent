@@ -107,6 +107,18 @@
 - **Patentability hint:** possible — system claim around tiered summarization stores indexed by temporal window with agent-driven tier selection at query time.
 - **Open questions:** Summarization cadence and trigger per tier? Privacy boundaries? Cross-tier consistency on backfill?
 
+### [2026-04-28] Agent-filed auto-PR with structured product issues from observed user struggles
+- **Originator:** Claude (Batch 3 novelty hint, session 2026-04-28); to be confirmed by Rahul
+- **Source:** Q3.4 discussion 2026-04-28: "the auto-PR-with-suggested-issues-from-observed-user-struggles framing is non-obvious and likely patentable on its own — the agent files product issues unprompted, with structured rationale and supporting interaction excerpts."
+- **Description:** A specific delivery mechanism within the broader voice-of-customer pipeline (see entry above). The agent autonomously opens pull requests or issues in the host's product repo (GitHub / Linear / Jira), each containing: a structured problem description extracted from observed user struggles, anonymized supporting interaction excerpts as evidence, a severity/frequency score, and a suggested fix framing. Unlike a dashboard or digest (both requiring a human to check), the auto-PR inserts the insight directly into the host team's existing code-review/issue-triage workflow — where it competes for attention alongside regular engineering work. Cadence and severity threshold are host-configurable; auto-PR is opt-in.
+- **Prior-art assessment:**
+  - Conversation analytics tools (Gong, Intercom Fin) produce human-readable reports — not structured, auto-filed issues with code-review-ready framing.
+  - AI code-review tools (Copilot, Devin) open PRs for code changes — not for product-feedback issues derived from agent-user conversations.
+  - The combination of (a) continuous extraction from agent conversations, (b) structured issue formatting with interaction-excerpt evidence, (c) autonomous filing into the host's existing engineering workflow (GitHub PR / Linear issue), (d) severity/frequency scoring — appears uncommon as a packaged capability.
+- **Novelty signal:** medium-high.
+- **Patentability hint:** possible — method claim covering autonomous filing of structured product issues with interaction-excerpt evidence into a host's engineering workflow, derived from continuous agent-user conversation monitoring.
+- **Open questions:** Privacy/consent model for interaction excerpts surfaced in PRs? Cadence gating (daily batch vs. real-time)? Host configuration for severity threshold triggering auto-filing? Duplicate detection across multiple filings?
+
 ### [2026-04-26] Declarative Feature/Service registry as the LLM-consumable surface for host workflows
 - **Originator:** Rahul
 - **Source:** "app developers and domain developers within the enterprise can come and configure their own workflows in its system in the form of featured documents or service documents."

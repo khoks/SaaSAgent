@@ -48,6 +48,16 @@ Each entry:
 **Category:** capability
 **Notes:** Host design-system registration is manual at MVP. Future: auto-extract from Storybook (CSF), Figma design tokens, component metadata files, MDX docs. Reduces onboarding friction substantially.
 
+### [2026-04-28] Voice-of-Customer: multi-surface configurable delivery with auto-PR as opt-in
+**Source:** Q3.4 discussion 2026-04-28: recommended "all-of-above as configurable surfaces, with sensible defaults. Default-on for MVP demo: weekly Slack digest + embedded dashboard. Webhooks and auto-PR are opt-in."
+**Category:** capability
+**Notes:** MVP default-on surfaces: embedded analytics dashboard + weekly Slack digest. Opt-in surfaces: webhooks to Linear/Jira/GitHub Issues, auto-PR with structured product issues (see novel-ideas for that mechanism). v1+ adds per-surface configuration, custom cadence, severity threshold controls, and auto-PR with interaction-excerpt evidence. Requires ADR decision on surface selection (pending Batch 3 answers).
+
+### [2026-04-28] Proactive engine: per-user adaptive attention budget (v1 capability)
+**Source:** Q3.6 discussion 2026-04-28: "per-user adaptation at v1 closes the loop with the unified active+deduced feedback substrate — a virtuous-circle architecture unique to this platform."
+**Category:** capability
+**Notes:** MVP: simple hard cap — host-configurable, proposed default of max 2 unprompted interruptions per session and max 5 per day. v1: evolve to combined cap + token-bucket + per-user learned adaptation. Per-user adaptation uses accept/dismiss signals from the unified feedback substrate (novel-idea entry), creating a self-improving loop where the agent learns each user's optimal interruption cadence. Building the MVP feedback store is a prerequisite for this v1 capability.
+
 ### [2026-04-26] Cached composition templates per recurring intent
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
