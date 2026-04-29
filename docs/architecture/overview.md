@@ -128,22 +128,26 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Memory architecture — polyglot phased (PG + Qdrant → +ClickHouse + Neo4j) [ADR-008]
 - ✅ UI Composer LLM — Haiku + cached templates + Sonnet fallback [ADR-012]
 
-### Still open
-1. **Stream processing for derivation pipeline** — in-process / Redpanda / Kafka / Temporal.
-2. **Theme-tokens schema** — Style Dictionary? Spectrum tokens? CSS variables? Custom?
-3. **MVP framework scope** — React + WC at MVP, defer Vue/Svelte/Angular?
-4. **Feature/Service NL→JSON compilation timing** — registration-time vs. runtime.
-5. **Voice-of-Customer surface** — dashboard / webhook / digest / auto-PR / multi.
+### Closed in Batch 3 (2026-04-28)
+- ✅ Feature/Service consumption model — read directly as super-skill doc, no compilation [ADR-013]
+- ✅ Stream processing — Redpanda from MVP [ADR-014]
+- ✅ MVP framework scope — React + vanilla WC only; Vue/Svelte/Angular at v1.5 [ADR-015]
+- ✅ Voice-of-Customer — multi-surface configurable + closed-loop reprocessing into agent decision-making (with new Customer Churn ML Model component) [ADR-016]
+- ✅ Mobile embedding — WebView bridge with mobile-context-aware composition [ADR-017]
+- ✅ Proactive engine — multi-signal scoring + combined attention budget [ADR-018]
+- ✅ End-user tier/quota system — configurable + visible "X requests remaining" surface [ADR-019]
+
+### Still open (Batch 4)
+1. **Theme-tokens schema** — Style Dictionary? Spectrum tokens? CSS variables? Custom?
+2. **Pricing model — platform-vendor side** (host pays vendor) — license / per-seat / capacity tier.
+3. **Distribution / packaging** — Docker / Helm / standalone / installer.
+4. **Sub-agent isolation** — process / iframe / VM / none.
+5. **Eventing model for DOM observation** — MutationObserver + IntersectionObserver + custom.
 6. **Eval target metrics + scoring approach** — LLM-as-judge / heuristics / embedded eval models.
-7. **Sub-agent isolation** — process / iframe / VM / none.
-8. **Eventing model for DOM observation** — MutationObserver + IntersectionObserver + custom.
-9. **Mobile embedding strategy** — React Native / native SDKs / WebView bridge.
-10. **Distribution / packaging** — Docker / Helm / standalone / installer.
-11. **Pricing model under self-hosted** — license / per-seat / capacity tier.
-12. **Proactive engine confidence + attention budget** — gating policies, signals, default thresholds.
-13. **Federated cross-enterprise learning** — opt-in mechanism design (v2).
-14. **Embedding model choice** — Anthropic / OSS / host-supplied.
-15. **Cross-store consistency failure-recovery semantics**.
+7. **Embedding model choice** — Anthropic / OSS / host-supplied.
+8. **Cross-store consistency failure-recovery semantics**.
+9. **Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start strategy; explainability.
+10. **Federated cross-enterprise learning** — opt-in mechanism design (v2).
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

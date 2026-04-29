@@ -203,3 +203,125 @@
   - Cold-start cases use Sonnet — slightly slower first paint for novel intents, acceptable tradeoff.
   - Cached templates are themselves typed-JSON layout trees keyed by canonical intent — supports the bidirectional-emit patentability story.
 - **Source:** Conversation 2026-04-26 (Rahul Q14 answer).
+
+## ADR-013 — Feature/Service docs are agent-readable super-skill documents (NO compilation step)
+- **Date:** 2026-04-28
+- **Status:** accepted (resolves the open sub-question of ADR-011)
+- **Context:** ADR-011 picked `.feature.md` (Markdown + YAML frontmatter + inline JSON) as the doc format but left open *when* NL gets compiled to typed JSON. Rahul reframed the premise: should the agent platform compile at all, or just read the doc as-is and execute it intelligently — the way Claude / Claude Code skills work?
+- **Options considered:**
+  - A. Compile NL → typed JSON at registration time (predictable runtime, slower author iteration).
+  - B. Compile NL → typed JSON at runtime (flexible, more model spend).
+  - C. **No compilation. The agent reads `.feature.md` files directly as planner context — they are super-skill documents, treated as soft hints rather than executable workflows.** Inline JSON is used only for parts that MUST be runtime-typed (preconditions evaluated programmatically, registry IDs for skills/tools/sub-agents/atomic components — these are validated at registration time).
+- **Decision:** C.
+- **Consequences:**
+  - Eliminates an entire compiler subsystem — substantial complexity reduction.
+  - Aligns with the proven Claude-skill / Claude-Code-skill design pattern — same authoring ergonomics.
+  - Domain devs author in pure NL with optional typed escape hatches; iteration loop is fast (no recompile).
+  - Trade: per-turn model spend increases marginally (planner consumes the relevant feature docs in context). Mitigated by **prompt caching** (docs are stable; cache hit on every invocation after the first).
+  - Validation at registration time: typed-JSON portions checked for referential integrity (skill IDs, component IDs, etc.).
+  - Resolves ADR-011's open sub-question (compilation timing → no compilation).
+- **Novelty:** medium-high — most workflow systems require compiled definitions (Temporal, Airflow, BPMN). Treating workflow docs as soft prompts to an agent is the AI-native model and uncommon as a packaged design. Captured in [novel-ideas/ideas.md](../novel-ideas/ideas.md) (refines existing Feature/Service entry).
+- **Source:** Conversation 2026-04-28 (Rahul Q3.1 answer).
+
+## ADR-014 — Stream processing: Redpanda from MVP
+- **Date:** 2026-04-28
+- **Status:** accepted
+- **Context:** Memory derivation pipeline (ADR-008) needs a stream backbone. Trade-off: in-process simplicity at MVP vs. real stream-native infra from day 1.
+- **Options considered:**
+  - A. In-process worker pool + cron at MVP, swap to Redpanda at v1.
+  - B. **Redpanda from MVP** (Kafka-compatible, single binary, lighter ops than Kafka).
+  - C. Kafka (heavier ops; KRaft/ZK complexity).
+  - D. Temporal (workflow durability — overkill for stream derivation).
+- **Decision:** B.
+- **Consequences:**
+  - MVP ops surface = PG + Qdrant + **Redpanda** + agent runtime (4 systems, up from the 3 that in-process would have given).
+  - Avoids the v1 migration cost; stream-native semantics from day 1 (back-pressure, replay, partitioning, consumer groups).
+  - Acceptable footprint — Redpanda is single-binary, no JVM, modest resource needs.
+  - Pluggable adapter so enterprises with existing Kafka can swap.
+- **Source:** Conversation 2026-04-28 (Rahul Q3.3 answer).
+
+## ADR-015 — MVP framework scope: React + vanilla Web Components only
+- **Date:** 2026-04-28
+- **Status:** accepted (resolves the open sub-question of ADR-010)
+- **Context:** ADR-010 picked WC-wrap-default + native-renderer escape hatch but left open which frameworks the multi-framework registry actually supports at MVP.
+- **Options considered:**
+  - A. **React + vanilla WC only at MVP**, defer Vue/Svelte/Angular to v1.5.
+  - B. All four frameworks + WC from day one.
+  - C. React + Vue + WC, defer Svelte/Angular.
+- **Decision:** A.
+- **Consequences:**
+  - Multi-framework runtime is lighter at MVP (one framework runtime + WC).
+  - E-commerce design partners (Walmart / Best Buy / Shopify-merchant-tier) are React-heavy — MVP scope matches.
+  - Adapter contracts designed multi-framework so v1.5 additions (Vue / Svelte / Angular) are additive, not re-architectural.
+- **Source:** Conversation 2026-04-28 (Rahul Q3.2 answer).
+
+## ADR-016 — Voice-of-Customer: multi-surface outbound + closed-loop reprocessing into agent decision-making
+- **Date:** 2026-04-28
+- **Status:** accepted
+- **Context:** Q3.4 — where do VoC signals (pain points, capability requests, friction patterns) go? Rahul expanded scope: VoC must also feed *back into* the agent platform itself.
+- **Options considered:**
+  - A. Single surface (dashboard).
+  - B. Webhook to host's existing system (Linear/Jira/GitHub Issues).
+  - C. Slack / email digest.
+  - D. Auto-PR with suggested issues/tickets in host repo.
+  - E. **All-of-above as configurable surfaces, with sensible defaults.**
+- **Decision:** E for outbound. **Plus — VoC signals also flow back INTO the agent platform** as: (1) updates to customer interaction profile, (2) inputs to a new **Customer Churn ML Model**, (3) product improvement opportunity tracker (Jira/Linear/GitHub Issues integration via the auto-PR/webhook surface).
+- **Consequences:**
+  - **Outbound surfaces:** dashboard + webhook + Slack/email digest + auto-PR all available; default-on for MVP demo: weekly Slack digest + embedded dashboard. Webhook + auto-PR opt-in.
+  - **New first-class component: Customer Churn ML Model** (per-tenant; lives inside enterprise data plane per ADR-006). Inputs: customer interaction profile + recent VoC signals + usage trajectory + feature exposure history. Output: P(churn | customer, feature). Used by the planner/composer at decision time to **avoid surfacing features that have caused friction for similar customers** ("don't propose feature X to customer Y if customers like Y consistently churn after X").
+  - **VoC reprocessing pipeline** updates customer interaction profile with extracted pain points and friction patterns (FR-MEM-003).
+  - **Closed-loop architecture**: agent observes → VoC extracts → churn model updates → planner consumes prediction → recommendation adapts. Self-correcting at the feature-recommendation level.
+  - Default churn model bundled with platform; pluggable adapter so enterprises with existing churn models can substitute theirs.
+- **Novelty:** HIGH — the closed-loop VoC → churn model → agent decision adjustment is uncommon as a packaged design. Auto-PR for product issues from agent observations is also distinctively novel. Both captured in [novel-ideas/ideas.md](../novel-ideas/ideas.md).
+- **Source:** Conversation 2026-04-28 (Rahul Q3.4 answer).
+
+## ADR-017 — Mobile embedding: WebView bridge with mobile-context-aware composition
+- **Date:** 2026-04-28
+- **Status:** accepted
+- **Context:** Q3.5 — the platform must work in mobile contexts (Adobe / Canva / Expedia / Best Buy / Walmart / Shopify all have native mobile apps).
+- **Options considered:**
+  - A. React Native SDK only.
+  - B. Native SDKs (iOS Swift + Android Kotlin) only.
+  - C. **WebView bridge with thin native shim per platform; agent runtime is mobile-context-aware**.
+  - D. Hybrid: WebView for MVP + native SDKs at v1.5 (specialization of C).
+- **Decision:** C (with v1.5 native SDKs deferred per D).
+- **Consequences:**
+  - Single codebase across web + mobile. Reuses the WC shell.
+  - Thin native shim per platform handles: launching the agent, providing app-screen state to the runtime, routing native events (microphone, push notifications, biometrics).
+  - **Composer is mobile-context-aware**: at runtime the composer knows whether it's on mobile / tablet / desktop, screen size, touch vs. pointer, network class — and adapts composition (atomic component selection, layout density, text length, touch-target sizes, side-panel vs. bottom-sheet).
+  - Atomic component registry may include mobile variants (e.g., `ProductTile.mobile`, `ProductTile.desktop`).
+  - v1.5: native SDKs (iOS / Android) for hosts who need full native UX.
+- **Source:** Conversation 2026-04-28 (Rahul Q3.5 answer).
+
+## ADR-018 — Proactive engine: multi-signal confidence scoring + combined attention budget
+- **Date:** 2026-04-28
+- **Status:** accepted
+- **Context:** Q3.6 (first part) — when does the agent pop up unprompted, and how often?
+- **Options considered:** see Q3.6 framing in conversation.
+- **Decision:**
+  - **Confidence (trigger signal):** **multi-signal scoring at MVP** — planner confidence + memory match + workflow continuity + DOM-state relevance + time-since-last-interaction. v1: evolve to **learned trigger model** trained on accept/dismiss feedback once data accumulates.
+  - **Attention budget:** **combined hard cap + token-bucket + per-user adaptation**. Defaults: max 2 unprompted per session, max 5 per day (host-configurable). Per-user adaptation closes the loop with the unified active+deduced feedback substrate (ADR-008) — users with high accept rates get a higher budget; users who dismiss frequently get a lower budget.
+- **Consequences:**
+  - Robust multi-signal triggering avoids LLM-confidence-score calibration issues.
+  - Combined budget balances predictability (cap), natural cadence (bucket), and personalization (adaptation).
+  - More to tune; mitigated by sensible defaults + host-configurable knobs.
+  - Per-user adaptation depends on FR-FB (deduced feedback) being live — works even at MVP since active+deduced feedback is MVP scope.
+- **Source:** Conversation 2026-04-28 (Rahul Q3.6 answer, first part).
+
+## ADR-019 — End-user tier/quota system with visible request budgets
+- **Date:** 2026-04-28
+- **Status:** accepted
+- **Context:** Q3.6 (second part) surfaced a separate concern: the host enterprise charges its OWN customers for SaaS access; agent usage should be tier-aware and the customer should see how many requests they have remaining.
+- **Options considered:**
+  - A. Platform doesn't model tiers; host bolts on its own metering.
+  - B. **Platform supports configurable tiers + per-user quota tracking + quota-visibility surface for end-users**.
+  - C. Platform fixes a tier model (inflexible).
+- **Decision:** B.
+- **Consequences:**
+  - Per-user request and token tracking (lives in ClickHouse, telemetry-adjacent).
+  - Per-user quota enforcement against host-configured tier limits (free / pro / enterprise / custom — host-defined).
+  - End-user visibility: a composed UI element ("X requests remaining this period") rendered using host's atomic primitives + theme tokens, surfaced contextually (e.g., when nearing limit).
+  - Quota enforcement modes per tier: hard limit / soft limit + warning / unlimited.
+  - Unblocks the host's monetization model without forcing a specific pricing structure.
+  - Distinct from the platform-vendor pricing (host pays platform vendor — separate concern, Batch 4).
+- **Source:** Conversation 2026-04-28 (Rahul Q3.6 answer, second part).

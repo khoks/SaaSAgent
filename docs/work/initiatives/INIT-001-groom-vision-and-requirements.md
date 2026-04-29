@@ -34,21 +34,22 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 10. ✅ **Feature/Service document format** — `.feature.md` (MD + YAML frontmatter + inline JSON) ([ADR-011](../../decisions/decision-log.md)). NL→JSON compilation-timing sub-question still open.
 14. ✅ **UI Composer LLM step** — Haiku + cached templates + Sonnet fallback ([ADR-012](../../decisions/decision-log.md)).
 
-### Batch 3 — open
-- **Q3.1 Compilation timing for Feature/Service NL→JSON** — registration-time vs. runtime (follow-up to ADR-011).
-- **Q3.2 MVP framework scope** — React + WC only at MVP, defer Vue/Svelte/Angular to v1.5? (follow-up to ADR-010).
-- **Q3.3 Stream processing for derivation pipeline** — in-process / Redpanda / Kafka / Temporal.
-- **Q3.4 Voice-of-Customer surface for dev team** — dashboard / webhook / Slack-or-email digest / auto-PR / multi.
-- **Q3.5 Mobile embedding strategy** — React Native / native SDKs / WebView bridge.
-- **Q3.6 Proactive engine confidence + attention-budget model** — heuristics, signals, gating policies.
+### Batch 3 — closed 2026-04-28
+- ✅ **Q3.1 Feature/Service consumption model** — no compilation; agent reads `.feature.md` directly as super-skill doc ([ADR-013](../../decisions/decision-log.md)). Substantive reframe of ADR-011's open sub-question.
+- ✅ **Q3.2 MVP framework scope** — React + vanilla WC at MVP; Vue/Svelte/Angular at v1.5 ([ADR-015](../../decisions/decision-log.md)).
+- ✅ **Q3.3 Stream processing** — Redpanda from MVP ([ADR-014](../../decisions/decision-log.md)).
+- ✅ **Q3.4 Voice-of-Customer** — multi-surface configurable + **closed-loop reprocessing back into agent decision-making**; introduces a new first-class component (Customer Churn ML Model) ([ADR-016](../../decisions/decision-log.md)). High-novelty addition.
+- ✅ **Q3.5 Mobile embedding** — WebView bridge with mobile-context-aware composition ([ADR-017](../../decisions/decision-log.md)).
+- ✅ **Q3.6 Proactive engine** — multi-signal scoring + combined attention budget ([ADR-018](../../decisions/decision-log.md)) **+** end-user tier/quota system as a separate concern ([ADR-019](../../decisions/decision-log.md)).
 
-### Batch 4+ — deferred
-- Theme/branding tokens schema (Style Dictionary / Spectrum / custom).
-- Pricing model (license / per-seat / capacity).
-- Distribution / packaging (Docker / Helm / standalone).
-- Sub-agent isolation (process / iframe / VM / none).
-- Eventing model for DOM observation.
-- Eval target metrics + scoring approach.
-- Embedding model choice.
-- Cross-store consistency failure-recovery.
-- Federated cross-enterprise learning (v2).
+### Batch 4 — open
+- **Q4.1 Platform-vendor pricing model** (host pays vendor) — license / per-seat / capacity / hybrid.
+- **Q4.2 Distribution / packaging** — Docker Compose / Helm chart / standalone binary / installer / multi.
+- **Q4.3 Sub-agent isolation** — process / iframe / VM / WASM / none.
+- **Q4.4 Eventing model for DOM observation** — MutationObserver + IntersectionObserver + custom event channel.
+- **Q4.5 Eval target metrics + scoring approach** — LLM-as-judge / heuristics / embedded eval models / hybrid.
+- **Q4.6 Embedding model choice** — Anthropic embeddings / OSS (BGE/E5/nomic) / host-supplied.
+- **Q4.7 Theme-tokens schema** — Style Dictionary / Spectrum tokens / CSS variables / custom DSL.
+- **Q4.8 Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start strategy; explainability surface.
+- **Q4.9 Cross-store consistency failure-recovery semantics**.
+- **Q4.10 Federated cross-enterprise learning** — opt-in mechanism design (v2-scoped, but principles need establishing).

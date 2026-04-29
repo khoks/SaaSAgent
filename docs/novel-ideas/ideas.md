@@ -76,6 +76,32 @@
 - **Patentability hint:** possible — method claim covering continuous extraction of product-team-facing signals (pain points, capability requests, friction patterns, prioritization) from agent-user interactions, with structured surfacing to product-team workflows.
 - **Open questions:** Surface format (dashboard / webhook / digest / auto-PR)? Per-user consent model for upstream surfacing? Severity / frequency weighting algorithm? Integration with existing product-management tools (Linear / Jira / GitHub Issues)?
 
+### [2026-04-28] Closed-loop voice-of-customer → customer churn ML model → agent self-correction
+- **Originator:** Rahul
+- **Source:** Q3.4 answer 2026-04-28: "Voice of customer should also get reprocessed back by the agent platform and consumed as part of the customer's interaction profile, feature pain points feeding into a customer churn ml model to select the feature carefully next time before proposing to the customer and using it for the customer, product improvement opportunities i.e. jira tickets etc."
+- **Description:** Voice-of-customer signals are not just an outbound stream to the host's product team. They also flow **back into** the agent platform along three paths: (1) updates to the customer interaction profile, (2) inputs to a per-tenant **Customer Churn ML Model**, (3) product improvement opportunity tracker. The Churn Model takes (customer interaction profile, recent VoC signals, usage trajectory, feature exposure history) and predicts P(churn | customer, feature). The planner/composer consumes this prediction at decision time to **avoid surfacing features that have caused friction for similar customers** — closing the loop. The agent is therefore both the source of churn-relevant observations AND the consumer of the resulting predictions, creating a self-correcting system at the feature-recommendation level.
+- **Prior-art assessment:**
+  - **Customer-success platforms** (Gainsight, Totango, ChurnZero) model churn but consume signals from CRM/usage telemetry — not from live agent conversations, and not feeding back to a real-time recommendation surface.
+  - **Recommender systems** factor in feedback signals (acceptance rate, dwell time) but typically don't model churn risk per (user, item) pair as a first-class consideration.
+  - **Conversational AI platforms** generate transcripts that BI tools may post-process for churn signals, offline. Closing the loop in real-time, with an in-platform churn model whose output is consumed by the planner mid-conversation, appears uncommon.
+  - The combination of (a) live VoC extraction from agent conversations, (b) reprocessing back into customer profiles, (c) per-tenant churn model with (customer, feature) granularity, (d) planner-consumed churn prediction at recommendation time, (e) self-correcting feature-surfacing — is uncommon as a packaged design.
+- **Novelty signal:** **high**.
+- **Patentability hint:** **strong** — system claim covering: (1) continuous extraction of feature pain points from agent-user interactions, (2) updating a customer churn model with these signals, (3) querying the churn model at planner decision time for P(churn | customer, candidate-feature), (4) suppressing or down-weighting feature recommendations exceeding a churn-risk threshold, (5) re-evaluating recommendations as new signals arrive. Recommend formal prior-art search before any disclosure.
+- **Open questions:** Churn model architecture (gradient-boosted tree / neural / ensemble)? Cold-start strategy when tenant has no historical churn data? Adapter contract for hosts with existing churn models? Threshold-tuning model — per-tenant or per-customer-segment? Explainability requirement (regulators may demand interpretability)?
+
+### [2026-04-28] Auto-PR with suggested product issues, drafted by the agent from observed user struggles
+- **Originator:** Rahul
+- **Source:** Q3.4 answer 2026-04-28 (confirmed all-of-above for VoC surfaces, including auto-PR): "product improvement opportunities i.e. jira tickets etc."
+- **Description:** When the VoC pipeline identifies a pain point with sufficient frequency × severity, the agent platform **automatically opens a pull request** in the host's repo (or a Linear/Jira/GitHub Issue) containing: (1) suggested issue/ticket text, (2) supporting interaction excerpts (privacy-preserving, anonymized), (3) prioritization signals (frequency, severity, customer-segment weighting, churn-risk weighting from the churn model — see closed-loop entry above), (4) proposed resolution if the agent has one. The host's product team reviews and merges or closes. Makes voice-of-customer immediately actionable rather than just observable.
+- **Prior-art assessment:**
+  - **Issue bots** exist (Dependabot for deps, Renovate for updates, security scanners that file CVEs). All operate on code/dep state, not on user-behavior observations.
+  - **Customer-feedback platforms** (Productboard, Canny) generate manual tickets with manual triage.
+  - **Sentiment / category tagging** in chatbots produces analytics, not actionable PRs.
+  - **Agent-driven auto-PR for product issues based on observed end-user behavior in conversations** is uncommon as a packaged primitive.
+- **Novelty signal:** medium-high.
+- **Patentability hint:** possible-strong — method claim covering the trigger-and-file pipeline: (1) frequency × severity × churn-risk thresholding on VoC-extracted pain points, (2) automated drafting of issue/PR text with rationale + interaction excerpts, (3) integration to host's product-management system (GitHub / Linear / Jira), (4) structured prioritization metadata.
+- **Open questions:** Trigger threshold tuning — frequency, severity, novelty? Anonymization / consent model for interaction excerpts? Default-off vs. default-on for MVP demos? Auto-close on duplicates? Agent learning from product-team's accept/close decisions on its own PRs?
+
 ### [2026-04-26] Unified active + deduced feedback substrate driving both eval and personalization
 - **Originator:** Rahul
 - **Source:** Q6 answer 2026-04-26: "I want it to have active and deduced feedback mechanisms with loop as well."
@@ -107,11 +133,11 @@
 - **Patentability hint:** possible — system claim around tiered summarization stores indexed by temporal window with agent-driven tier selection at query time.
 - **Open questions:** Summarization cadence and trigger per tier? Privacy boundaries? Cross-tier consistency on backfill?
 
-### [2026-04-26] Declarative Feature/Service registry as the LLM-consumable surface for host workflows
-- **Originator:** Rahul
-- **Source:** "app developers and domain developers within the enterprise can come and configure their own workflows in its system in the form of featured documents or service documents."
-- **Description:** Host domain developers describe their workflows as documents (format TBD) declaring: experience, workflow steps, preconditions, hints about which sub-agents/skills/tools to use. The LLM planner consumes these documents directly as context — they are not compiled to code, not run by a workflow engine, but are read by the planner to inform its plans.
-- **Prior-art assessment:** Workflow tools (Zapier, n8n, Temporal) compile workflows to imperative execution. Declarative configs (e.g., for chat flows) typically branch deterministically. Feeding workflow documents directly to an LLM planner as soft hints — letting the planner deviate when it has reason to — is uncommon.
-- **Novelty signal:** medium-high — the "documents as planner hints, not executable workflows" stance is a distinctive design choice.
-- **Patentability hint:** possible — method claim around LLM-planner consumption of declarative workflow docs as soft hints with deviation policy.
-- **Open questions:** Document format? Deviation gating? Versioning?
+### [2026-04-26 / refined 2026-04-28] Feature/Service docs as agent-readable super-skill documents (no compilation)
+- **Originator:** Rahul (refined 2026-04-28 in Q3.1 answer; format choice in ADR-011, no-compilation choice in ADR-013)
+- **Source:** "app developers and domain developers within the enterprise can come and configure their own workflows in its system in the form of featured documents or service documents." + Q3.1 2026-04-28: "Do we really want the md format to be compiled to JSON? shouldn't the Agent platform just read it as a super skill doc and just execute it using its intelligence?"
+- **Description:** Host domain developers author their workflows as `.feature.md` documents (Markdown + YAML frontmatter + optional inline JSON for runtime-typed parts). The agent platform **does not compile these to executable form**. Instead, the agent reads them directly as planner context — they are super-skill documents, soft hints that guide the planner's decisions. The planner can deviate when it has reason to. Inline JSON is reserved for parts that MUST be runtime-typed (preconditions evaluated programmatically, registry IDs for skills/tools/sub-agents/atomic components). This is the AI-native consumption model — analogous to how Claude Code skills are authored as markdown that an agent reads and uses.
+- **Prior-art assessment:** Workflow tools (Zapier, n8n, Temporal, Airflow, BPMN engines) compile workflows to imperative or declarative execution. AI workflow tools (LangGraph, Inngest-like, AutoGen) typically still have a structured definition layer that gets executed by a runtime. Feeding workflow documents directly to an LLM planner as soft hints (no compilation) — and explicitly framing them as analogous to skill prompts — is uncommon as a packaged design. Closest analogue: Claude / Claude Code skills, which inspired this framing but are author-time tools, not a host-extensibility surface in a deployed platform.
+- **Novelty signal:** medium-high — the "no compilation, soft prompts, planner-deviation-allowed" stance is a distinctive AI-native design choice.
+- **Patentability hint:** possible — method claim around: a registry of host-authored workflow docs in NL+structured-hint form, consumed directly by an LLM planner as context, with deviation policy gated by runtime preconditions and registry-validated typed-hints.
+- **Open questions:** Deviation gating heuristics? Versioning of docs across registry releases? Caching strategy for prompt-cache-hit on stable docs?

@@ -13,23 +13,28 @@
 | UI Composer model | Sonnet, Haiku, fine-tuned | **Haiku composer + cached layout templates per intent + Sonnet fallback for novel intents** | [ADR-012](../decisions/decision-log.md) |
 | Embed surface | Web Component, React SDK, iframe, all | **Web Component shell** with multi-framework component registry inside | [ADR-004](../decisions/decision-log.md) |
 | UI rendering model | SDUI catalog, shipped components, generative UI, **DS composition** | **Runtime composition from host's atomic design system** | [ADR-005](../decisions/decision-log.md) |
-| Component registry framework support | React only / multi-framework | **Multi-framework: React, Vue, Svelte, Angular, vanilla WC** (MVP scope TBD — see Batch 3) | [ADR-004](../decisions/decision-log.md) |
+| Component registry framework support | React only / multi-framework | **React + vanilla WC at MVP**; Vue/Svelte/Angular at v1.5 (multi-framework adapter ready) | [ADR-004](../decisions/decision-log.md), [ADR-015](../decisions/decision-log.md) |
 | Multi-framework runtime | Module Federation, per-framework adapters, custom-element wrappers, hybrid | **WC-wrap by default + native-renderer escape hatch** for performance-critical primitives | [ADR-010](../decisions/decision-log.md) |
 | DS registration intake | Manual / Storybook auto-extract / metadata extract / hybrid | **Hybrid: all three paths + manual augmentation layer** | [ADR-009](../decisions/decision-log.md) |
-| Theme/branding tokens | Style Dictionary, Spectrum tokens, CSS variables, custom | TBD | — |
+| Theme/branding tokens | Style Dictionary, Spectrum tokens, CSS variables, custom | TBD (Batch 4) | — |
 | Feature/Service doc format | YAML / JSON / Markdown+frontmatter+inline-JSON | **`.feature.md` — Markdown + YAML frontmatter + inline JSON** | [ADR-011](../decisions/decision-log.md) |
-| Feature/Service NL→JSON compilation timing | Registration-time / runtime | TBD (Batch 3) | — |
+| Feature/Service consumption model | Compile to JSON / read directly | **Read directly as super-skill doc — no compilation step** | [ADR-013](../decisions/decision-log.md) |
 | Memory: raw + workflow + active feedback + profiles | Postgres / DynamoDB / SQLite | **Postgres (append-only raw log + structured derived)** | [ADR-008](../decisions/decision-log.md) |
 | Memory: semantic recall (vector) | pgvector, Pinecone, Weaviate, **Qdrant**, Chroma | **Qdrant** (default; pluggable) | [ADR-008](../decisions/decision-log.md) |
-| Memory: time-tiered summaries + eval + telemetry + VoC analytics | TimescaleDB, **ClickHouse**, Druid | **ClickHouse** (v1; pluggable) | [ADR-008](../decisions/decision-log.md) |
-| Memory: problem-solution graph + VoC relations | **Neo4j**, ArangoDB, Dgraph, Memgraph | **Neo4j** (v1; pluggable) | [ADR-008](../decisions/decision-log.md) |
-| Stream processing for derivation pipeline | In-process workers, Redpanda, Kafka, Temporal | TBD (Batch 3) | — |
-| Embedding model | Anthropic embeddings, OSS (BGE / E5 / nomic), host-supplied | TBD | — |
+| Memory: time-tiered summaries + eval + telemetry + VoC analytics + quotas | TimescaleDB, **ClickHouse**, Druid | **ClickHouse** (v1; pluggable) | [ADR-008](../decisions/decision-log.md), [ADR-019](../decisions/decision-log.md) |
+| Memory: problem-solution graph + VoC relations + churn model state | **Neo4j**, ArangoDB, Dgraph, Memgraph | **Neo4j** (v1; pluggable) | [ADR-008](../decisions/decision-log.md), [ADR-016](../decisions/decision-log.md) |
+| Stream processing for derivation pipeline | In-process, **Redpanda**, Kafka, Temporal | **Redpanda from MVP** | [ADR-014](../decisions/decision-log.md) |
+| Customer Churn ML Model | Bundled default + pluggable adapter | **Per-tenant default model bundled (architecture TBD: GBT / neural / ensemble); adapter for host's existing churn model** | [ADR-016](../decisions/decision-log.md) |
+| Voice-of-Customer surfaces | Single / multi configurable | **All-of-above configurable: dashboard + webhook + Slack-or-email digest + auto-PR; default-on for MVP demo: weekly Slack digest + embedded dashboard** | [ADR-016](../decisions/decision-log.md) |
+| Embedding model | Anthropic embeddings, OSS (BGE/E5/nomic), host-supplied | TBD (Batch 4) | — |
 | Event bus integration | Kafka, NATS, webhooks, host-defined adapter | Adapter pattern (host-defined) | derivative of [ADR-006](../decisions/decision-log.md) |
-| Mobile embedding | React Native, native SDKs (iOS/Android), WebView bridge | TBD (Batch 3) | — |
+| Mobile embedding | React Native, native SDKs, **WebView bridge** | **WebView bridge with mobile-context-aware composition** at MVP; native SDKs at v1.5 | [ADR-017](../decisions/decision-log.md) |
 | Multi-tenancy model | Pool, silo, hybrid | **Single-tenant (one deployment per enterprise)** | derivative of [ADR-006](../decisions/decision-log.md) |
 | Real-time transport | WebSocket, SSE, WebRTC (for voice), hybrid | TBD | — |
 | Observability stack | OpenTelemetry, custom, hosted | OpenTelemetry (host-controlled exporters) | derivative of [ADR-006](../decisions/decision-log.md) |
 | Auth model | Bring-your-own (host SSO), platform-issued tokens | **Bring-your-own (host SSO)** | derivative of [ADR-006](../decisions/decision-log.md) |
-| Distribution / packaging | Docker / Helm / standalone binary / installer | TBD (Batch 3) | — |
+| Proactive engine — confidence | Single threshold / multi-signal / learned | **Multi-signal scoring at MVP; learned trigger model at v1** | [ADR-018](../decisions/decision-log.md) |
+| Proactive engine — attention budget | Cap / bucket / adaptive / combined | **Combined: hard cap + token-bucket + per-user adaptation; defaults: max 2/session, max 5/day, host-configurable** | [ADR-018](../decisions/decision-log.md) |
+| End-user tier/quota system | None / fixed / **configurable** | **Configurable per-tier quotas + per-user tracking + visible "X requests remaining" element** | [ADR-019](../decisions/decision-log.md) |
+| Distribution / packaging | Docker / Helm / standalone binary / installer | TBD (Batch 4) | — |
 | CI/CD | GitHub Actions (default for our build) | GitHub Actions | — |

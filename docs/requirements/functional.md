@@ -84,13 +84,16 @@
 - **FR-EVAL-005** — Live scoring approach TBD (Batch 3): LLM-as-judge / heuristics / embedded eval models.
 - **FR-EVAL-006** — Eval informs both quality dashboards (host ops team) AND personalization (per-user adjustments).
 
-## FR-VOC — Voice-of-Customer (new — per ADR-008)
+## FR-VOC — Voice-of-Customer (per ADR-008, refined per ADR-016)
 - **FR-VOC-001** — Continuous extraction of feature pain points from interactions.
 - **FR-VOC-002** — Continuous extraction of feature/capability requests (explicit and implied).
 - **FR-VOC-003** — Continuous extraction of friction patterns (UX dead ends, repeated user struggles).
-- **FR-VOC-004** — Aggregation with prioritization weighting (frequency, severity, customer-segment).
-- **FR-VOC-005** — Surface to host's product team: format TBD (dashboard / webhook / digest / auto-PR), see Batch 3.
-- **FR-VOC-006** — Per-user consent model for upstream surfacing.
+- **FR-VOC-004** — Aggregation with prioritization weighting (frequency × severity × customer-segment × churn-risk).
+- **FR-VOC-005** — **Outbound surfaces (all configurable, multi-select):** embedded dashboard + webhook (Linear/Jira/GitHub Issues) + Slack/email digest + auto-PR with suggested issues. Default-on for MVP demo: weekly Slack digest + embedded dashboard.
+- **FR-VOC-006** — Per-user consent model for upstream surfacing (anonymization of interaction excerpts).
+- **FR-VOC-007** — **Closed-loop reprocessing back into platform** (per ADR-016): VoC signals update (a) customer interaction profile (FR-MEM-003), (b) Customer Churn ML Model inputs (FR-CHURN), (c) product improvement opportunity tracker (Jira/Linear/GitHub).
+- **FR-VOC-008** — Auto-PR pipeline: trigger on frequency × severity × novelty thresholds; generated PR/ticket includes rationale, prioritization metadata, anonymized interaction excerpts, proposed resolution if available.
+- **FR-VOC-009** — Agent learning from product-team's accept/close decisions on auto-filed PRs (feedback loop).
 
 ## FR-TEL — Agent self-telemetry (new — per ADR-008)
 - **FR-TEL-001** — Usage statistics about the agent platform itself: turns per session, composition cycles, tool invocations, sub-agent invocations, latency distributions, model spend.
@@ -114,9 +117,36 @@
 - **FR-A-003** — SaaS usage profile adapter.
 - **FR-A-004** — 3rd-party app usage profile adapter.
 
-## FR-W — Feature/Service authoring (seed)
-- **FR-W-001** — Domain devs author Feature/Service documents (format TBD — markdown? YAML? JSON?).
-- **FR-W-002** — Documents declare: experience, workflow, preconditions, hints (which sub-agents/skills/tools to prefer).
+## FR-W — Feature/Service authoring (refined per ADR-011, ADR-013)
+- **FR-W-001** — Domain devs author Feature/Service documents as `.feature.md` files: Markdown + YAML frontmatter (id, name, version, owner, preconditions) + NL-first body + optional inline JSON code blocks for runtime-typed parts.
+- **FR-W-002** — Documents declare: experience, workflow narrative, preconditions, hints (sub-agents / skills / tools / atomic components to prefer, UI experience to compose).
 - **FR-W-003** — Hot-reload of registry without redeploying the agent runtime.
+- **FR-W-004** — **No compilation step.** The agent reads `.feature.md` directly as planner context (super-skill doc model). Inline JSON portions are validated for referential integrity at registration time (skill IDs, component IDs exist).
+- **FR-W-005** — Prompt caching exploited at the planner — stable docs hit cache on every invocation after the first.
+
+## FR-MOBILE — Mobile context awareness (new — per ADR-017)
+- **FR-MOBILE-001** — Runtime detects mobile / tablet / desktop context: screen size, touch vs. pointer input, network class.
+- **FR-MOBILE-002** — UI Composer is mobile-context-aware: composition adapts (atomic component selection, layout density, text length, touch-target sizes, side-panel vs. bottom-sheet).
+- **FR-MOBILE-003** — Atomic component registry may include mobile variants (`ProductTile.mobile`, `ProductTile.desktop`); composer chooses appropriate variant.
+- **FR-MOBILE-004** — Native shim per platform (iOS / Android) handles: launching the agent, providing app-screen state, routing native events (microphone, push notifications, biometrics).
+- **FR-MOBILE-005** — Native SDKs (full per-platform) deferred to v1.5.
+
+## FR-CHURN — Customer Churn ML Model (new — per ADR-016)
+- **FR-CHURN-001** — Per-tenant churn model lives inside enterprise data plane (per ADR-006).
+- **FR-CHURN-002** — Inputs: customer interaction profile + recent VoC signals + usage trajectory + feature exposure history.
+- **FR-CHURN-003** — Output: P(churn | customer, feature) per (customer, candidate-feature) pair.
+- **FR-CHURN-004** — Consumed by planner / composer at recommendation time to suppress / down-weight high-churn-risk features.
+- **FR-CHURN-005** — Default model bundled with the platform; pluggable adapter for hosts with existing churn models.
+- **FR-CHURN-006** — Cold start strategy when tenant has no historical churn data (use generic prior model + tenant-specific online learning as data accumulates).
+- **FR-CHURN-007** — Threshold tuning per tenant or per customer-segment.
+- **FR-CHURN-008** — Explainability: when the planner suppresses a feature, the rationale ("similar customers had X% churn after Y") is logged for product-team review.
+
+## FR-QUOTA — End-user tier and quota system (new — per ADR-019)
+- **FR-QUOTA-001** — Host enterprises define tiers (e.g., free / pro / enterprise / custom) with per-tier limits (requests/day, tokens/period, concurrent sessions).
+- **FR-QUOTA-002** — Per-user request and token tracking (ClickHouse, telemetry-adjacent).
+- **FR-QUOTA-003** — Quota enforcement modes per tier: hard limit / soft limit + warning / unlimited.
+- **FR-QUOTA-004** — End-user visibility: composed UI element ("X requests remaining this period") rendered using host's atomic primitives + theme tokens; surfaced contextually (e.g., when user crosses 80% of quota).
+- **FR-QUOTA-005** — Tier metadata exposed to host's billing system via webhook / API for upgrade flows.
+- **FR-QUOTA-006** — Distinct from platform-vendor pricing (host pays vendor — separate concern).
 
 > Each ID above is a **seed**, not a contract. As we groom, we refine, split, or kill them.

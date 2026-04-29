@@ -18,8 +18,10 @@
 | 10 | **Eval datapoints** | ClickHouse | Live per-interaction + offline per-session eval; trend analysis; regression detection | v1 |
 | 11 | **Agent self-telemetry** | ClickHouse | Usage stats about the agent platform itself: turns, composition cycles, tool invocations, latency, model spend | v1 |
 | 12 | **Deduced feedback** | Postgres + ClickHouse | Inferred signals: acceptance, abandonment, retry, revisit, deepening | v1 |
-| 13 | **Voice-of-Customer aggregation** | ClickHouse + Neo4j | Pain points + capability requests + prioritization signals for the host's product team | v1 |
-| 14 | **Federated learning state** | TBD | Cross-enterprise opt-in pattern sharing (privacy-preserving) | v2 |
+| 13 | **Voice-of-Customer aggregation** | ClickHouse + Neo4j | Pain points + capability requests + prioritization signals; **also reprocessed back into agent decision-making** (see closed-loop architecture below) | v1 |
+| 14 | **Customer Churn ML Model state** | Postgres + Neo4j (similar-customer lookups) | Per-tenant model that predicts P(churn \| customer, feature); consumed by planner at recommendation time per [ADR-016](../decisions/decision-log.md) | v1 |
+| 15 | **End-user tier/quota tracking** | Postgres (tier definitions) + ClickHouse (usage tallying) | Per-user request/token usage against host-defined tier limits; per [ADR-019](../decisions/decision-log.md) | MVP |
+| 16 | **Federated learning state** | TBD | Cross-enterprise opt-in pattern sharing (privacy-preserving) | v2 |
 
 ## Continuous derivation pipeline
 
@@ -48,15 +50,63 @@ RAW INTERACTION STREAM (every turn, emit, composed artifact)
        ├───► Eval scorer (live + batch) ─► ClickHouse      (per-interaction + per-session metrics)
        │
        └───► VoC aggregator    ──────────► ClickHouse + Neo4j  (pain points + recs for dev team)
+                                                  │
+                                  ┌───────────────┼───────────────────────┐
+                                  │               │                       │
+                                  ▼               ▼                       ▼
+                          OUTBOUND surfaces:  REPROCESS into        REPROCESS into
+                          - Dashboard         customer interaction  Customer Churn
+                          - Webhook (Linear/  profile               ML Model
+                            Jira/GH Issues)                                │
+                          - Slack/email                                    │   (P(churn | customer,
+                          - Auto-PR with                                   │    feature) — consumed
+                            suggested issues                               │    by planner at
+                                                                          ▼    recommendation time)
+                                                                  CLOSED LOOP back to Planner
 
 AGENT QUERY PATH:
   Planner / Composer / Thinker
         │
         ▼
-  Memory accessor (router)  ──┬──► Qdrant      (semantic)
-                              ├──► Postgres    (structured: profile, workflow, raw)
-                              ├──► ClickHouse  (time-tiered summaries, eval, telemetry, VoC)
-                              └──► Neo4j       (problem-solution graph, VoC relations)
+  Memory accessor (router)  ──┬──► Qdrant       (semantic)
+                              ├──► Postgres     (structured: profile, workflow, raw, tier/quota)
+                              ├──► ClickHouse   (time-tiered summaries, eval, telemetry, VoC, usage tallying)
+                              ├──► Neo4j        (problem-solution graph, VoC relations, churn-similar customers)
+                              └──► Churn Model  (P(churn | customer, candidate-feature)) ◄── per ADR-016
+```
+
+## Closed-loop VoC architecture (per ADR-016)
+
+VoC is **not just an outbound stream**. The full architecture:
+
+```
+Agent observes user interactions
+        │
+        ▼
+Active + Deduced feedback (FR-FB)
+        │
+        ▼
+VoC pipeline extracts pain points / capability requests / friction patterns
+        │
+        ├──► OUTBOUND  (configurable surfaces — defaults: weekly Slack digest + embedded dashboard)
+        │     - Dashboard
+        │     - Webhook (Linear / Jira / GitHub Issues)
+        │     - Slack/email digest
+        │     - Auto-PR with suggested issues
+        │
+        └──► REPROCESS BACK INTO PLATFORM
+              ├──► Customer interaction profile updates (FR-MEM-003)
+              ├──► Customer Churn ML Model inputs (FR-CHURN)
+              │      │
+              │      ▼
+              │    Predicts P(churn | customer, feature)
+              │      │
+              │      ▼
+              │    Consumed by Planner at recommendation time
+              │    → suppresses / down-weights features that have caused friction
+              │      for customers similar to the current one
+              │
+              └──► Product improvement opportunity tracker (Jira / Linear / GitHub via auto-PR)
 ```
 
 ## Phasing rationale
