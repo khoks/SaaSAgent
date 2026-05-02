@@ -19,6 +19,7 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 - [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 - [EPIC-002 — Close Batch 4 grooming decisions](../epics/EPIC-002-batch-4-grooming.md)
 - [EPIC-003 — Close Batch 5 grooming decisions](../epics/EPIC-003-batch-5-grooming.md)
+- [EPIC-004 — Close Batch 6 grooming decisions](../epics/EPIC-004-batch-6-grooming.md)
 
 ## Grooming questions
 
