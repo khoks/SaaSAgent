@@ -52,3 +52,43 @@ Each entry:
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
+
+### [2026-05-01] Go SDK for sub-agent development (v1 target)
+**Source:** ADR-027 and INIT-002 scope-out: "Go added at v1 if enterprise demand emerges."
+**Category:** capability
+**Notes:** Sub-Agent SDK ships TypeScript + Python at MVP. Go is explicitly deferred to v1 when demand from data-engineering or infrastructure teams emerges. The gRPC/protobuf federation protocol spec is defined at MVP so a Go SDK is straightforward to add without protocol changes.
+
+### [2026-05-01] OS package installers and standalone binary (v1.5 target)
+**Source:** ADR-026 and INIT-002 scope-out: "OS installers (apt/brew) deferred to v1.5 if demand emerges. Standalone binary deferred (TS-leaning stack makes single-binary packaging complex)."
+**Category:** capability
+**Notes:** Platform distributes as Docker Compose (dev/demo) + Helm chart (prod) at MVP. OS installers (deb/rpm/brew) and a standalone binary are deferred to v1.5 if enterprise procurement workflows or developer ergonomics demand it.
+
+### [2026-05-01] Observability exporters for eval data (v1 target)
+**Source:** ADR-030 and INIT-002 scope-out: "Optional exporters at v1 to host's existing observability (Grafana, Datadog, Honeycomb) for hosts who want eval data flowing into their unified ops stack."
+**Category:** integration
+**Notes:** Bundled eval SPA ships in the OSS tier at MVP. At v1, optional exporters push eval metrics/traces into the enterprise's existing observability stack via OpenTelemetry. Enables SRE/NOC teams to correlate agent quality regressions with infra events in their existing panes of glass.
+
+### [2026-05-01] Learned proactive trigger model (v1 target)
+**Source:** ADR-018 and INIT-002 scope-out: "Learned proactive trigger model — multi-signal heuristic at MVP; needs MVP feedback data first."
+**Category:** capability
+**Notes:** Multi-signal scoring (planner confidence + memory match + workflow continuity + DOM relevance + time-since) is the MVP trigger. v1 evolves this to a learned model trained on accept/dismiss feedback once sufficient data accumulates from MVP deployments.
+
+### [2026-05-01] Per-user attention-budget adaptation (v1 target)
+**Source:** ADR-018 and INIT-002 scope-out: "Per-user attention-budget adaptation — hard-cap only at MVP."
+**Category:** capability / personalization
+**Notes:** Hard cap (max 2 unprompted/session, max 5/day) is the MVP model. v1 adds per-user adaptation: users with high accept rates get a higher budget; high dismiss rates → lower budget. Depends on the unified active+deduced feedback substrate being live.
+
+### [2026-05-01] WASM skill isolation for adapter-supplied code (v1 target)
+**Source:** ADR-021 derivative and INIT-002 scope-out: "WASM skill isolation — process isolation only at MVP."
+**Category:** capability / security
+**Notes:** Skills run in-process at MVP (with process isolation by default). v1 adds WASM sandbox for adapter-supplied skill code from third-party or domain teams, providing stronger isolation without the overhead of a full subprocess.
+
+### [2026-05-01] Drawer and ejectable-popout WC shell render modes (v1 target)
+**Source:** INIT-002 scope-in notes: "full-page added if time; drawer + ejectable popout deferred to v1."
+**Category:** capability / UX
+**Notes:** MVP ships with side-panel render mode (plus full-page if time allows). Drawer (slide-up from bottom, common on mobile) and ejectable-popout (user detaches the panel into a floating window) are v1 UX modes.
+
+### [2026-05-01] Vue / Svelte / Angular component registry support (v1.5 target)
+**Source:** ADR-004, ADR-015, and INIT-002 scope-out: "Vue / Svelte / Angular registry support — React + WC sufficient for e-commerce MVP."
+**Category:** integration
+**Notes:** Multi-framework component registry supports React + vanilla Web Components at MVP. Vue, Svelte, and Angular adapter contracts are designed at MVP (additive, not re-architectural) so v1.5 additions are straightforward once demand from those framework communities materialises.
