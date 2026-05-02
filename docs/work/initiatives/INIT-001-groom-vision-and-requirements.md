@@ -18,6 +18,7 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 ## Child epics
 - [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 - [EPIC-002 — Close Batch 4 grooming decisions](../epics/EPIC-002-batch-4-grooming.md)
+- [EPIC-003 — Close Batch 5 grooming decisions](../epics/EPIC-003-batch-5-grooming.md)
 
 ## Grooming questions
 
@@ -31,26 +32,34 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 ### Batch 2 — closed 2026-04-26
 6. ✅ **Memory store architecture** — polyglot (PG + Qdrant + ClickHouse + Neo4j), phased ([ADR-008](../../decisions/decision-log.md)). See [memory.md](../../architecture/memory.md). Q6 expanded scope substantially: workflow progress, customer interaction profile, SaaS service usage profile, SaaS domain profile, time-tiered summaries (session/day/week/month/year), intra-tenant problem-solution graph, eval (live + offline), agent self-telemetry, active + deduced feedback, voice-of-customer extraction.
 7. ✅ **DS registration protocol** — hybrid (manual JSON + Storybook auto-extract + component-metadata extract + manual augmentation) ([ADR-009](../../decisions/decision-log.md)).
-8. ✅ **Multi-framework rendering** — WC-wrap default + native-renderer escape hatch ([ADR-010](../../decisions/decision-log.md)). MVP framework scope sub-question still open.
-10. ✅ **Feature/Service document format** — `.feature.md` (MD + YAML frontmatter + inline JSON) ([ADR-011](../../decisions/decision-log.md)). NL→JSON compilation-timing sub-question still open.
+8. ✅ **Multi-framework rendering** — WC-wrap default + native-renderer escape hatch ([ADR-010](../../decisions/decision-log.md)).
+10. ✅ **Feature/Service document format** — `.feature.md` (MD + YAML frontmatter + inline JSON) ([ADR-011](../../decisions/decision-log.md)).
 14. ✅ **UI Composer LLM step** — Haiku + cached templates + Sonnet fallback ([ADR-012](../../decisions/decision-log.md)).
 
 ### Batch 3 — closed 2026-04-28
-- ✅ **Q3.1 Feature/Service consumption model** — no compilation; agent reads `.feature.md` directly as super-skill doc ([ADR-013](../../decisions/decision-log.md)). Substantive reframe of ADR-011's open sub-question.
+- ✅ **Q3.1 Feature/Service consumption model** — no compilation; agent reads `.feature.md` directly as super-skill doc ([ADR-013](../../decisions/decision-log.md)).
 - ✅ **Q3.2 MVP framework scope** — React + vanilla WC at MVP; Vue/Svelte/Angular at v1.5 ([ADR-015](../../decisions/decision-log.md)).
 - ✅ **Q3.3 Stream processing** — Redpanda from MVP ([ADR-014](../../decisions/decision-log.md)).
-- ✅ **Q3.4 Voice-of-Customer** — multi-surface configurable + **closed-loop reprocessing back into agent decision-making**; introduces a new first-class component (Customer Churn ML Model) ([ADR-016](../../decisions/decision-log.md)). High-novelty addition.
+- ✅ **Q3.4 Voice-of-Customer** — multi-surface configurable + closed-loop reprocessing back into agent decision-making; introduces Customer Churn ML Model ([ADR-016](../../decisions/decision-log.md)). High-novelty.
 - ✅ **Q3.5 Mobile embedding** — WebView bridge with mobile-context-aware composition ([ADR-017](../../decisions/decision-log.md)).
-- ✅ **Q3.6 Proactive engine** — multi-signal scoring + combined attention budget ([ADR-018](../../decisions/decision-log.md)) **+** end-user tier/quota system as a separate concern ([ADR-019](../../decisions/decision-log.md)).
+- ✅ **Q3.6 Proactive engine** — multi-signal scoring + combined attention budget ([ADR-018](../../decisions/decision-log.md)) + end-user tier/quota system ([ADR-019](../../decisions/decision-log.md)).
 
-### Batch 4 — open
-- **Q4.1 Platform-vendor pricing model** (host pays vendor) — license / per-seat / capacity / hybrid.
-- **Q4.2 Distribution / packaging** — Docker Compose / Helm chart / standalone binary / installer / multi.
-- **Q4.3 Sub-agent isolation** — process / iframe / VM / WASM / none.
-- **Q4.4 Eventing model for DOM observation** — MutationObserver + IntersectionObserver + custom event channel.
-- **Q4.5 Eval target metrics + scoring approach** — LLM-as-judge / heuristics / embedded eval models / hybrid.
-- **Q4.6 Embedding model choice** — Anthropic embeddings / OSS (BGE/E5/nomic) / host-supplied.
-- **Q4.7 Theme-tokens schema** — Style Dictionary / Spectrum tokens / CSS variables / custom DSL.
-- **Q4.8 Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start strategy; explainability surface.
-- **Q4.9 Cross-store consistency failure-recovery semantics**.
-- **Q4.10 Federated cross-enterprise learning** — opt-in mechanism design (v2-scoped, but principles need establishing).
+### Batch 4 — closed 2026-05-01
+- ✅ **Q4.1 Platform-vendor pricing** — open-core hybrid: free OSS + paid Enterprise subscription + paid Capacity tiers unlocking high-novelty features ([ADR-020](../../decisions/decision-log.md)).
+- ✅ **Q4.3 Sub-agent execution model** — REFRAME: federated independent runtimes built by domain teams via SDK + boilerplate; NOT in-process workers. Three-tier: Tools / Skills / Sub-Agents ([ADR-021](../../decisions/decision-log.md)). High-novelty.
+- ✅ **Q4.4 DOM observation eventing** — MO + IO + custom semantic event channel via separate Adapters Registry (new first-class registry) ([ADR-022](../../decisions/decision-log.md)).
+- ✅ **Q4.5 Eval** — hybrid scoring + auto-generated per-capability eval from registry metadata + bundled backend + dashboard ([ADR-023](../../decisions/decision-log.md)). High-novelty.
+- ✅ **Q4.6 Embedding model** — host-supplied via adapter (production); bundled `nomic-embed-text-v1.5` for dev/demo ([ADR-024](../../decisions/decision-log.md)).
+- ✅ **Q4.7 Theme/branding** — DTCG canonical + Style Dictionary importer + CSS variable fallback ([ADR-025](../../decisions/decision-log.md)).
+
+### Batch 5 — open
+- **Q5.1 Distribution / packaging** — Docker Compose / Helm chart / standalone binary / installer / multi.
+- **Q5.2 Sub-Agent SDK languages at MVP** — TS only / TS+Python / TS+Python+Go.
+- **Q5.3 Sub-Agent federation protocol** — gRPC / HTTP / WebSocket / SSE / hybrid.
+- **Q5.4 Sub-Agent discovery + authn/authz** — pull (registry endpoint) vs. push (self-register); mTLS / JWT / both.
+- **Q5.5 Eval dashboard tech** — bundled SPA / Grafana / custom.
+- **Q5.6 Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start; explainability.
+- **Q5.7 Cross-store consistency failure-recovery semantics**.
+- **Q5.8 Federated cross-enterprise learning (v2)** — opt-in mechanism design.
+- **Q5.9 Real-time transport** — WebSocket / SSE / WebRTC (voice) / hybrid.
+- **Q5.10 Adapters registry transport** — how host event bus → platform Redpanda topic.
