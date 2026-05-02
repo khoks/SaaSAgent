@@ -42,14 +42,22 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 - ✅ **Q3.5 Mobile embedding** — WebView bridge with mobile-context-aware composition ([ADR-017](../../decisions/decision-log.md)).
 - ✅ **Q3.6 Proactive engine** — multi-signal scoring + combined attention budget ([ADR-018](../../decisions/decision-log.md)) **+** end-user tier/quota system as a separate concern ([ADR-019](../../decisions/decision-log.md)).
 
-### Batch 4 — open
-- **Q4.1 Platform-vendor pricing model** (host pays vendor) — license / per-seat / capacity / hybrid.
-- **Q4.2 Distribution / packaging** — Docker Compose / Helm chart / standalone binary / installer / multi.
-- **Q4.3 Sub-agent isolation** — process / iframe / VM / WASM / none.
-- **Q4.4 Eventing model for DOM observation** — MutationObserver + IntersectionObserver + custom event channel.
-- **Q4.5 Eval target metrics + scoring approach** — LLM-as-judge / heuristics / embedded eval models / hybrid.
-- **Q4.6 Embedding model choice** — Anthropic embeddings / OSS (BGE/E5/nomic) / host-supplied.
-- **Q4.7 Theme-tokens schema** — Style Dictionary / Spectrum tokens / CSS variables / custom DSL.
-- **Q4.8 Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start strategy; explainability surface.
-- **Q4.9 Cross-store consistency failure-recovery semantics**.
-- **Q4.10 Federated cross-enterprise learning** — opt-in mechanism design (v2-scoped, but principles need establishing).
+### Batch 4 — closed 2026-05-01
+- ✅ **Q4.1 Platform-vendor pricing** — open-core hybrid: free OSS + paid Enterprise subscription + paid Capacity tiers unlocking high-novelty features ([ADR-020](../../decisions/decision-log.md)).
+- ✅ **Q4.3 Sub-agent execution model** — **REFRAME: federated independent runtimes** built by domain teams via SDK + boilerplate; NOT in-process isolated workers. Three-tier capability model crystallized: Tools / Skills / Sub-Agents ([ADR-021](../../decisions/decision-log.md)). High-novelty addition.
+- ✅ **Q4.4 DOM observation eventing** — MO + IO + custom semantic event channel via separate **Adapters registry** (NEW first-class registry) ([ADR-022](../../decisions/decision-log.md)).
+- ✅ **Q4.5 Eval** — hybrid scoring + **auto-generated per-capability eval from registry metadata** + bundled backend + dashboard ([ADR-023](../../decisions/decision-log.md)). High-novelty addition.
+- ✅ **Q4.6 Embedding model** — host-supplied via adapter (required for production); bundled `nomic-embed-text-v1.5` for dev/demo ([ADR-024](../../decisions/decision-log.md)).
+- ✅ **Q4.7 Theme/branding** — DTCG canonical + Style Dictionary importer + CSS variable fallback ([ADR-025](../../decisions/decision-log.md)).
+
+### Batch 5 — open
+- **Q5.1 Distribution / packaging** — Docker Compose / Helm chart / standalone binary / installer / multi.
+- **Q5.2 Sub-Agent SDK languages at MVP** — TS only / TS+Python / TS+Python+Go.
+- **Q5.3 Sub-Agent federation protocol** — gRPC / HTTP / WebSocket / SSE / hybrid.
+- **Q5.4 Sub-Agent discovery + authn/authz** — pull (registry endpoint) vs. push (self-register); mTLS / JWT / both.
+- **Q5.5 Eval dashboard tech** — bundled SPA / Grafana / custom.
+- **Q5.6 Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start; explainability.
+- **Q5.7 Cross-store consistency failure-recovery semantics**.
+- **Q5.8 Federated cross-enterprise learning (v2)** — opt-in mechanism design.
+- **Q5.9 Real-time transport** — WebSocket / SSE / WebRTC (voice) / hybrid.
+- **Q5.10 Adapters registry transport** — how host event bus → platform Redpanda topic.

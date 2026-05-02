@@ -102,6 +102,33 @@
 - **Patentability hint:** possible-strong — method claim covering the trigger-and-file pipeline: (1) frequency × severity × churn-risk thresholding on VoC-extracted pain points, (2) automated drafting of issue/PR text with rationale + interaction excerpts, (3) integration to host's product-management system (GitHub / Linear / Jira), (4) structured prioritization metadata.
 - **Open questions:** Trigger threshold tuning — frequency, severity, novelty? Anonymization / consent model for interaction excerpts? Default-off vs. default-on for MVP demos? Auto-close on duplicates? Agent learning from product-team's accept/close decisions on its own PRs?
 
+### [2026-05-01] Federated sub-agent architecture: domain-team-owned runtimes federating into the platform via SDK + registry + protocol
+- **Originator:** Rahul
+- **Source:** Q4.3 answer 2026-05-01: "Sub Agents (and not skills) are separate runtimes built by the domain teams within the enterprise using the boilerplate and SDK provided by the AgentSaaS, and they federate into the AgentSaaS using a Sub agent registry, and have defined protocols of interaction facilitated via the SDK."
+- **Description:** Sub-agents are not in-process workers the platform hosts and isolates — they are **separate runtimes** built by domain teams within the enterprise, using boilerplate + SDK shipped by the platform vendor, registering into the platform's Sub-Agent registry, and federating over a defined protocol. The platform's planner orchestrates across sub-agents but does not run them in-process. This crystallizes a **three-tier capability model**: Tools (stateless API calls) → Skills (lightweight in-process capabilities) → Sub-Agents (full external runtimes with their own state/planning/memory/tools). Domain teams iterate on their sub-agents independently of platform release cadence; isolation is automatic by virtue of being separate services.
+- **Prior-art assessment:**
+  - **In-process multi-agent frameworks** (LangGraph, AutoGen, CrewAI) treat sub-agents as workers within one runtime. No federation; no domain-team ownership boundary.
+  - **OpenAI Assistants / Anthropic Tools** treat sub-capabilities as tool calls — flat, stateless, no agent semantics.
+  - **GraphQL Federation / service mesh / micro-frontends** are federated patterns at the data/UI layer, not at the agent-orchestration layer.
+  - **Anthropic MCP** is a federation-flavored protocol for tool/resource discovery, but does not specifically frame federation as a substrate for full agent runtimes with planning + memory; the framing as "sub-agents owned by domain teams, registered + federated" is distinct.
+  - The packaged combination of (a) sub-agent SDK (multi-language) + (b) boilerplate templates + (c) federation protocol spec + (d) registry schema with capability descriptions for planner consumption + (e) explicit framing as a domain-team-ownership boundary — appears uncommon as a packaged design.
+- **Novelty signal:** medium-high.
+- **Patentability hint:** possible — system claim covering: (1) a sub-agent SDK + boilerplate enabling domain teams to author sub-agents, (2) registration of those sub-agents into a central Sub-Agent registry with capability metadata, (3) a federation protocol the central platform's planner uses to orchestrate across sub-agents, (4) the three-tier capability model (Tools / Skills / Sub-Agents) as the planner's invocation surface.
+- **Open questions:** Federation protocol — gRPC / HTTP / WebSocket / SSE / hybrid? SDK languages at MVP — TS only, or TS + Python? Versioning + backward-compat for sub-agent API contracts? Discovery model — pull (registry endpoint) vs. push (sub-agent self-registers on startup)? Health-check + circuit-breaker semantics? Authn/authz between platform and sub-agents (mTLS? JWT? both)?
+
+### [2026-05-01] Auto-generated per-capability eval logic from registry metadata
+- **Originator:** Rahul
+- **Source:** Q4.5 answer 2026-05-01: "the Agent skill registries and Sub Agent registries should be used to enhance and customize the eval on the fly, custom eval per skill/subagent should get built by considering the entries in these registries."
+- **Description:** Most eval systems require human-authored eval criteria per capability — when a new skill or sub-agent is added, someone must write its eval suite. This design **automatically generates eval logic** for each registered capability by reading the registry entry's metadata: capability description, expected input/output schemas, success criteria, examples, semantic role. The eval system parses these into runnable evaluation rules (heuristic checks + LLM-judge prompts) and applies them on-the-fly. New capabilities receive eval coverage at the moment of registration; no separate eval-author step required. The bundled eval backend stores results; the bundled eval dashboard surfaces trends to the host's quality team.
+- **Prior-art assessment:**
+  - **Existing eval frameworks** (Ragas, Helicone, Langfuse, OpenAI Evals) require manually-authored eval suites per capability. Some auto-generate test cases from sample data, but not eval logic itself.
+  - **Auto-generated tests from API specs** (Schemathesis for OpenAPI, etc.) test correctness against declared schemas but don't generate quality / behavior evals.
+  - **Fitness-function pipelines** in MLOps require manual configuration per metric.
+  - The combination of (a) capability registry as source of truth for eval-relevant metadata, (b) auto-generated eval logic at registration time, (c) heuristic + LLM-judge evaluation generation, (d) bundled in-platform — appears uncommon.
+- **Novelty signal:** medium-high.
+- **Patentability hint:** possible — method claim covering automatic generation of evaluation logic from capability registry metadata, including heuristic checks derived from declared schemas and LLM-judge prompts derived from capability descriptions and examples.
+- **Open questions:** Quality of auto-generated eval vs. hand-authored — when does the auto-version need human override? Schema for "success criteria" in registry entries (DSL? NL? mixed)? Cross-capability eval (e.g., a workflow uses 3 skills + 1 sub-agent — how does eval compose)?
+
 ### [2026-04-26] Unified active + deduced feedback substrate driving both eval and personalization
 - **Originator:** Rahul
 - **Source:** Q6 answer 2026-04-26: "I want it to have active and deduced feedback mechanisms with loop as well."

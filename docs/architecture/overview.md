@@ -137,17 +137,25 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Proactive engine — multi-signal scoring + combined attention budget [ADR-018]
 - ✅ End-user tier/quota system — configurable + visible "X requests remaining" surface [ADR-019]
 
-### Still open (Batch 4)
-1. **Theme-tokens schema** — Style Dictionary? Spectrum tokens? CSS variables? Custom?
-2. **Pricing model — platform-vendor side** (host pays vendor) — license / per-seat / capacity tier.
-3. **Distribution / packaging** — Docker / Helm / standalone / installer.
-4. **Sub-agent isolation** — process / iframe / VM / none.
-5. **Eventing model for DOM observation** — MutationObserver + IntersectionObserver + custom.
-6. **Eval target metrics + scoring approach** — LLM-as-judge / heuristics / embedded eval models.
-7. **Embedding model choice** — Anthropic / OSS / host-supplied.
-8. **Cross-store consistency failure-recovery semantics**.
-9. **Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start strategy; explainability.
-10. **Federated cross-enterprise learning** — opt-in mechanism design (v2).
+### Closed in Batch 4 (2026-05-01)
+- ✅ Platform-vendor pricing — open-core hybrid: free OSS + paid Enterprise subscription + paid Capacity tiers unlocking high-novelty features [ADR-020]
+- ✅ Sub-agent execution model — **federated independent runtimes** built by domain teams via SDK + boilerplate, registered into Sub-Agent registry (NOT in-process isolated workers); crystallizes three-tier capability model: Tools / Skills / Sub-Agents [ADR-021]
+- ✅ DOM observation eventing — MO + IO + custom semantic event channel via separate **Adapters registry** [ADR-022]
+- ✅ Eval — hybrid scoring + auto-generated per-capability eval from registry metadata + bundled backend + dashboard [ADR-023]
+- ✅ Embedding model — host-supplied via adapter (required for production); bundled `nomic-embed-text-v1.5` for dev/demo [ADR-024]
+- ✅ Theme/branding — DTCG canonical + Style Dictionary importer + CSS variable fallback [ADR-025]
+
+### Still open (Batch 5)
+1. **Distribution / packaging** — Docker Compose / Helm chart / standalone / installer / multi.
+2. **Sub-Agent SDK languages at MVP** — TS only / TS+Python / TS+Python+Go.
+3. **Sub-Agent federation protocol** — gRPC / HTTP / WebSocket / SSE / hybrid.
+4. **Sub-Agent discovery + authn/authz** — pull/push registration; mTLS / JWT / both.
+5. **Eval backend dashboard tech** — bundled SPA / Grafana / custom.
+6. **Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start; explainability.
+7. **Cross-store consistency failure-recovery semantics**.
+8. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
+9. **Real-time transport** — WebSocket / SSE / WebRTC (voice) / hybrid.
+10. **Adapters registry transport** — how host event bus → platform Redpanda topic.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

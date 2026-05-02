@@ -325,3 +325,115 @@
   - Unblocks the host's monetization model without forcing a specific pricing structure.
   - Distinct from the platform-vendor pricing (host pays platform vendor — separate concern, Batch 4).
 - **Source:** Conversation 2026-04-28 (Rahul Q3.6 answer, second part).
+
+## ADR-020 — Open-core hybrid pricing: OSS substrate + paid Enterprise subscription + paid Capacity tiers unlocking high-novelty features
+- **Date:** 2026-05-01
+- **Status:** accepted
+- **Context:** Q4.1 — under self-hosted distribution (ADR-006), how does the platform vendor get paid?
+- **Options considered:**
+  - A. Per-seat license.
+  - B. Per-conversation.
+  - C. Capacity tier only.
+  - D. **Open-core hybrid: free OSS substrate + paid Enterprise subscription + paid Capacity tiers unlocking high-novelty features**.
+  - E. Fully closed-source.
+- **Decision:** D.
+- **Consequences:**
+  - **Tier 0 — Open-source substrate (free):** runtime, registries (Skills, Sub-Agents, Tools, Atomic UI Components, Theme tokens, Features/Services, Adapters), basic memory (Postgres + dev-default embeddings), planner + composer, WC shell, multi-framework rendering (React + WC at MVP), basic active feedback, basic eval dashboard. Self-deployable; community-supported. The OSS tier proves the substrate is real and drives adoption.
+  - **Tier 1 — Enterprise subscription (paid; annual):** production-grade packaging (Helm chart, hardened defaults), security hardening, SLA, premium support, multi-region deployment, expanded eval, observability integrations.
+  - **Tier 2 — Capacity tiers on Enterprise (paid; additive):** unlocks high-novelty features — closed-loop VoC + Customer Churn ML Model (ADR-016), federated cross-enterprise learning (Batch 5), advanced eval models, auto-PR with suggested issues, premium adapters (Salesforce / SAP / etc.). Capacity unit: monthly active end-users (MAU); host-configurable to alternative units (tokens, requests, concurrent sessions).
+  - Open-core fits the "Stripe for in-product agents" ambition: adoption velocity matters more than per-deal margin in year 1; OSS-core is a community moat and talent magnet.
+  - Risk: cannibalization on the paid tier — mitigated by clear separation of concerns (substrate is free; enterprise-grade ops + high-novelty features are paid).
+  - Distinct from the **end-user** tier/quota system (ADR-019), which is the host's pricing for THEIR customers.
+- **Source:** Conversation 2026-05-01 (Rahul Q4.1 answer).
+
+## ADR-021 — Sub-agents are federated independent runtimes built by domain teams via the SDK; NOT in-process isolated workers
+- **Date:** 2026-05-01
+- **Status:** accepted (replaces the framing of original Q4.3 about isolation)
+- **Context:** Q4.3 asked which isolation model to use for sub-agents (process / WASM / VM / iframe). Rahul reframed: sub-agents are not workers we host and isolate — they are **separate runtimes built by domain teams within the enterprise**, using boilerplate + SDK provided by the platform, federating into the platform via the Sub-Agent registry over a defined protocol. Isolation is by service/process/network boundary because they are separate services.
+- **Options considered:**
+  - A. Process isolation (separate OS proc within our platform).
+  - B. WASM sandbox.
+  - C. VM (Firecracker, gVisor).
+  - D. Iframe (web-only).
+  - E. **Federated independent runtimes** — sub-agents are separate services owned by domain teams; platform provides SDK + boilerplate + federation protocol + registry; sub-agents are isolated by virtue of being separate services.
+- **Decision:** E.
+- **Consequences:**
+  - **Three-tier capability model crystallized:**
+    - **Tools** — stateless API calls (HTTP) with input/output schemas; cheapest; planner-invoked directly.
+    - **Skills** — lightweight in-process capabilities (functions, prompts, JSON-defined behavior); medium-weight; run inside the platform process.
+    - **Sub-Agents** — full external runtimes with their own state, planning, memory, tools; heaviest; built by domain teams; federate into the platform.
+  - **New deliverable: Sub-Agent SDK** in multiple languages (TS, Python, Go at minimum). SDK handles: registration, federation protocol, health checking, retries, circuit breaking, observability hooks, error semantics.
+  - **New deliverable: Sub-Agent boilerplate templates** per language (one-command-create-a-sub-agent).
+  - **New deliverable: Federation protocol spec** (gRPC vs. HTTP vs. WebSocket — Batch 5).
+  - **Sub-Agent registry schema** must include: name, capabilities (semantic descriptions for planner + auto-eval), endpoint, auth, SLA, protocol version, health, owner team.
+  - **Domain team velocity:** teams iterate on their sub-agents independently of the platform release cadence.
+  - **Operational complexity:** sub-agents become independent deployable services that the host enterprise's infra teams must monitor.
+  - **Cross-sub-agent orchestration** remains the platform's planner.
+  - **Original Q4.3 isolation question moot at the platform level** — process isolation is automatic (separate services).
+  - **Skills isolation** still relevant — handled by process isolation by default within the platform; WASM at v1 for adapter-supplied skill code.
+- **Novelty:** medium-high — federated agent architecture with SDK-mediated registration is uncommon as a packaged primitive. Captured in [novel-ideas/ideas.md](../novel-ideas/ideas.md).
+- **Source:** Conversation 2026-05-01 (Rahul Q4.3 answer — reframe).
+
+## ADR-022 — DOM observation eventing: MutationObserver + IntersectionObserver + custom semantic event channel via separate Adapters registry
+- **Date:** 2026-05-01
+- **Status:** accepted
+- **Context:** Q4.4 — how does the agent observe the host page (FR-I-001)?
+- **Options considered:** see Q4.4 framing.
+- **Decision:** **MutationObserver + IntersectionObserver + custom semantic event channel from the host**, with MO+IO-only fallback when the host doesn't emit custom events. Custom semantic event registration lives in a **separate Adapters registry** (not the Features/Services registry).
+- **Consequences:**
+  - DOM-level signals from MO/IO give universal coverage (works against any host page).
+  - Domain-meaningful signals from host-emitted custom events (e.g., `cart.itemAdded`, `product.viewed`, `checkout.started`) give the agent semantic awareness DOM events alone don't carry.
+  - **New first-class registry: Adapters registry** — declares: event channels (event name, payload JSON schema, source), data adapters (host APIs, customer profile store, usage profile store). Separate from Features/Services because event declarations are integration-level concerns; Feature/Service docs *reference* event names from the Adapters registry.
+  - Event channel transport TBD (host event bus → adapter → platform internal Redpanda topic).
+- **Source:** Conversation 2026-05-01 (Rahul Q4.4 answer + recommendation acceptance).
+
+## ADR-023 — Hybrid eval with auto-generated per-skill / per-sub-agent eval from registry metadata, plus bundled eval backend + dashboard
+- **Date:** 2026-05-01
+- **Status:** accepted
+- **Context:** Q4.5 — what does eval look like? Rahul accepted the hybrid scoring approach (heuristics + LLM-judge sampled + embedded models at v1) AND added two significant requirements: (a) auto-generated per-skill / per-sub-agent eval logic built on the fly from registry metadata, (b) eval backend + dashboard bundled in the package.
+- **Options considered:**
+  - A. Heuristics only.
+  - B. LLM-as-judge only.
+  - C. Embedded eval models only.
+  - D. **Hybrid (heuristics + LLM-judge sampled + embedded at v1)** with **auto-generated per-capability eval from registry metadata** + bundled backend + dashboard.
+- **Decision:** D.
+- **Consequences:**
+  - **Cross-cutting metrics (heuristics, every interaction):** latency, completion rate, cost per session.
+  - **Quality metrics (LLM-as-judge, sampled ~5%):** groundedness, helpfulness, intent-alignment.
+  - **Capability-specific eval (auto-generated):** for each registered skill / sub-agent, the eval system reads the registry entry's metadata (capability description, expected I/O schema, success criteria, examples) and **dynamically generates eval logic** for that capability. New capabilities get eval coverage automatically at registration.
+  - **Bundled eval backend:** included in the OSS tier — storage (ClickHouse, see [memory.md](../architecture/memory.md)), scoring runners (heuristic + LLM-judge), regression detection, alerting hooks.
+  - **Bundled eval dashboard:** included in the OSS tier — host's quality team sees per-skill / per-sub-agent / per-feature eval trends, regressions, sample interactions.
+  - **Active+deduced feedback (FR-FB)** is the ground-truth anchor that calibrates auto-generated eval over time.
+  - **Embedded eval models** (small dedicated scorers) added at v1 for the metrics that prove most decision-critical from MVP usage.
+- **Novelty:** medium-high — auto-generated eval logic from capability registry metadata is uncommon. Captured in [novel-ideas/ideas.md](../novel-ideas/ideas.md).
+- **Source:** Conversation 2026-05-01 (Rahul Q4.5 answer).
+
+## ADR-024 — Embedding model: host-supplied via adapter (required for production); bundled default for development
+- **Date:** 2026-05-01
+- **Status:** accepted
+- **Context:** Q4.6 — embedding model for Qdrant semantic recall.
+- **Options considered:**
+  - A. Anthropic embeddings (no first-party model currently).
+  - B. OSS default (e.g., `nomic-embed-text-v1.5`).
+  - C. **Host-supplied via adapter**.
+- **Decision:** C — host-supplied is **required for production deployment**. A bundled OSS default (`nomic-embed-text-v1.5`) ships for **development / demo** so the OSS tier is usable end-to-end out of the box; production setup wizard prompts host to wire their own embedding pipeline.
+- **Consequences:**
+  - Adapter contract for embeddings: `embed(text: string | string[]) → vector | vector[]`.
+  - Hosts with existing embedding pipelines (most large enterprises do) plug in directly — consistency with their other RAG / semantic-search stacks.
+  - Hosts without existing pipelines can use the bundled default in dev, then choose a production option (nomic, BGE, OpenAI text-embedding-3, Anthropic when available, or roll their own).
+  - Documentation will recommend popular options per use case.
+  - Adoption friction for very small enterprises higher than a "just works" default — accepted in exchange for production correctness and host-pipeline consistency.
+- **Source:** Conversation 2026-05-01 (Rahul Q4.6 answer).
+
+## ADR-025 — Theme/branding tokens: W3C Design Tokens (DTCG) canonical schema + Style Dictionary importer + CSS variable fallback
+- **Date:** 2026-05-01
+- **Status:** accepted
+- **Context:** Q4.7 — how does the host register their visual identity (per ADR-005, the agent composes UI using the host's tokens).
+- **Options considered:** Style Dictionary, Spectrum, CSS variables, DTCG, custom DSL.
+- **Decision:** **W3C Design Tokens (DTCG) as the canonical schema** the platform stores internally; **Style Dictionary as the default importer** (most token-using enterprises already use SD); **CSS variables accepted as a degraded path** (semantic info reduced). Future: Figma Tokens import.
+- **Consequences:**
+  - Single internal representation (DTCG) — composer queries one schema regardless of how the host authored.
+  - Style Dictionary importer covers the majority of existing token pipelines.
+  - CSS-variable fallback ensures the lowest-friction path for hosts without formal token systems.
+  - DTCG is still finalizing — accept some spec churn in exchange for standards-alignment.
+- **Source:** Conversation 2026-05-01 (Rahul Q4.7 answer + recommendation acceptance).

@@ -28,14 +28,29 @@
 - **FR-O-002** — Thinking layer reasons over current context + memory before action.
 - **FR-O-003** — Widget-selection layer chooses appropriate widget(s) to render given current step + host registry.
 
-## FR-R — Registries (refined per ADR-004, ADR-005)
-- **FR-R-001** — AI Skills registry: catalog of executable skills with input/output schemas.
-- **FR-R-002** — Sub-Agents registry: catalog of specialized agents with capability descriptors.
-- **FR-R-003** — Tools registry: catalog of callable tools (host APIs, external APIs).
-- **FR-R-004** — **Atomic UI Components registry:** the host's design-system primitives, registered with name, props schema, slots, semantic role, usage examples, and source framework (React / Vue / Svelte / Angular / vanilla WC). The agent's UI vocabulary.
-- **FR-R-005** — **Theme & Branding tokens registry:** color palette, typography scale, spacing scale, radii, motion, voice/tone hints. Drives composition style.
-- **FR-R-006** — Features/Services registry: declarative workflow documents authored by host domain devs in **natural language or typed JSON** (the runtime compiles NL → typed JSON). Documents declare: experience, workflow steps, preconditions, hints (sub-agents/skills/tools to prefer, UI experience to compose).
-- **FR-R-007** — All registries are **hot-reloadable** without redeploying the agent runtime.
+## FR-R — Registries (refined per ADR-004, ADR-005, ADR-013, ADR-021, ADR-022, ADR-025)
+- **FR-R-001** — **Skills registry:** lightweight in-process capabilities (functions, prompts, JSON-defined behavior). Process-isolated by default; WASM at v1 for adapter-supplied skill code. Registered with input/output schemas, capability description, success criteria, examples (used for auto-generated eval — FR-EVAL-007).
+- **FR-R-002** — **Sub-Agents registry (federated):** **external runtimes** built by domain teams using the platform's SDK + boilerplate; sub-agents federate into the platform via a defined protocol. Registry entries: name, capability descriptors (semantic — for planner + auto-eval consumption), endpoint, auth, SLA, protocol version, health, owner team. Per [ADR-021](../decisions/decision-log.md).
+- **FR-R-003** — **Tools registry:** stateless callable tools (host APIs, external APIs) with input/output schemas.
+- **FR-R-004** — **Atomic UI Components registry:** the host's design-system primitives, registered with name, props schema, slots, semantic role, usage examples, source framework (React / vanilla WC at MVP; Vue / Svelte / Angular at v1.5). The agent's UI vocabulary.
+- **FR-R-005** — **Theme & Branding tokens registry:** stored as **W3C Design Tokens (DTCG)** canonical schema; importable from Style Dictionary or CSS variables. Drives composition style. Per [ADR-025](../decisions/decision-log.md).
+- **FR-R-006** — **Features/Services registry:** `.feature.md` documents authored by host domain devs (Markdown + YAML frontmatter + optional inline JSON for typed parts). The agent reads them directly as super-skill docs — **no compilation**. Per [ADR-011](../decisions/decision-log.md), [ADR-013](../decisions/decision-log.md).
+- **FR-R-007** — **Adapters registry (NEW, per ADR-022):** declares (a) host-emitted custom semantic event channels (event name, payload JSON schema, source), (b) data adapters (host APIs, customer profile store, usage profile store, churn model adapter, embedding adapter). Feature/Service docs may *reference* event names from this registry as triggers/preconditions.
+- **FR-R-008** — All registries are **hot-reloadable** without redeploying the agent runtime.
+
+## FR-CAP — Three-tier capability model (new, per ADR-021)
+- **FR-CAP-001** — **Tools** = stateless API calls (HTTP) with input/output schemas; planner-invoked directly; cheapest.
+- **FR-CAP-002** — **Skills** = lightweight in-process capabilities; medium-weight; run inside platform process.
+- **FR-CAP-003** — **Sub-Agents** = full external runtimes with their own state, planning, memory, tools; built by domain teams; federated.
+- **FR-CAP-004** — Planner orchestrates across all three tiers as appropriate to the task.
+
+## FR-SDK — Sub-Agent SDK + boilerplate + federation protocol (new, per ADR-021)
+- **FR-SDK-001** — **Sub-Agent SDK** in multiple languages (minimum: TS, Python; later: Go).
+- **FR-SDK-002** — SDK responsibilities: registration with platform, federation protocol implementation, health checking, retries, circuit breaking, observability hooks (OpenTelemetry), error semantics.
+- **FR-SDK-003** — **Boilerplate templates** per language — `agentsaas init sub-agent` (or equivalent) scaffolds a runnable sub-agent with sensible defaults.
+- **FR-SDK-004** — **Federation protocol spec** (TBD Batch 5: gRPC / HTTP / WebSocket / hybrid). Versioned; backward-compat policy required.
+- **FR-SDK-005** — Authn/authz between platform and sub-agents (TBD Batch 5: mTLS / JWT / both).
+- **FR-SDK-006** — Discovery model — pull from registry endpoint or push (sub-agent self-registers on startup) — TBD Batch 5.
 
 ## FR-COMP — UI composition (new — per ADR-005)
 - **FR-COMP-001** — Runtime UI Composer accepts: conversation context, memory recall, atomic-component registry, theme tokens, Feature/Service hints — and emits a typed-JSON layout tree referencing host components.
@@ -76,13 +91,18 @@
 - **FR-FB-003** — Unified feedback substrate: active + deduced flow through one ingest pipeline; downstream consumers are eval scoring AND personalization profile updates.
 - **FR-FB-004** — Conflict resolution policy when active and deduced feedback diverge.
 
-## FR-EVAL — Eval (new — per ADR-008)
+## FR-EVAL — Eval (per ADR-008, refined per ADR-023)
 - **FR-EVAL-001** — Live per-interaction eval (lightweight, on-stream).
 - **FR-EVAL-002** — Offline per-session eval (batch, deeper).
 - **FR-EVAL-003** — Eval datapoints stored in ClickHouse for trend analysis and regression detection.
-- **FR-EVAL-004** — Eval target metrics TBD (Batch 3): groundedness, helpfulness, intent-alignment, latency, completion-rate, etc.
-- **FR-EVAL-005** — Live scoring approach TBD (Batch 3): LLM-as-judge / heuristics / embedded eval models.
-- **FR-EVAL-006** — Eval informs both quality dashboards (host ops team) AND personalization (per-user adjustments).
+- **FR-EVAL-004** — **Cross-cutting target metrics** (heuristics, every interaction): latency, completion rate, cost per session.
+- **FR-EVAL-005** — **Quality target metrics** (LLM-as-judge, sampled ~5%): groundedness, helpfulness, intent-alignment, composition correctness.
+- **FR-EVAL-006** — Eval informs quality dashboards (host's quality team) AND personalization (per-user adjustments) AND proactive-engine learned trigger model (FR-P-001).
+- **FR-EVAL-007** — **Auto-generated per-capability eval** (per ADR-023): for each registered Skill / Sub-Agent, the eval system reads registry-entry metadata (capability description, expected I/O schemas, success criteria, examples) and **dynamically generates** runnable eval logic — heuristic checks derived from declared schemas + LLM-judge prompts derived from descriptions and examples. New capabilities receive eval coverage at registration with no separate eval-author step.
+- **FR-EVAL-008** — **Bundled eval backend** (OSS tier): storage (ClickHouse), scoring runners (heuristic + LLM-judge), regression detection, alerting hooks.
+- **FR-EVAL-009** — **Bundled eval dashboard** (OSS tier): per-skill / per-sub-agent / per-feature trends, regressions, sample interaction drill-down.
+- **FR-EVAL-010** — Embedded eval models (small dedicated scorers) added at v1 for the metrics that prove most decision-critical from MVP usage.
+- **FR-EVAL-011** — Active+deduced feedback (FR-FB) is the ground-truth anchor that calibrates auto-generated eval over time.
 
 ## FR-VOC — Voice-of-Customer (per ADR-008, refined per ADR-016)
 - **FR-VOC-001** — Continuous extraction of feature pain points from interactions.
