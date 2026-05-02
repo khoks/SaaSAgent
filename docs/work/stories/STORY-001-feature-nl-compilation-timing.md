@@ -1,8 +1,9 @@
 # STORY-001 — Decide Feature/Service NL→JSON compilation timing
 
-- **Status:** backlog
+- **Status:** done
 - **Created:** 2026-04-28
 - **Last updated:** 2026-04-28
+- **Resolved:** 2026-04-28 — Q3.1 answered (ADR-013: agent reads .feature.md directly as super-skill doc; no compilation)
 - **Parent epic:** [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 
 ## User story

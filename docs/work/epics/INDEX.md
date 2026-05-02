@@ -4,4 +4,5 @@
 
 | ID | Title | Initiative | Status | Created | Last update |
 |---|---|---|---|---|---|
-| EPIC-001 | [Close Batch 3 grooming decisions](EPIC-001-batch-3-grooming.md) | INIT-001 | in-progress | 2026-04-28 | 2026-04-28 |
+| EPIC-001 | [Close Batch 3 grooming decisions](EPIC-001-batch-3-grooming.md) | INIT-001 | done | 2026-04-28 | 2026-05-01 |
+| EPIC-002 | [Close Batch 4 grooming decisions](EPIC-002-batch-4-grooming.md) | INIT-001 | backlog | 2026-05-01 | 2026-05-01 |

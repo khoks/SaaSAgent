@@ -1,8 +1,9 @@
 # EPIC-001 — Close Batch 3 grooming decisions
 
-- **Status:** in-progress
+- **Status:** done
 - **Created:** 2026-04-28
 - **Last updated:** 2026-04-28
+- **Resolved:** 2026-04-28 — All 6 Q3.x questions answered; ADR-013–019 committed in 82d490f; INIT-001 Batch 3 marked closed
 - **Parent initiative:** [INIT-001 — Groom platform vision and requirements](../initiatives/INIT-001-groom-vision-and-requirements.md)
 
 ## Outcome

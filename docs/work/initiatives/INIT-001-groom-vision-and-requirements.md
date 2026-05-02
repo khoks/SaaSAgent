@@ -2,7 +2,7 @@
 
 - **Status:** in-progress
 - **Created:** 2026-04-26
-- **Last updated:** 2026-04-28
+- **Last updated:** 2026-05-01
 - **Outcome:** A sharp, written, agreed vision and requirements baseline that any future contributor (human or AI) can read and align on without further conversation with Rahul.
 
 ## Why
@@ -17,6 +17,7 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 
 ## Child epics
 - [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
+- [EPIC-002 — Close Batch 4 grooming decisions](../epics/EPIC-002-batch-4-grooming.md)
 
 ## Grooming questions
 

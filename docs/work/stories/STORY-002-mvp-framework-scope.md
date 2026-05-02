@@ -1,8 +1,9 @@
 # STORY-002 — Define MVP framework scope for multi-framework rendering
 
-- **Status:** backlog
+- **Status:** done
 - **Created:** 2026-04-28
 - **Last updated:** 2026-04-28
+- **Resolved:** 2026-04-28 — Q3.2 answered (ADR-015: React + vanilla WC at MVP; Vue/Svelte/Angular at v1.5)
 - **Parent epic:** [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 
 ## User story
