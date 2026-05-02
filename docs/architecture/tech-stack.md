@@ -36,8 +36,10 @@
 | Auth model | Bring-your-own (host SSO), platform-issued tokens | **Bring-your-own (host SSO)** | derivative of [ADR-006](../decisions/decision-log.md) |
 | Sub-agent execution model | In-process / process-isolated / WASM / VM / **federated runtimes** | **Sub-agents are separate runtimes built by domain teams via SDK + boilerplate; federate into platform via Sub-Agent registry over defined protocol; isolation is automatic (separate services)** | [ADR-021](../decisions/decision-log.md) |
 | Skill execution model | In-process / process-isolated / WASM | **Process isolation by default; WASM at v1 for adapter-supplied code** | derivative of [ADR-021](../decisions/decision-log.md) |
-| Sub-Agent SDK languages | TS only / TS+Python / TS+Python+Go / more | TBD (Batch 5) — at minimum TS + Python | [ADR-021](../decisions/decision-log.md) |
-| Sub-Agent federation protocol | gRPC, HTTP, WebSocket, SSE, hybrid | TBD (Batch 5) | [ADR-021](../decisions/decision-log.md) |
+| Sub-Agent SDK languages | TS only / TS+Python / TS+Python+Go / more | **TypeScript + Python at MVP**; Go at v1 if demand | [ADR-027](../decisions/decision-log.md) |
+| Sub-Agent federation protocol | gRPC, HTTP, WebSocket, SSE, hybrid | **HTTP REST for admin/registry/metadata + gRPC bidirectional streaming for runtime (planner ↔ sub-agent)** | [ADR-028](../decisions/decision-log.md) |
+| Sub-Agent discovery | Pull from registry / push (self-register) / hybrid | **Push (self-register on startup) + heartbeat + TTL for cleanup** | [ADR-029](../decisions/decision-log.md) |
+| Sub-Agent authn | mTLS / JWT / both | **mTLS for runtime (intranet trust model, k8s cert-manager); JWT for non-runtime admin APIs** | [ADR-029](../decisions/decision-log.md) |
 | Eval scoring approach | Heuristics / LLM-judge / embedded models / hybrid | **Hybrid: heuristics (cheap high-volume) + LLM-judge sampled (~5%, quality metrics) + embedded models at v1 + auto-generated per-capability eval from registry metadata** | [ADR-023](../decisions/decision-log.md) |
 | Eval backend | Bundled / external | **Bundled in OSS tier** (storage on ClickHouse, scoring runners, regression detection, alerting hooks) | [ADR-023](../decisions/decision-log.md) |
 | Eval dashboard | Bundled / external | **Bundled in OSS tier** (per-skill / per-sub-agent / per-feature trends, regressions, sample interactions) | [ADR-023](../decisions/decision-log.md) |
@@ -45,5 +47,7 @@
 | Proactive engine — attention budget | Cap / bucket / adaptive / combined | **Combined: hard cap + token-bucket + per-user adaptation; defaults: max 2/session, max 5/day, host-configurable** | [ADR-018](../decisions/decision-log.md) |
 | End-user tier/quota system | None / fixed / **configurable** | **Configurable per-tier quotas + per-user tracking + visible "X requests remaining" element** | [ADR-019](../decisions/decision-log.md) |
 | Platform-vendor pricing model | Per-seat / per-conversation / capacity / open-core | **Open-core hybrid: free OSS substrate + paid Enterprise subscription (annual) + paid Capacity tiers (additive) unlocking high-novelty features (closed-loop VoC, churn model, federated learning, advanced eval, premium adapters)**; capacity unit = MAU (host-configurable) | [ADR-020](../decisions/decision-log.md) |
-| Distribution / packaging | Docker / Helm / standalone binary / installer | TBD (Batch 5) | — |
+| Distribution / packaging | Docker / Helm / standalone binary / installer | **Docker Compose (dev/demo) + Helm chart (prod) at MVP**; standalone binary deferred; OS installers at v1.5 if demand | [ADR-026](../decisions/decision-log.md) |
+| Eval dashboard tech | Bundled SPA / Grafana / custom + exporters | **Bundled SPA (React + Tremor/Recharts) at MVP, embedded in admin UI; optional exporters (Grafana / Datadog / Honeycomb) at v1** | [ADR-030](../decisions/decision-log.md) |
+| Customer Churn ML Model architecture | GBT / small NN / ensemble / pluggable | **LightGBM bundled default + pluggable adapter + generic-prior cold-start (transitions to tenant-specific after ~1k events); SHAP explainability built-in** | [ADR-031](../decisions/decision-log.md) |
 | CI/CD | GitHub Actions (default for our build) | GitHub Actions | — |

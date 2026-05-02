@@ -50,14 +50,24 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 - ✅ **Q4.6 Embedding model** — host-supplied via adapter (required for production); bundled `nomic-embed-text-v1.5` for dev/demo ([ADR-024](../../decisions/decision-log.md)).
 - ✅ **Q4.7 Theme/branding** — DTCG canonical + Style Dictionary importer + CSS variable fallback ([ADR-025](../../decisions/decision-log.md)).
 
-### Batch 5 — open
-- **Q5.1 Distribution / packaging** — Docker Compose / Helm chart / standalone binary / installer / multi.
-- **Q5.2 Sub-Agent SDK languages at MVP** — TS only / TS+Python / TS+Python+Go.
-- **Q5.3 Sub-Agent federation protocol** — gRPC / HTTP / WebSocket / SSE / hybrid.
-- **Q5.4 Sub-Agent discovery + authn/authz** — pull (registry endpoint) vs. push (self-register); mTLS / JWT / both.
-- **Q5.5 Eval dashboard tech** — bundled SPA / Grafana / custom.
-- **Q5.6 Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start; explainability.
-- **Q5.7 Cross-store consistency failure-recovery semantics**.
-- **Q5.8 Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-- **Q5.9 Real-time transport** — WebSocket / SSE / WebRTC (voice) / hybrid.
-- **Q5.10 Adapters registry transport** — how host event bus → platform Redpanda topic.
+### Batch 5 — closed 2026-05-04
+- ✅ **Q5.1 Distribution / packaging** — Docker Compose (dev/demo) + Helm chart (prod) at MVP ([ADR-026](../../decisions/decision-log.md)).
+- ✅ **Q5.2 Sub-Agent SDK languages at MVP** — TypeScript + Python ([ADR-027](../../decisions/decision-log.md)).
+- ✅ **Q5.3 Sub-Agent federation protocol** — HTTP REST for admin/registry/metadata + gRPC bidirectional streaming for runtime ([ADR-028](../../decisions/decision-log.md)).
+- ✅ **Q5.4 Sub-Agent discovery + authn** — push self-registration + heartbeat + mTLS (intranet trust); JWT for admin APIs ([ADR-029](../../decisions/decision-log.md)).
+- ✅ **Q5.5 Eval dashboard tech** — bundled SPA at MVP (React + chart lib); optional exporters at v1 ([ADR-030](../../decisions/decision-log.md)).
+- ✅ **Q5.6 Customer Churn ML Model architecture** — LightGBM + pluggable adapter + generic-prior cold-start; SHAP explainability ([ADR-031](../../decisions/decision-log.md)).
+
+### Batch 6 — open (implementation details + v2 scope; can groom in parallel with MVP build)
+- **Q6.1 Cross-store consistency failure-recovery semantics**.
+- **Q6.2 Federated cross-enterprise learning (v2)** — opt-in mechanism design.
+- **Q6.3 Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
+- **Q6.4 Adapters registry transport** — how host event bus → platform Redpanda topic (webhook for MVP-simple hosts vs. SDK adapter library for production-grade).
+
+## Done-ness assessment (2026-05-04)
+
+INIT-001's outcome: "A sharp, written, agreed vision and requirements baseline that any future contributor (human or AI) can read and align on without further conversation with Rahul."
+
+Status: **substantially achieved.** 31 ADRs accepted; 11 novel-idea entries (5 patentability-strong); full memory architecture; full tech-stack; functional + non-functional requirements baseline; all major substrate decisions made. Batch 6 is implementation/v2-detail and does not block contributor onboarding or MVP build.
+
+**Recommendation:** mark INIT-001 as `done` once Batch 6 is groomed (or after MVP draft accepted, whichever Rahul prefers). INIT-002 (MVP scope) is now ready to be written based on this baseline.

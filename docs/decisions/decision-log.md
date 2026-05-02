@@ -437,3 +437,95 @@
   - CSS-variable fallback ensures the lowest-friction path for hosts without formal token systems.
   - DTCG is still finalizing — accept some spec churn in exchange for standards-alignment.
 - **Source:** Conversation 2026-05-01 (Rahul Q4.7 answer + recommendation acceptance).
+
+## ADR-026 — Distribution: Docker Compose (dev/demo) + Helm chart (prod) at MVP
+- **Date:** 2026-05-04
+- **Status:** accepted
+- **Context:** Q5.1 — the platform is self-hosted (ADR-006), so we ship software the host runs.
+- **Options considered:** Compose only / Helm only / Compose + Helm / standalone binary / OS installers.
+- **Decision:** **Docker Compose for dev/demo + Helm chart for prod** at MVP. Standalone binary deferred (TS-leaning stack makes single-binary packaging complex). OS installers (apt/brew) deferred to v1.5 if demand emerges.
+- **Consequences:**
+  - Compose covers laptop / dev / demo and small production deployments.
+  - Helm covers k8s — most enterprise production environments.
+  - Two artifacts to maintain; mitigated by sharing the same container images underneath.
+  - Reference deployment ships both; documentation guides which to use when.
+- **Source:** Conversation 2026-05-04 (Rahul Q5.1 answer + recommendation acceptance).
+
+## ADR-027 — Sub-Agent SDK languages at MVP: TypeScript + Python
+- **Date:** 2026-05-04
+- **Status:** accepted (refines ADR-021)
+- **Context:** Q5.2 — ADR-021 requires multi-language SDK; which languages at MVP?
+- **Options considered:** TS only / TS + Python / TS + Python + Go.
+- **Decision:** **TypeScript + Python at MVP.** Go added at v1 if enterprise demand emerges.
+- **Consequences:**
+  - TS covers web-stack domain teams (most enterprise frontends).
+  - Python covers ML / data / backend domain teams (where most real sub-agent use cases live — recommendation engines, churn predictors, content classifiers).
+  - SDK contracts (registration, federation protocol, health, retries, observability) are identical across languages — same API surface in different idioms.
+  - 2× SDK to maintain; mitigated by sharing protocol definitions (proto files for gRPC, JSON Schema for HTTP).
+- **Source:** Conversation 2026-05-04 (Rahul Q5.2 answer).
+
+## ADR-028 — Sub-Agent federation protocol: HTTP REST for admin/registry/metadata + gRPC bidirectional streaming for runtime
+- **Date:** 2026-05-04
+- **Status:** accepted (refines ADR-021)
+- **Context:** Q5.3 — how do sub-agents communicate with the platform? Rahul confirmed the SPLIT (HTTP for admin, streaming for runtime) but left the specific streaming tech open.
+- **Options considered:**
+  - A. gRPC only (admin + runtime).
+  - B. HTTP REST only (admin + runtime; runtime uses long-poll / SSE).
+  - C. **HTTP REST for admin + gRPC bidirectional streaming for runtime**.
+  - D. HTTP REST for admin + WebSocket for runtime.
+  - E. HTTP REST for admin + SSE for runtime (one-way only).
+- **Decision:** C. HTTP REST for: registration, health, registry queries, metadata fetch, lifecycle. **gRPC bidirectional streaming** for: planner ↔ sub-agent runtime invocation (planner sends task; sub-agent streams progress + intermediate results back).
+- **Consequences:**
+  - gRPC is the right tool for typed bidirectional streaming with multi-language SDK (TS + Python both have first-class gRPC support; proto files enforce contract).
+  - HTTP REST keeps control-plane debuggable, curl-able, and standard.
+  - Two transports to maintain; mitigated by clear separation (admin = HTTP, runtime = gRPC) and shared schema source.
+  - Why gRPC over WebSocket: typed contracts (matters for multi-language SDK), proto-based versioning, streaming semantics built-in, HTTP/2 multiplexing.
+  - Why not pure HTTP REST: bidirectional streaming for live progress is awkward over REST; SSE is one-way only.
+- **Source:** Conversation 2026-05-04 (Rahul Q5.3 answer; specific streaming tech is platform-team recommendation).
+
+## ADR-029 — Sub-Agent discovery + authn: push (self-register on startup) + mTLS, intranet trust model
+- **Date:** 2026-05-04
+- **Status:** accepted (refines ADR-021)
+- **Context:** Q5.4 — how do sub-agents register and authenticate? Rahul: "Push for discovery, mTLS for auth since the SaaSAgent and other domain runtimes would be in the enterprise intranet."
+- **Options considered:** see Q5.4 framing.
+- **Decision:**
+  - **Discovery: push** — sub-agents self-register with the Sub-Agent registry on startup, sending capability descriptors + endpoint + protocol version. Heartbeat + TTL for cleanup of dead entries.
+  - **Authn: mTLS** for runtime traffic. **Trust boundary = enterprise intranet** — both the SaaSAgent platform and sub-agents live inside the enterprise's private network. mTLS via internal CA (cert-manager in k8s deployments).
+  - **JWT** for non-runtime admin APIs (humans / ops tools calling the platform from outside the runtime data plane).
+- **Consequences:**
+  - Push registration matches modern microservice patterns (k8s + service mesh) — sub-agents are deployable units that announce themselves.
+  - mTLS on intranet means no shared secrets in code / config; cert lifecycle managed by k8s cert-manager.
+  - Intranet trust model assumes the host has secured the perimeter; documented as a deployment prerequisite.
+  - Heartbeat protocol required so the registry can purge sub-agents that have crashed without graceful shutdown.
+  - JWT tokens for admin APIs use platform-issued signing keys; rotation policy host-configurable.
+- **Source:** Conversation 2026-05-04 (Rahul Q5.4 answer).
+
+## ADR-030 — Eval dashboard: bundled SPA at MVP (React + chart lib); optional exporters at v1
+- **Date:** 2026-05-04
+- **Status:** accepted (refines ADR-023)
+- **Context:** Q5.5 — ADR-023 commits to a bundled eval dashboard; tech?
+- **Options considered:** bundled SPA / Grafana / custom + exporters.
+- **Decision:** **Bundled SPA we build at MVP** — React + chart lib (Tremor or Recharts), embedded in the agent platform's admin UI. **Optional exporters at v1** to host's existing observability (Grafana, Datadog, Honeycomb) for hosts who want eval data flowing into their unified ops stack.
+- **Consequences:**
+  - MVP-bundled SPA gives end-to-end out-of-the-box eval visibility — host's quality team has somewhere to look on day 1.
+  - SPA matches the platform's UX style; no Grafana ops dependency at MVP.
+  - v1 exporters meet hosts in their existing observability stack — important for hosts who already standardize on Grafana / Datadog / Honeycomb.
+  - SPA build cost; mitigated by leveraging the same atomic UI primitives + composer pattern used by the agent itself (dogfooding).
+- **Source:** Conversation 2026-05-04 (Rahul Q5.5 answer + recommendation acceptance).
+
+## ADR-031 — Customer Churn ML Model: LightGBM bundled default + pluggable adapter + generic-prior cold-start
+- **Date:** 2026-05-04
+- **Status:** accepted (refines ADR-016)
+- **Context:** Q5.6 — ADR-016 introduces the Customer Churn ML Model as the closed-loop sink for VoC signals; what model architecture, what cold-start strategy?
+- **Options considered:** GBT / small NN / ensemble / pluggable.
+- **Decision:**
+  - **Architecture: LightGBM bundled default + pluggable adapter** for hosts with sophisticated existing churn models.
+  - **Cold-start: generic prior model** trained on synthetic e-commerce-like signals (anonymized industry patterns); transitions to tenant-specific model after threshold of real churn signals collected (initial threshold: ~1k events; tunable).
+  - **Explainability:** every churn-driven feature suppression logs a rationale ("similar customers had X% churn after Y") — feeds FR-CHURN-008 and the auto-PR pipeline (ADR-016).
+- **Consequences:**
+  - LightGBM is industry-standard for tabular churn prediction: explainable (feature importances + SHAP), small (~MB), fast inference (<1ms), works with limited data.
+  - Adapter contract lets enterprises with mature ML/CS teams swap in their own models (xgboost, deep learning, ensembles) without forking the platform.
+  - Generic-prior cold-start avoids the "no predictions until real data accumulates" problem — closed-loop VoC works from day 1, just less personalized.
+  - Synthetic prior training data needs careful curation to avoid biasing toward one industry — TBD as part of MVP build.
+  - Explainability built-in (LightGBM SHAP / feature importances) — addresses regulatory and product-team-debugging needs.
+- **Source:** Conversation 2026-05-04 (Rahul Q5.6 answer + recommendation acceptance).

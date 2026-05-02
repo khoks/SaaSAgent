@@ -145,17 +145,19 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Embedding model — host-supplied via adapter (required for production); bundled `nomic-embed-text-v1.5` for dev/demo [ADR-024]
 - ✅ Theme/branding — DTCG canonical + Style Dictionary importer + CSS variable fallback [ADR-025]
 
-### Still open (Batch 5)
-1. **Distribution / packaging** — Docker Compose / Helm chart / standalone / installer / multi.
-2. **Sub-Agent SDK languages at MVP** — TS only / TS+Python / TS+Python+Go.
-3. **Sub-Agent federation protocol** — gRPC / HTTP / WebSocket / SSE / hybrid.
-4. **Sub-Agent discovery + authn/authz** — pull/push registration; mTLS / JWT / both.
-5. **Eval backend dashboard tech** — bundled SPA / Grafana / custom.
-6. **Customer Churn ML Model architecture** — GBT / neural / ensemble; cold-start; explainability.
-7. **Cross-store consistency failure-recovery semantics**.
-8. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-9. **Real-time transport** — WebSocket / SSE / WebRTC (voice) / hybrid.
-10. **Adapters registry transport** — how host event bus → platform Redpanda topic.
+### Closed in Batch 5 (2026-05-04)
+- ✅ Distribution / packaging — Docker Compose (dev/demo) + Helm chart (prod) at MVP [ADR-026]
+- ✅ Sub-Agent SDK languages — TypeScript + Python at MVP [ADR-027]
+- ✅ Sub-Agent federation protocol — HTTP REST (admin) + gRPC bidirectional streaming (runtime) [ADR-028]
+- ✅ Sub-Agent discovery + authn — push self-registration + mTLS, intranet trust model [ADR-029]
+- ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
+- ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
+
+### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
+1. **Cross-store consistency failure-recovery semantics**.
+2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
+3. **Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
+4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

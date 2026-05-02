@@ -44,13 +44,13 @@
 - **FR-CAP-003** — **Sub-Agents** = full external runtimes with their own state, planning, memory, tools; built by domain teams; federated.
 - **FR-CAP-004** — Planner orchestrates across all three tiers as appropriate to the task.
 
-## FR-SDK — Sub-Agent SDK + boilerplate + federation protocol (new, per ADR-021)
-- **FR-SDK-001** — **Sub-Agent SDK** in multiple languages (minimum: TS, Python; later: Go).
-- **FR-SDK-002** — SDK responsibilities: registration with platform, federation protocol implementation, health checking, retries, circuit breaking, observability hooks (OpenTelemetry), error semantics.
+## FR-SDK — Sub-Agent SDK + boilerplate + federation protocol (per ADR-021, refined per ADR-027/028/029)
+- **FR-SDK-001** — **Sub-Agent SDK** in **TypeScript and Python at MVP**; Go at v1 if demand emerges.
+- **FR-SDK-002** — SDK responsibilities: registration with platform (push-on-startup), federation protocol implementation, health checking, retries, circuit breaking, observability hooks (OpenTelemetry), error semantics.
 - **FR-SDK-003** — **Boilerplate templates** per language — `agentsaas init sub-agent` (or equivalent) scaffolds a runnable sub-agent with sensible defaults.
-- **FR-SDK-004** — **Federation protocol spec** (TBD Batch 5: gRPC / HTTP / WebSocket / hybrid). Versioned; backward-compat policy required.
-- **FR-SDK-005** — Authn/authz between platform and sub-agents (TBD Batch 5: mTLS / JWT / both).
-- **FR-SDK-006** — Discovery model — pull from registry endpoint or push (sub-agent self-registers on startup) — TBD Batch 5.
+- **FR-SDK-004** — **Federation protocol:** HTTP REST for admin (registration, health, registry queries, metadata fetch, lifecycle) + **gRPC bidirectional streaming** for runtime (planner ↔ sub-agent invocation, with progress + intermediate results streamed back). Proto definitions versioned with backward-compat policy.
+- **FR-SDK-005** — **Authn:** mTLS for runtime traffic, via host's internal CA (k8s cert-manager). JWT for non-runtime admin APIs. Trust boundary = enterprise intranet.
+- **FR-SDK-006** — **Discovery:** push — sub-agents self-register on startup with capability descriptors + endpoint + protocol version. **Heartbeat + TTL** for cleanup of dead entries.
 
 ## FR-COMP — UI composition (new — per ADR-005)
 - **FR-COMP-001** — Runtime UI Composer accepts: conversation context, memory recall, atomic-component registry, theme tokens, Feature/Service hints — and emits a typed-JSON layout tree referencing host components.
