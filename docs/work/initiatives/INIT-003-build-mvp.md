@@ -1,8 +1,8 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phase 0 started 2026-05-07)
+- **Status:** in-progress (Phase 0 done; Phase 1 next)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-07
+- **Last updated:** 2026-05-03
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
 
 ## Why
@@ -27,16 +27,10 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 ## Phases & epics
 
-### Phase 0 — Foundation (in progress 2026-05-07)
-- **EPIC-002** Monorepo skeleton (pnpm + Turborepo, package layout, base tsconfig, root scripts)
-- **EPIC-003** Local infrastructure (Docker Compose with full polyglot stack, healthchecks, dev/test profiles)
-- **EPIC-004** CI baseline (GitHub Actions: install + build + lint + test)
-- **EPIC-005** Runtime package skeleton (`@saasagent/runtime`) with Claude Agent SDK substrate wiring stub
-- **EPIC-006** SDK-TS package skeleton (`@saasagent/sdk`) with placeholder federation interfaces
-- **EPIC-007** Web shell package skeleton (`@saasagent/web-shell`) with `<saas-agent />` custom element
-- **EPIC-008** CLI package skeleton (`@saasagent/cli`) with `agentsaas` binary entrypoint
+### Phase 0 — Foundation — **done** 2026-05-03
+- [EPIC-007 — Phase 0 Foundation](../epics/EPIC-007-phase-0-foundation.md) — **done** (monorepo skeleton, 4 package skeletons, CI, ADR-032–037)
 
-**Phase 0 gate:** `pnpm install && pnpm infra:up && pnpm build && pnpm test` succeeds end-to-end on a fresh clone.
+**Phase 0 gate:** `pnpm install && pnpm build && pnpm test` succeeds end-to-end on a fresh clone. ✅
 
 ### Phase 1 — Composition
 - WC shell (side-panel render mode)
@@ -153,3 +147,5 @@ Pure post-MVP:
 ## Child epics
 
 Owned + maintained by the work-management skill.
+
+- [EPIC-007 — Phase 0 Foundation](../epics/EPIC-007-phase-0-foundation.md) — done

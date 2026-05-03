@@ -1,9 +1,9 @@
 # INIT-001 — Groom platform vision and requirements
 
-- **Status:** done (2026-05-07 — substantially achieved; Batch 6 implementation/v2 details groom in parallel with build)
+- **Status:** done (substantially achieved 2026-05-03; Batch 6 implementation/v2 details can groom in parallel with build)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-07
-- **Completed:** 2026-05-07
+- **Last updated:** 2026-05-03
+- **Completed:** 2026-05-03
 - **Outcome:** A sharp, written, agreed vision and requirements baseline that any future contributor (human or AI) can read and align on without further conversation with Rahul.
 
 ## Why
@@ -17,7 +17,9 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 - docs/novel-ideas/ideas.md has all novel ideas surfaced so far.
 
 ## Child epics
-- [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
+- [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md) — done
+- [EPIC-005 — Close Batch 4 grooming decisions](../epics/EPIC-005-close-batch-4-grooming.md) — done
+- [EPIC-006 — Close Batch 5 grooming decisions](../epics/EPIC-006-close-batch-5-grooming.md) — done
 
 ## Grooming questions
 

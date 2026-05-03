@@ -1,8 +1,9 @@
 # STORY-003 — Choose stream processing approach for derivation pipeline
 
-- **Status:** backlog
+- **Status:** done
 - **Created:** 2026-04-28
-- **Last updated:** 2026-04-28
+- **Last updated:** 2026-05-03
+- **Completed:** 2026-05-03 (ADR-014: Redpanda from MVP)
 - **Parent epic:** [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 
 ## User story

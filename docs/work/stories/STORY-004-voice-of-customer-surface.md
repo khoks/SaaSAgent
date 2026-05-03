@@ -1,8 +1,9 @@
 # STORY-004 — Define voice-of-customer surface for the dev team
 
-- **Status:** backlog
+- **Status:** done
 - **Created:** 2026-04-28
-- **Last updated:** 2026-04-28
+- **Last updated:** 2026-05-03
+- **Completed:** 2026-05-03 (ADR-016: multi-surface VoC + closed-loop reprocessing into agent + Customer Churn ML Model)
 - **Parent epic:** [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 
 ## User story
