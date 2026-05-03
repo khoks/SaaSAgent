@@ -40,7 +40,20 @@ export class Runtime {
 }
 
 // Allow `node dist/index.js` invocation for smoke testing.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Cross-platform main-module detection: fileURLToPath normalizes the path the same way on Windows + POSIX.
+import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
+
+const isMain = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
   const runtime = new Runtime({});
   runtime.start().catch((err: unknown) => {
     console.error('runtime failed to start:', err);
