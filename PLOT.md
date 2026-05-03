@@ -3,7 +3,7 @@
 > The "plot" of this project: the single-page narrative of *what* we are building and *why*. Living document. Updated as the vision sharpens.
 
 ## One-line pitch
-A **universal, embeddable agentic harness** that any SaaS enterprise can drop into their web/mobile product to give their customers a thinking, planning, observing, proactively-helpful agent — composed from the enterprise's own design system, running entirely inside the enterprise's ecosystem — without each enterprise re-inventing the substrate.
+A **universal, embeddable agentic harness** that any SaaS enterprise can drop into their web/mobile product to give their customers a thinking, planning, observing, proactively-helpful agent — composed from the enterprise's own design system, running entirely inside the enterprise's ecosystem — that becomes **the primary interaction surface**, leaving the host's existing UI as the channel for admin / troubleshooting / legacy support ([ADR-034](docs/decisions/decision-log.md)).
 
 ## The problem
 Every major SaaS today (Adobe, Canva, Expedia, Best Buy, Walmart, Shopify, …) is independently hand-rolling a half-baked AI assistant. Each rebuilds the same 80% substrate: orchestration, planning, widget composition, memory, tool/skill registries, observability into the user's session, multimodal I/O, proactive triggering. None of them get it right because it isn't their core competency.
@@ -32,7 +32,7 @@ Stripe-for-payments / Auth0-for-auth / Twilio-for-comms — but distributed as a
 - Not a generative-UI engine that emits raw HTML/CSS. UI is **composed** from host-registered primitives — never generated free-form.
 
 ## MVP anchor
-**E-commerce** (Walmart / Best Buy / Shopify-merchant-tier) — broadest TAM, clearest ROI demo, most mature event-bus patterns. See [ADR-003](docs/decisions/decision-log.md). The ultimate-aspirational target — **a Google-app/OS-ecosystem-style universal agent surface across every app a user touches** — is captured in [docs/requirements/future-requirements.md](docs/requirements/future-requirements.md).
+**Dual vertical: e-commerce + travel** ([ADR-033](docs/decisions/decision-log.md)). Walmart-/Best-Buy-style e-commerce AND Expedia-/Booking-style travel as composite design-partner archetype (real partner TBD). E-commerce stress-tests the proactive engine + cross-session re-engagement; travel stress-tests multi-step planning depth. The ultimate-aspirational target — **a Google-app/OS-ecosystem-style universal agent surface across every app a user touches** — is captured in [docs/requirements/future-requirements.md](docs/requirements/future-requirements.md).
 
 ## The grooming arc
 1. **Vision** — articulate the target state (this doc + [docs/vision.md](docs/vision.md)).
@@ -52,6 +52,7 @@ Stripe-for-payments / Auth0-for-auth / Twilio-for-comms — but distributed as a
 - **Self-hosted by default** — the platform lives end-to-end inside the enterprise's ecosystem; no platform-side cloud holds enterprise data.
 - **Proactive ≠ annoying** — proactivity is gated by attention budgets and confidence.
 - **Typed-JSON contract end-to-end** — natural-language inputs are compiled in; runtime traffic is always typed.
+- **Agent as primary interface** ([ADR-034](docs/decisions/decision-log.md)) — the experience bar is "faster, more intuitive, less limited than the host's UI"; host UI persists for admin/troubleshooting/legacy support only.
 
 ## Status
-Day-0 grooming. See [docs/decisions/decision-log.md](docs/decisions/decision-log.md) for the chronological record of decisions (ADR-001 through ADR-007 accepted as of 2026-04-26).
+**Build phase started 2026-05-07.** 37 ADRs accepted. INIT-001 (vision/requirements grooming) complete. INIT-002 (MVP scope) accepted. INIT-003 (build) Phase 0 (foundation scaffolding) in progress. Build team: Rahul + Claude only ([ADR-036](docs/decisions/decision-log.md)). License: Apache 2.0 with provisional patent filings before OSS publication ([ADR-035](docs/decisions/decision-log.md)). Repo remains private until those filings land.

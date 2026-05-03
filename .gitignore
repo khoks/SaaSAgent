@@ -40,3 +40,15 @@ venv/
 # Logs
 *.log
 logs/
+
+# TypeScript / monorepo build artifacts
+dist/
+*.tsbuildinfo
+.turbo/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# pnpm
+.pnpm-store/

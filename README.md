@@ -2,8 +2,23 @@
 
 A universal, embeddable agentic harness for any SaaS enterprise.
 
-> **Status:** Day 0 — grooming the vision and requirements before MVP.
+> **Status:** Build phase started 2026-05-07 — Phase 0 (foundation scaffolding) in progress.
+> 37 ADRs accepted; INIT-001 (grooming) done; INIT-002 (MVP scope) accepted; INIT-003 (build) in progress.
 > Read [PLOT.md](PLOT.md) for the one-page narrative.
+
+## Local development (Phase 0)
+
+```bash
+# Prereqs: Node 20+, pnpm 9+, Docker Desktop
+
+pnpm install              # install workspace deps
+pnpm infra:up             # start PG + Qdrant + Redpanda + ClickHouse + Neo4j
+pnpm build                # build all packages
+pnpm test                 # run all tests
+pnpm infra:down           # stop infra (preserves data)
+```
+
+Phase 0 ships package skeletons only. Real wiring lands in Phase 1+.
 
 ## Documentation map
 

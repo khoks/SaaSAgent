@@ -1,8 +1,9 @@
 # INIT-001 — Groom platform vision and requirements
 
-- **Status:** in-progress
+- **Status:** done (2026-05-07 — substantially achieved; Batch 6 implementation/v2 details groom in parallel with build)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-04-28
+- **Last updated:** 2026-05-07
+- **Completed:** 2026-05-07
 - **Outcome:** A sharp, written, agreed vision and requirements baseline that any future contributor (human or AI) can read and align on without further conversation with Rahul.
 
 ## Why

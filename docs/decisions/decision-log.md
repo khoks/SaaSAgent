@@ -529,3 +529,102 @@
   - Synthetic prior training data needs careful curation to avoid biasing toward one industry — TBD as part of MVP build.
   - Explainability built-in (LightGBM SHAP / feature importances) — addresses regulatory and product-team-debugging needs.
 - **Source:** Conversation 2026-05-04 (Rahul Q5.6 answer + recommendation acceptance).
+
+## ADR-032 — Pull closed-loop VoC + Customer Churn ML Model forward into MVP (full polyglot stack from day 1)
+- **Date:** 2026-05-07
+- **Status:** accepted (supersedes the v1-deferral framing of ADR-016 and the MVP-subset framing of ADR-008)
+- **Context:** When drafting INIT-002, surfaced a tension: the patentability-strong novel features (closed-loop VoC + churn model — ADR-016) were scoped to v1 per memory.md phasing AND paywalled per ADR-020, but they ARE the platform's marquee "wow" pitch. Asked Rahul to choose between (a) keep MVP substrate-only / closed-loop arrives v1, (b) pull closed-loop forward into MVP and accept ClickHouse + Neo4j ops cost from day 1, (c) build closed-loop for the demo only.
+- **Options considered:** see Q3 of conversation 2026-05-07.
+- **Decision:** **(b) Pull forward.** MVP includes the full polyglot memory stack (Postgres + Qdrant + ClickHouse + Neo4j + Redpanda) AND the closed-loop VoC pipeline AND the Customer Churn ML Model from day 1. Closed-loop VoC + churn become the marquee paid-tier demo from MVP launch.
+- **Consequences:**
+  - **MVP infrastructure footprint heavier** — 5 services to operate (was 3 in original plan): Postgres, Qdrant, Redpanda, ClickHouse, Neo4j. All in Docker Compose dev/demo + Helm for prod.
+  - **Time-tiered summaries (session/day/week/month/year), VoC reprocessing, deduced feedback, churn model, eval analytics, agent self-telemetry** — all become MVP scope (were v1).
+  - **Outbound VoC surfaces** — embedded dashboard + at minimum one push surface (Slack digest OR webhook) at MVP; auto-PR can stay v1 (richer feature requiring host-repo integration).
+  - **Pricing model unchanged** ([ADR-020](#adr-020)) — closed-loop VoC + churn remain in the paid Capacity tiers; OSS substrate gets memory + Postgres/Qdrant + basic eval/dashboard, paid tier unlocks ClickHouse/Neo4j-backed features and the closed-loop pipeline.
+  - **Memory architecture phasing updated** — see [memory.md](../architecture/memory.md): MVP phase now includes all 5 stores; v1 phase shrinks to "harden, scale, optimize"; v2 = federated learning.
+  - The MVP can now demonstrate the patentability-strong loop end-to-end at launch — critical for design-partner conversations and for filing provisional patents (per ADR-035) on the proven, working system rather than a paper design.
+- **Source:** Conversation 2026-05-07 (Rahul strategic Q3 answer = option b).
+
+## ADR-033 — Anchor verticals: e-commerce + travel (Walmart/Best-Buy + Expedia/Booking composite archetype)
+- **Date:** 2026-05-07
+- **Status:** accepted (refines ADR-003)
+- **Context:** ADR-003 picked e-commerce as the single MVP anchor vertical. When drafting INIT-002, asked Rahul whether to use a real partner or stay archetype-based; he answered "real partner is TBD, lets base it on both ecommerce and expedia like partner."
+- **Options considered:** single vertical (e-commerce only) / dual vertical (e-commerce + travel) / multi-vertical.
+- **Decision:** **Dual-vertical composite archetype** — Walmart-/Best-Buy-style e-commerce AND Expedia-/Booking-style travel. Real design partner remains TBD; Rahul to source.
+- **Consequences:**
+  - **Demo coverage broadens** — MVP demo script must cover BOTH a transactional flow (e-commerce: find-similar-product → cart → recovery) AND a multi-step planning flow (travel: trip planning → comparison → change/cancel).
+  - **Atomic UI primitives broaden** — registry must include both e-commerce primitives (ProductTile, Cart, ComparisonGrid) and travel primitives (FlightCard, ItineraryTimeline, DateRangePicker, MultiCityRouteMap).
+  - **Workflows broaden** — at least one Feature/Service doc per vertical (`find-similar-product.feature.md` for e-commerce; `plan-multi-city-trip.feature.md` for travel).
+  - **Travel stress-tests the orchestrator** — multi-step planning (search → compare → select → book → modify) is naturally agent-shaped and the harder demo for proving the substrate's planning depth.
+  - **E-commerce stress-tests the proactive engine** — cart abandonment + cross-session re-engagement is the highest-conversion proactive pattern.
+  - **Trade-off:** more MVP build cost (two demo verticals instead of one). Justified because it proves vertical-agnosticism — the substrate works for both transactional AND multi-step-planning surfaces.
+- **Source:** Conversation 2026-05-07 (Rahul strategic Q1 answer).
+
+## ADR-034 — "Wow" target reframed: the agent IS the primary interaction surface; host UI becomes admin/troubleshooting/legacy
+- **Date:** 2026-05-07
+- **Status:** accepted (sets the experience bar for the platform)
+- **Context:** Asked Rahul what should be the "wow" beat of the MVP demo. He answered: "The wow beat should be that the customer/user online who is using this SaaSAgent within the interface of the enterprise should feel that all the functionality which they want to execute is just a few sentences away, and its not clumsy, very intuitive, not limited, helps build muscle memory as well, and that the main enterprise interface like the website or mobile interface is just there for troubleshooting or admin functionality or for legacy support."
+- **Options considered:** Various candidate "wow" beats — proactive re-engagement, eval dashboard, mobile parity, hot-reload.
+- **Decision:** **The wow target is the experience, not a single beat.** The bar is: a returning user finds it strictly faster, more intuitive, and less limiting to accomplish their goal through the agent than through the host's existing UI. The host's UI persists as a fallback for: (a) admin tasks (settings, account management, billing), (b) troubleshooting (when something goes wrong), (c) legacy support (users who haven't transitioned).
+- **Consequences:**
+  - **Massively raises the substrate's experience bar** — the agent must cover the host's most common workflows fluently, not just one demo flow.
+  - **MVP demo script must demonstrate this** — show a returning user accomplishing a complete transaction (e-commerce: discover → compare → buy; travel: plan → book → modify) entirely through the agent, faster than they could through the host UI.
+  - **"Build muscle memory"** is a key phrase: the agent's interaction patterns must be predictable, repeatable, and rewarding so users learn them and return to them. Implies stable phrasing, consistent widget composition for the same intents, and a sense of progress within multi-turn workflows.
+  - **"Not limited"** rules out heavy guardrails or scope-restrictions that frustrate power users — the agent must be capable of executing the full surface area of the host's product, not a curated subset.
+  - **Strategic positioning consequence:** the platform's value prop to host enterprises isn't "add an AI helper" — it's "your agent will become how your customers do business with you; your existing UI becomes the support channel." This is a much more ambitious pitch and a much bigger commitment from the host.
+  - **MVP acceptance criterion added:** during a structured user-test session, at least 7 of 10 testers complete a target workflow strictly faster through the agent than through the host UI on a second attempt.
+- **Source:** Conversation 2026-05-07 (Rahul strategic Q2 answer).
+
+## ADR-035 — License = Apache 2.0; provisional patents filed BEFORE OSS publication for high-novelty entries
+- **Date:** 2026-05-07
+- **Status:** accepted
+- **Context:** Asked Rahul about OSS license; he answered "Make sure that we can file patents later, otherwise I don't care."
+- **Options considered:** MIT / Apache 2.0 / AGPL / BSL.
+- **Decision:**
+  - **License: Apache 2.0.** Permissive enough for enterprise adoption; explicit patent grant from contributors (protects us from contributor patent attacks); standard for enterprise OSS infrastructure (k8s, Cassandra, Spark, …).
+  - **Patent sequencing:** before any code reaches the public OSS repo, file **provisional patent applications** for the patentability-strong novel-idea entries. Specifically:
+    - ADR-005 + entry "Runtime LLM composition of UI from host's atomic design-system primitives" (patentability: strong)
+    - ADR-016 + entry "Closed-loop VoC → customer churn ML model → agent self-correction" (patentability: strong)
+    - ADR-021 + entry "Federated sub-agent architecture" (patentability: possible)
+    - ADR-023 + entry "Auto-generated per-capability eval logic from registry metadata" (patentability: possible)
+    - Bidirectional widget→instruction loop (patentability: possible)
+  - **Process:** during MVP build, develop in private GitHub repo (already private). File provisional patents when each component reaches working-prototype state (≥1 year of priority date locked in). Then make repo public + publish under Apache 2.0.
+- **Consequences:**
+  - **Repo stays private until provisional patents filed** — current `khoks/SaaSAgent` is already private, status quo.
+  - **Working prototype required before filing** — provisional applications need a real description of the working system, not just design docs (improves patent strength). Patent filing therefore becomes a Phase 9 (release) gate.
+  - **Apache 2.0 is the only viable permissive license that combines patent grant with broad enterprise adoption** — MIT lacks the patent grant; AGPL/BSL would limit adoption.
+  - **Trademark/branding** to register separately (the platform name once finalized).
+  - **Cost:** provisional patent filings ~$2-5k each via patent attorney. Budget separately.
+- **Source:** Conversation 2026-05-07 (Rahul strategic Q6 answer).
+
+## ADR-036 — Build team: Rahul + Claude only; phasing reflects 2-builder reality
+- **Date:** 2026-05-07
+- **Status:** accepted
+- **Context:** Asked Rahul whether to put team-size assumptions in INIT-002. He answered: "No need to figure out team sizes, you and I will build this ourselves."
+- **Options considered:** N/A (factual decision about team).
+- **Decision:** **Build team = Rahul (PM + Engineer) + Claude (AI engineer).** No external hires for MVP.
+- **Consequences:**
+  - **Realistic MVP timeline is months, not weeks.** With one human + one AI, the human's review/decision/integration bandwidth is the bottleneck, not Claude's code generation rate.
+  - **Phasing in INIT-003 must respect this** — sequential more often than parallel; minimize context-switching across phases.
+  - **Scope discipline matters more than ever** — every scope-creep request costs both of us serial weeks. INIT-002's scope-out and anti-scope sections are now load-bearing protections.
+  - **Recommendation: run with the full INIT-002 scope but in a "MVP-of-MVP" first** — get an end-to-end vertical slice working (one feature, one composed UI, one Sub-Agent, one workflow, no proactive, no mobile, no eval dashboard) before fanning out into full scope. Then expand. This is captured as Phase 0+1+2 in INIT-003 (foundation + composition + planning) — the rest builds on the working slice.
+  - **Tooling investment pays off disproportionately** — strong CI, strong types, strong tests, fast local dev loop. The Claude-Code-skill automation already in this repo is one example of that investment.
+- **Source:** Conversation 2026-05-07 (Rahul strategic Q5 answer).
+
+## ADR-037 — Monorepo tooling: pnpm workspaces + Turborepo
+- **Date:** 2026-05-07
+- **Status:** accepted (provisional default; can override if Rahul prefers different)
+- **Context:** Phase 0 scaffolding requires a monorepo to host multiple packages: runtime, TS SDK, web shell, CLI (and Python SDK as cross-language sibling).
+- **Options considered:**
+  - A. pnpm workspaces (no orchestrator).
+  - B. **pnpm workspaces + Turborepo**.
+  - C. Yarn workspaces + Turborepo / Nx.
+  - D. Nx (heavyweight; opinionated).
+  - E. Bun workspaces (newest; some ecosystem gaps).
+- **Decision:** B. pnpm workspaces (fast, content-addressable, modern) + Turborepo (caching, task graph, Vercel-backed, well-documented).
+- **Consequences:**
+  - Standard modern TS monorepo setup; broad community familiarity.
+  - Fast incremental builds via Turbo's task graph + remote cache option.
+  - Python SDK lives in `packages/sdk-py/` as a sibling (Python tooling — uv or poetry — orthogonal to the JS workspace).
+  - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
+- **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).

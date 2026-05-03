@@ -50,4 +50,9 @@
 | Distribution / packaging | Docker / Helm / standalone binary / installer | **Docker Compose (dev/demo) + Helm chart (prod) at MVP**; standalone binary deferred; OS installers at v1.5 if demand | [ADR-026](../decisions/decision-log.md) |
 | Eval dashboard tech | Bundled SPA / Grafana / custom + exporters | **Bundled SPA (React + Tremor/Recharts) at MVP, embedded in admin UI; optional exporters (Grafana / Datadog / Honeycomb) at v1** | [ADR-030](../decisions/decision-log.md) |
 | Customer Churn ML Model architecture | GBT / small NN / ensemble / pluggable | **LightGBM bundled default + pluggable adapter + generic-prior cold-start (transitions to tenant-specific after ~1k events); SHAP explainability built-in** | [ADR-031](../decisions/decision-log.md) |
+| MVP infra footprint | Substrate-only / full polyglot | **Full polyglot from day 1: PG + Qdrant + Redpanda + ClickHouse + Neo4j**. Closed-loop VoC + churn model are MVP scope | [ADR-032](../decisions/decision-log.md) |
+| MVP anchor verticals | Single / dual / multi | **Dual: e-commerce + travel composite (Walmart/Best-Buy + Expedia/Booking archetype)** | [ADR-033](../decisions/decision-log.md) |
+| OSS License | MIT / Apache 2.0 / AGPL / BSL | **Apache 2.0**; repo private until provisional patents filed for high-novelty entries | [ADR-035](../decisions/decision-log.md) |
+| Monorepo tooling | pnpm WS / Yarn WS / Nx / Turborepo / Bun WS | **pnpm workspaces + Turborepo** (TS); Python SDK in `packages/sdk-py` with uv or poetry | [ADR-037](../decisions/decision-log.md) |
+| Build team | Rahul-only / Rahul+Claude / external hires | **Rahul + Claude only** (no external hires for MVP) | [ADR-036](../decisions/decision-log.md) |
 | CI/CD | GitHub Actions (default for our build) | GitHub Actions | — |

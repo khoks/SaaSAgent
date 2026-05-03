@@ -109,11 +109,13 @@ VoC pipeline extracts pain points / capability requests / friction patterns
               └──► Product improvement opportunity tracker (Jira / Linear / GitHub via auto-PR)
 ```
 
-## Phasing rationale
+## Phasing rationale (UPDATED per ADR-032 — closed-loop VoC + churn pulled forward into MVP)
 
-- **MVP** — Postgres + Qdrant only. Two systems. Working end-to-end with raw storage, semantic recall, basic profile, workflow tracking, active feedback. The bare minimum that proves the substrate.
-- **v1** — Add ClickHouse + Neo4j. Bring online: time-tiered summaries, problem-solution graph, eval, telemetry, deduced feedback, voice-of-customer.
-- **v2** — Federated cross-enterprise learning, opt-in only.
+- **MVP** — **Full polyglot stack from day 1: Postgres + Qdrant + Redpanda + ClickHouse + Neo4j.** All MVP-tagged stores in the table above (1-13 except #14 federated) bring online at MVP. Closed-loop VoC pipeline + Customer Churn ML Model are MVP scope. Marquee paid-tier demo from launch.
+- **v1** — Hardening, scaling, optimizing what MVP shipped. Embedded eval models. Learned proactive trigger model. Per-user attention-budget adaptation. Native mobile SDKs. Vue / Svelte / Angular frontend support. Adapter library for production-grade VoC outbound.
+- **v2** — Federated cross-enterprise learning (opt-in only).
+
+> **Originally** memory was phased MVP=PG+Qdrant, v1=add CH+Neo4j. ADR-032 supersedes that framing — the patentability-strong closed-loop VoC + churn pipeline (ADR-016, ADR-031) IS the marquee paid-tier demo, and we want a real working system (not a paper design) to anchor the provisional patent filings (ADR-035). Heavier MVP infra footprint accepted as the cost.
 
 ## Pluggable adapters
 

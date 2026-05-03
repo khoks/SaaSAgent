@@ -1,179 +1,207 @@
 # INIT-002 — Define MVP slice and design-partner vertical
 
-- **Status:** in-progress (drafted 2026-05-04 — pending Rahul review)
+- **Status:** accepted 2026-05-07 (Rahul approved scope; build phase begins)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-04
-- **Outcome:** A written MVP scope that is the smallest demonstrable slice of the platform, paired with an explicit design-partner vertical (real or imagined) we are building toward.
+- **Last updated:** 2026-05-07
+- **Outcome:** A written MVP scope that proves the substrate is real for our anchor verticals, grounds the patent filings (ADR-035), and is realistically achievable by a 2-builder team (ADR-036).
 
 ## Why
 
-Universal platforms die when they try to be universal on day one. We need an honest MVP cut that proves the substrate is real for one vertical, then expand. The MVP is the proof — not a feature-complete product.
+Universal platforms die when they try to be universal on day one. We need an honest MVP cut that proves the substrate is real for our chosen verticals, then expand. The MVP is also the **proof artifact for provisional patent filings** ([ADR-035](../../decisions/decision-log.md)) — the patent applications need a real working system to describe.
 
-## Anchor vertical
+## Anchor verticals (per [ADR-033](../../decisions/decision-log.md))
 
-**E-commerce** ([ADR-003](../../decisions/decision-log.md)). Composite design partner archetype = **Walmart-/Best-Buy-/Shopify-merchant-tier** (real partner TBD; Rahul to source). Selected for: broadest TAM, clearest ROI demo (cart-abandonment recovery, product discovery, returns/support), mature event-bus patterns, React-heavy frontends (matches [ADR-015](../../decisions/decision-log.md)).
+**Dual vertical: e-commerce + travel.** Composite design-partner archetype = **Walmart-/Best-Buy-style e-commerce AND Expedia-/Booking-style travel** (real partner TBD; Rahul to source).
 
-## Demo script (10-beat E2E)
+- **E-commerce** stress-tests: the proactive engine, cross-session re-engagement, transactional flows, atomic-DS composition for product surfaces.
+- **Travel** stress-tests: multi-step planning depth, comparison/change/cancel workflows, the orchestrator's ability to handle complex sequences.
 
-The MVP must execute these beats reliably end-to-end:
+## Wow target (per [ADR-034](../../decisions/decision-log.md))
 
-1. **Setup** — host (e-commerce site) has installed the SaaS Agent platform via Helm chart on their k8s. Theme tokens (DTCG via Style Dictionary) + atomic UI primitives (ProductTile, Cart, FilterBar, ComparisonGrid, RecommendationCarousel, RequestsRemainingBadge, …) registered. One Feature/Service doc (`find-similar-product.feature.md`) authored. One Sub-Agent (Python recommendation engine) deployed and federated. One Skill (in-process price-comparison) and one Tool (host product API) registered. Adapters registry includes custom semantic events (`product.viewed`, `cart.itemAdded`, `checkout.started`).
-2. **User browses** the host's product detail page for a Sony Bravia 55" TV. Agent observes via DOM (MO + IO) and the host's `product.viewed` custom event.
-3. **User opens the agent panel** (side-panel WC shell render mode) and asks: *"Help me find a TV under $800 with similar features."*
-4. **Planner (Sonnet)** parses intent, recalls user's interaction profile via Qdrant semantic search, selects relevant skill (`product-search`) + tool (host product API), composes a plan.
-5. **UI Composer (Haiku)** composes a product-comparison artifact using host's atomic primitives (ProductTile + ComparisonGrid + FilterBar) and theme tokens, emits typed-JSON layout tree with data-wiring spec.
-6. **WC Shell renderer** mounts referenced React components, applies theme, injects data, subscribes to interaction events. User sees on-brand comparison cards in the agent's scrolling pane.
-7. **User clicks** "show more like Sony" on one card → typed JSON instruction emit back to runtime → planner re-plans → invokes the **Python recommendation Sub-Agent over gRPC**, which streams ranked candidates back → composer renders updated artifact with recommendations.
-8. **Workflow tracking** — workflow `find-similar-product` registered active in Postgres; user's interaction trajectory captured in raw log; active feedback (user clicked "compare", scrolled past two cards) recorded.
-9. **User abandons** without buying. Session ends.
-10. **Day 2** — user returns to the site (different page). Agent observes via DOM. Multi-signal proactive scoring fires: memory match (high) + workflow continuity (active) + time-since (within window) + DOM-state relevance (high) crosses the trigger threshold. Attention-budget cap permits. Agent pops up: *"Want to pick up where you left off? I found 3 TVs that match what you were looking for."*
+**The agent IS the primary interaction surface.** The bar is: a returning user finds it strictly faster, more intuitive, and less limited to accomplish their goal through the agent than through the host's existing UI. The host UI persists as the channel for admin / troubleshooting / legacy support only.
 
-**Bonus beats** (demoed on the same scenario):
-- **Tier/quota:** end-user is on free tier (host-configured: 50 requests/day). After ~40 interactions, agent surfaces a `RequestsRemainingBadge` composed UI element.
-- **Eval dashboard:** host's quality team views the bundled SPA dashboard — per-skill / per-sub-agent / per-feature eval metrics auto-generated from registry metadata, latency distributions, sample interaction drill-down.
-- **Domain-dev experience:** a domain dev edits `find-similar-product.feature.md` (hint: prefer the recommendation Sub-Agent earlier in the workflow), saves; hot-reload picks it up; next conversation reflects the change. Time from edit to live: under 5 minutes (NFR-DX-001).
-- **Mobile:** the same agent runs in the host's iOS and Android apps via WebView bridge with mobile-context-aware composition (denser layouts, larger touch targets, bottom-sheet vs. side-panel render).
+This is a much more ambitious bar than "AI helper bolted onto the host UI." It implies:
+- The agent must cover the host's **most common workflows fluently**, not just one demo flow.
+- Interaction patterns must **build muscle memory** — predictable, repeatable, rewarding.
+- **Not limited** — capable of executing the full surface area of the host's product, not a curated subset.
 
-## Scope-in (MVP delivers)
+## Demo script (10 beats per anchor; demonstrates wow target)
+
+### E-commerce flow (Walmart/Best-Buy archetype)
+1. Setup: host has installed agent via Helm; theme + atomic primitives + skills + sub-agents + tools + features registered.
+2. Returning user arrives. Agent observes via DOM (MO/IO) + custom semantic events (`product.viewed`).
+3. User opens agent panel: *"I want to upgrade my TV. Show me 55-inch options under $800 that match what I usually buy."*
+4. Planner (Sonnet) recalls user's interaction profile via Qdrant; selects skills + tools; composes plan.
+5. UI Composer (Haiku, cached templates) emits typed-JSON layout tree referencing host atomic primitives (ProductTile + ComparisonGrid + FilterBar + ThemeTokens).
+6. WC Shell mounts React components, applies theme, injects data, subscribes to interaction events.
+7. User refines: *"compare the top two on picture quality and warranty."* → typed JSON emit → planner re-plans → invokes Python recommendation Sub-Agent over gRPC streaming → composer renders deep-comparison artifact.
+8. User adds to cart through agent (no host-UI navigation). Workflow `tv-upgrade` registered active.
+9. Closed-loop VoC: agent surfaces per-feature pain points to dashboard ("filter UX confusing — 3 users abandoned"); auto-fed into Customer Churn Model (LightGBM); next user with similar profile gets de-emphasized filter UI.
+10. Day 2: user returns to host site (any page). Multi-signal proactive scoring fires; agent pops up: *"Last time you were comparing TVs — found 2 new arrivals matching your criteria. Want to see?"*
+
+### Travel flow (Expedia/Booking archetype)
+1. Setup similar; travel atomic primitives registered (FlightCard, ItineraryTimeline, DateRangePicker, MultiCityRouteMap, HotelTile).
+2. User opens agent: *"Plan a 5-day trip to Tokyo and Kyoto in October — I have flexible dates within that month."*
+3. Planner decomposes into multi-step plan: search flights → optimize date window → search hotels per city → compose itinerary.
+4. Composer renders progress: a multi-step itinerary skeleton appears, populated as sub-agent results stream in (live composition).
+5. Travel-recommendation Sub-Agent (Python, federated via gRPC) streams candidate flights and hotels.
+6. Composer composes ItineraryTimeline with FlightCards + HotelTiles + ChangeDates affordances using host atomic primitives.
+7. User: *"swap the Tokyo hotel — cheaper near Shinjuku."* → typed JSON emit → planner re-plans just that segment → composer surgically updates the timeline (no full re-render).
+8. User books through agent. Workflow `tokyo-kyoto-trip` registered active. Per-user tier/quota: visible "X requests remaining" element shown when threshold crossed.
+9. Two days before departure, agent proactively pops up: *"Weather forecast just changed — want to swap the open-air activity for an indoor option?"* (multi-signal trigger: workflow continuity + time + DOM-state + memory match.)
+10. Post-trip: user opens agent: *"the Kyoto hotel was great — book it again next time."* → preference recorded in customer interaction profile + similar-customer cluster updated; future trip suggestions weighted accordingly.
+
+### Bonus beats (cross-cutting, both verticals)
+- **Tier/quota visibility** ([ADR-019](../../decisions/decision-log.md)): host-configured tiers, visible "X remaining" composed UI surfaced contextually.
+- **Eval dashboard** ([ADR-023](../../decisions/decision-log.md), [ADR-030](../../decisions/decision-log.md)): host's quality team views auto-generated per-skill / per-sub-agent metrics, sample drill-downs.
+- **Domain-dev hot-reload** (NFR-DX-001): edit `.feature.md`, see live in <5 min.
+- **Mobile** ([ADR-017](../../decisions/decision-log.md)): same flows in WebView with mobile-context-aware composition.
+- **Closed-loop VoC** ([ADR-016](../../decisions/decision-log.md)): pain points → churn model → planner suppresses friction-causing features for similar customers.
+
+## Scope-in (MVP delivers — full polyglot per [ADR-032](../../decisions/decision-log.md))
 
 ### Substrate
-- Web Component shell with **side-panel render mode** (full-page added if time; drawer + ejectable popout deferred to v1) ([ADR-004](../../decisions/decision-log.md))
-- WC-wrap default + native-renderer escape hatch ([ADR-010](../../decisions/decision-log.md))
-- Multi-framework registry: **React + vanilla WC at MVP** ([ADR-015](../../decisions/decision-log.md))
-- Mobile: **WebView bridge with mobile-context-aware composition** ([ADR-017](../../decisions/decision-log.md))
+- WC shell with side-panel render mode (full-page if time)
+- WC-wrap default + native-renderer escape hatch
+- Multi-framework registry: React + vanilla WC at MVP
+- Mobile WebView bridge with mobile-context-aware composition
 
-### Registries
-- Skills, Sub-Agents (federated), Tools, Atomic UI Components, Theme tokens (DTCG), Features/Services (`.feature.md`), Adapters
+### Registries (all 7)
+Skills, Sub-Agents (federated), Tools, Atomic UI Components, Theme tokens (DTCG), Features/Services (`.feature.md`), Adapters (events + data adapters)
 
 ### Runtime
-- Claude Agent SDK substrate behind thin internal interface ([ADR-007](../../decisions/decision-log.md))
+- Claude Agent SDK substrate behind thin internal interface
 - Bespoke orchestrator + planner (Sonnet) + composer (Haiku + cached templates) + thinker
-- Three-tier capability invocation: Tools / Skills / Sub-Agents ([ADR-021](../../decisions/decision-log.md))
+- Three-tier capability invocation: Tools / Skills / Sub-Agents
 
-### Memory (MVP subset per [memory.md](../../architecture/memory.md))
-- **Postgres:** raw interaction log (∞ retention), workflow state, customer interaction profile (basic), SaaS service usage profile (basic), active feedback, tier/quota definitions + tracking
-- **Qdrant:** semantic recall (interactions, profiles, summaries)
-- **Redpanda:** stream backbone for derivation pipeline ([ADR-014](../../decisions/decision-log.md))
-- **Embedding model:** bundled `nomic-embed-text-v1.5` for dev/demo; host-supplied adapter for production ([ADR-024](../../decisions/decision-log.md))
+### Memory — full polyglot from day 1 (per ADR-032)
+- **Postgres:** raw log, workflow state, profiles, active feedback, tier definitions
+- **Qdrant:** semantic recall (host-supplied embedding adapter; bundled `nomic-embed-text-v1.5` for dev)
+- **Redpanda:** stream backbone for derivation pipeline
+- **ClickHouse:** time-tiered summaries (session/day/week/month/year), eval datapoints, agent telemetry, VoC analytics, per-user usage tallying
+- **Neo4j:** intra-tenant problem-solution graph, churn-similar-customer relations, VoC graph
+
+### Closed-loop VoC + Customer Churn ML Model (NEW MVP per ADR-032)
+- VoC pipeline extracts pain points / capability requests / friction patterns
+- Outbound: embedded dashboard + Slack digest at MVP (auto-PR + webhooks at v1)
+- Reprocessing: customer interaction profile updates + Customer Churn ML Model (LightGBM bundled, pluggable, SHAP explainability) + product-improvement tracker
+- Closed loop: planner consumes P(churn | customer, feature) at recommendation time; suppresses high-churn-risk feature surfacing for similar customers
 
 ### Multimodal observation
-- DOM: MutationObserver + IntersectionObserver + custom semantic events from host (via Adapters registry) ([ADR-022](../../decisions/decision-log.md))
-- Microphone listening (basic VAD + transcription)
+- DOM (MO + IO + custom semantic events from host via Adapters registry)
+- Microphone (basic VAD + transcription)
 - Narration via TTS
-- Element highlight + programmatic click on host page
+- Element highlight + programmatic click
 
 ### Proactive engine
-- Multi-signal scoring confidence (planner conf + memory match + workflow continuity + DOM relevance + time-since) ([ADR-018](../../decisions/decision-log.md))
-- Hard-cap attention budget — defaults: max 2/session, max 5/day (host-configurable)
+- Multi-signal scoring confidence
+- Hard-cap attention budget (defaults: max 2/session, max 5/day; host-configurable)
 
-### End-user tier/quota ([ADR-019](../../decisions/decision-log.md))
+### End-user tier/quota
 - Configurable per-tier limits (host defines tiers)
-- Per-user request/token tracking in Postgres at MVP (ClickHouse at v1)
-- Visible "X requests remaining" composed UI element
+- Per-user request/token tracking
+- Visible "X remaining" composed element
 
 ### Sub-Agent SDK package
-- TypeScript + Python SDKs ([ADR-027](../../decisions/decision-log.md))
-- Boilerplate templates per language (`agentsaas init sub-agent`)
-- HTTP REST (admin) + gRPC bidirectional streaming (runtime) federation protocol ([ADR-028](../../decisions/decision-log.md))
-- Push self-registration + heartbeat + mTLS (intranet) ([ADR-029](../../decisions/decision-log.md))
+- TS + Python SDKs
+- Boilerplate templates per language
+- HTTP REST (admin) + gRPC bidirectional streaming (runtime)
+- Push self-registration + heartbeat + mTLS (intranet trust)
 
-### Eval ([ADR-023](../../decisions/decision-log.md), [ADR-030](../../decisions/decision-log.md))
-- Hybrid scoring: heuristics (every interaction) + LLM-judge sampled (~5%)
-- **Auto-generated per-skill / per-sub-agent eval** from registry metadata
-- Bundled backend (storage on Postgres at MVP, scoring runners, regression detection)
+### Eval
+- Hybrid scoring (heuristics + LLM-judge sampled)
+- Auto-generated per-capability eval from registry metadata
+- Bundled backend (ClickHouse storage)
 - Bundled SPA dashboard (React + chart lib, embedded in admin UI)
 
-### Distribution ([ADR-026](../../decisions/decision-log.md))
-- Docker Compose for dev/demo
-- Helm chart for prod
+### Distribution
+- Docker Compose (dev/demo)
+- Helm chart (prod)
 
-### Open-source release ([ADR-020](../../decisions/decision-log.md))
-- OSS substrate published under permissive license (Apache 2.0 — TBD final)
-- Tier 0 (free) covers everything in this scope-in list
+### Demo deliverables (both verticals)
+- Atomic UI Component registries: e-commerce primitives + travel primitives
+- 2 themes (one per vertical)
+- 2 Feature/Service docs (one per vertical)
+- 2 Sub-Agents (e-commerce recommendation, travel planning)
+- 2-3 Skills (price-comparison, itinerary-builder, etc.)
+- Mock host APIs for both verticals
+- 2-day session demo (proactive re-engagement) for each vertical
 
-### E-commerce demo deliverables
-- One Atomic UI Component registry with e-commerce primitives (ProductTile, Cart, FilterBar, ComparisonGrid, RecommendationCarousel, RequestsRemainingBadge, BasicChatBubble, BasicForm)
-- One Theme registered (e.g., a Walmart-/Shopify-archetype palette + typography)
-- One Feature/Service doc (`find-similar-product.feature.md`)
-- One Python recommendation Sub-Agent (federated)
-- One in-process Skill (`price-comparison`)
-- One Tool (host product-catalog API mock)
-- 2-day session demo proving proactive re-engagement
+### License + IP
+- License: Apache 2.0
+- Repo: stays **private** until provisional patents filed for high-novelty entries (ADR-035)
+- Pre-OSS-publish gate at Phase 9
 
-## Scope-out (deferred to v1)
+## Scope-out (deferred to v1+)
 
-| Capability | Deferred why | Target phase |
+| Capability | Deferred why | Target |
 |---|---|---|
-| ClickHouse + Neo4j stack | MVP proves substrate; analytics + graph layers add at v1 | v1 |
-| Time-tiered summaries (session/day/week/month/year) | Requires ClickHouse | v1 |
-| Problem-Solution Graph | Requires Neo4j | v1 |
-| Customer Churn ML Model + closed-loop VoC reprocessing | High-novelty feature; paywalled per ADR-020; requires v1 stack | v1 (paid tier) |
-| VoC outbound: Slack/email digest, webhooks, auto-PR | Embedded dashboard only at MVP | v1 (paid tier) |
+| Auto-PR with suggested issues | Richer VoC outbound; needs host repo integration | v1 (paid tier) |
+| Webhook outbound (Linear/Jira/GitHub) | Beyond MVP demo; embedded dashboard + Slack digest sufficient at MVP | v1 (paid tier) |
 | Federated cross-enterprise learning | v2 capability | v2 (paid tier) |
 | Native mobile SDKs (iOS Swift / Android Kotlin) | WebView bridge sufficient for MVP demo | v1.5 |
-| Vue / Svelte / Angular registry support | React + WC sufficient for e-commerce MVP | v1.5 |
+| Vue / Svelte / Angular registry support | React + WC sufficient for MVP | v1.5 |
 | Learned proactive trigger model | Multi-signal heuristic at MVP; needs MVP feedback data first | v1 |
 | Per-user attention-budget adaptation | Hard-cap only at MVP | v1 |
-| Embedded eval models | Heuristic + LLM-judge only at MVP | v1 |
+| Embedded eval models | Heuristic + LLM-judge sampled only at MVP | v1 |
 | WASM skill isolation | Process isolation only at MVP | v1 |
 | SaaS domain profile derivation | Basic interaction + service-usage profiles only at MVP | v1 |
 | Adapter library for production-grade hosts | Webhook + simple integration only at MVP | v1 |
-| Drawer + ejectable popout shell render modes | Side-panel only at MVP | v1 |
+| Drawer + ejectable popout shell render modes | Side-panel only at MVP (full-page if time) | v1 |
 | Eval exporters (Grafana / Datadog / Honeycomb) | Bundled SPA only at MVP | v1 |
 | Standalone-binary distribution | Compose + Helm only at MVP | v1.5 |
 | Go SDK | TS + Python only at MVP | v1 |
 
-## Anti-scope (the platform will NOT do)
+## Anti-scope (the platform will NEVER do)
 
-- **Multi-tenant cloud** — self-hosted only ([ADR-006](../../decisions/decision-log.md)), no platform-side cloud holds enterprise data, ever.
-- **Generated raw HTML/CSS UI** — composition only from host-registered atomic primitives ([ADR-005](../../decisions/decision-log.md)); off-brand UI is impossible by construction.
-- **Cross-enterprise data sharing** — never default-on; only opt-in federated mode at v2.
-- **Bypassing host SSO** — bring-your-own auth only.
-- **Compiling Feature/Service docs** — super-skill-doc model ([ADR-013](../../decisions/decision-log.md)); no compiler subsystem.
-- **Writing host-specific business logic in the platform** — all vertical knowledge lives in the host's registries.
+- **Multi-tenant cloud** — self-hosted only ([ADR-006](../../decisions/decision-log.md)).
+- **Generated raw HTML/CSS UI** — composition only from host primitives ([ADR-005](../../decisions/decision-log.md)).
+- **Cross-enterprise data sharing** without explicit opt-in (federated mode at v2 only).
+- **Bypassing host SSO** — bring-your-own auth.
+- **Compiling Feature/Service docs** — super-skill-doc model ([ADR-013](../../decisions/decision-log.md)).
+- **Writing host-specific business logic in the platform** — vertical knowledge lives in registries.
 - **Operating any infrastructure on behalf of the enterprise** — we ship software; they run it.
 
-## Acceptance criteria (Done when…)
+## Acceptance criteria
 
-- ✅ Substrate runs end-to-end against a built mock e-commerce demo site.
-- ✅ The 10-beat demo script executes reliably — repeatable, not flaky.
-- ✅ A Python Sub-Agent federates over gRPC, push-registers, mTLS handshakes successfully.
-- ✅ A domain dev can author a new `.feature.md` and see it live in under 5 minutes (NFR-DX-001).
-- ✅ The bundled eval dashboard surfaces auto-generated per-capability metrics for at least the Skills + Sub-Agent + Feature/Service in the demo.
-- ✅ The Helm chart installs cleanly on a fresh k8s cluster (kind / minikube / production-like) in under 30 minutes from zero.
-- ✅ The Docker Compose stack `up`s on a developer laptop in under 10 minutes from zero.
-- ✅ The mobile WebView demo runs on Android + iOS, with mobile-context-aware composition visibly different from desktop.
-- ✅ End-user tier/quota: visible "X requests remaining" element renders, host-configured tier limits enforced.
-- ✅ All ADR-cited features (or v1 deferrals) are unambiguously implemented or explicitly stubbed-with-rationale.
-- ✅ OSS substrate is published, licensed, with a getting-started guide that takes a new contributor from `git clone` to running demo in under 60 minutes.
+- ✅ Substrate runs end-to-end against both demo hosts (e-commerce + travel mocks).
+- ✅ Both 10-beat demo scripts execute reliably — repeatable, not flaky.
+- ✅ A Python Sub-Agent federates over gRPC, push-registers, mTLS handshakes successfully — for both verticals.
+- ✅ A domain dev can author a new `.feature.md` and see it live in under 5 minutes.
+- ✅ Bundled eval dashboard surfaces auto-generated per-capability metrics.
+- ✅ Closed-loop VoC visibly affects feature surfacing on a second similar user.
+- ✅ Helm chart installs cleanly on a fresh k8s cluster in under 30 minutes.
+- ✅ Docker Compose stack `up`s on a developer laptop in under 10 minutes.
+- ✅ Mobile WebView demo runs on Android + iOS, mobile-context-aware composition visibly different from desktop.
+- ✅ End-user tier/quota: visible "X remaining" element renders, host-configured tier limits enforced.
+- ✅ **User-test gate (Wow validation per ADR-034):** in a structured user-test session, ≥7 of 10 testers complete a target workflow strictly faster through the agent than through the host UI on a second attempt.
+- ✅ Provisional patent filings completed for the patentability-strong novel-idea entries ([ADR-035](../../decisions/decision-log.md)) — gates OSS publication.
 
-## Phasing (rough sequencing — INIT-003 will refine into epics + stories)
+## Phasing (per [ADR-036](../../decisions/decision-log.md), 2-builder team)
 
-| Phase | Focus | Approx duration |
-|---|---|---|
-| **0 — Foundation** | Runtime skeleton, all 7 registries (schema only), Postgres + Qdrant + Redpanda deployment, Claude Agent SDK substrate wiring | weeks |
-| **1 — Composition** | WC shell (side-panel), atomic registry, theme tokens (DTCG + SD importer), composer (Haiku + cached templates), bidirectional typed-JSON instruction loop | weeks |
-| **2 — Planning** | Planner (Sonnet), three-tier capability invocation, basic Skills + Tools execution, memory recall integration, super-skill-doc consumption from `.feature.md` | weeks |
-| **3 — Sub-Agent federation** | SDK (TS + Python), boilerplate templates, federation protocol (HTTP + gRPC), push registration + mTLS, registry integration | weeks |
-| **4 — Multimodal + proactive** | DOM observation (MO/IO/custom), mic/TTS, element highlight/click, multi-signal proactive scoring, hard-cap attention budget | weeks |
-| **5 — Eval** | Bundled backend (Postgres-storage at MVP), heuristic + LLM-judge sampled scoring, auto-generated per-capability eval from registry metadata, bundled SPA dashboard | weeks |
-| **6 — Tier/quota** | Per-user tracking, tier definitions, configurable enforcement, visible "X remaining" composed element | week |
-| **7 — E-commerce demo** | Atomic primitives, theme, Feature/Service doc, Python recommendation Sub-Agent, in-process Skill, Tool mock, 2-day session demo polish | weeks |
-| **8 — Mobile** | WebView bridge, mobile-context-aware composer, Android + iOS native shim, mobile demo polish | weeks |
-| **9 — Distribution + release** | Docker Compose stack, Helm chart, getting-started guide, OSS publication, demo script polish, NFR validation | weeks |
+INIT-003 breaks each phase into epics + stories. High-level sequencing:
 
-Phases 1–6 can have meaningful internal parallelism; phases 7–9 are mostly serial after substrate is stable.
+| Phase | Focus |
+|---|---|
+| **0 — Foundation** | Monorepo (pnpm + Turborepo), runtime/sdk-ts/web-shell/cli package skeletons, Docker Compose with full stack (PG + Qdrant + Redpanda + ClickHouse + Neo4j), Claude Agent SDK wiring, basic CI |
+| **1 — Composition** | WC shell (side-panel), atomic registry, theme tokens (DTCG + SD importer), composer (Haiku + cached templates), bidirectional typed-JSON instruction loop. **MVP-of-MVP gate:** end-to-end composed artifact rendering from a hand-crafted plan |
+| **2 — Planning** | Planner (Sonnet), three-tier capability invocation, basic Skills + Tools, super-skill-doc consumption from `.feature.md`, memory recall integration. **MVP-of-MVP gate:** end-to-end conversational turn working |
+| **3 — Sub-Agent federation** | TS + Python SDKs, boilerplate, federation protocol (HTTP + gRPC), push registration + mTLS, registry integration |
+| **4 — Memory + closed-loop VoC + churn** | Full polyglot derivation pipeline, time-tiered summaries, problem-solution graph, VoC extraction, Customer Churn ML Model (LightGBM + cold-start), closed-loop integration into planner |
+| **5 — Multimodal + proactive** | DOM observation, mic/TTS, element highlight/click, multi-signal proactive scoring, hard-cap attention budget |
+| **6 — Eval** | Auto-generated per-capability eval, bundled backend, bundled SPA dashboard |
+| **7 — Tier/quota** | Per-user tracking, tier definitions, configurable enforcement, visible "X remaining" element |
+| **8 — Demo verticals** | E-commerce + travel atomic primitives, themes, Feature/Service docs, Sub-Agents, Skills, mock APIs, 2-day session demos |
+| **9 — Mobile + distribution + IP gate** | WebView bridge + mobile-context awareness, Compose + Helm packaging, NFR validation, **provisional patent filings**, OSS publication |
 
-## Dependencies
+**MVP-of-MVP** = Phases 0+1+2 completed = end-to-end conversational turn with composed UI working. After that, parallel work fans out across phases 3-7. Demo polish (8) and mobile + IP + release (9) are serial tail.
 
-- INIT-001 (vision/requirements baseline) — substantially complete; Batch 6 (cross-store consistency, federated learning v2, real-time transport, Adapters transport) is non-blocking and can be groomed in parallel.
+## Open dependencies (Batch 6 — non-blocking; may shape MVP details)
 
-## Open dependencies (Batch 6 — won't block MVP start, may shape MVP details)
-
-- **Q6.3 Real-time transport** for WC shell ↔ runtime (WebSocket / SSE / WebRTC) — affects the streaming UX. Sensible MVP default: SSE for streaming planner output to the shell + WebSocket for bidirectional interaction emit. Worth confirming.
-- **Q6.4 Adapters registry transport** for host event bus → platform Redpanda — MVP can ship with simple webhook adapter; production-grade SDK adapter library at v1.
+- **Q6.3 Real-time transport** for WC shell ↔ runtime — sensible MVP default: **SSE for streaming planner output + WebSocket for bidirectional emit**. Confirm before Phase 1.
+- **Q6.4 Adapters registry transport** — webhook for MVP-simple hosts; SDK adapter library at v1.
 - Q6.1 Cross-store consistency, Q6.2 Federated learning — pure post-MVP concerns.
 
 ## Child epics
 
-After this scope is accepted, INIT-003 (Build MVP) breaks each phase above into epics + stories + tasks, owned by the work-management skill.
+See [INIT-003](INIT-003-build-mvp.md) for the build plan with epics + stories under each phase. Work-management skill maintains.
