@@ -159,5 +159,21 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 3. **Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
 4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
 
+## Phase 0 scaffold (completed 2026-05-03)
+
+Monorepo is bootstrapped and all gate checks pass. Package structure:
+
+| Package | npm name | Purpose |
+|---|---|---|
+| `packages/runtime` | `@saasagent/runtime` | Core `Runtime` class + config interface; entry point for the platform process |
+| `packages/sdk-ts` | `@saasagent/sdk` | TypeScript Sub-Agent SDK — `SubAgentDescriptor` type + `registerSubAgent` stub |
+| `packages/web-shell` | `@saasagent/web-shell` | `<saas-agent>` custom element; side-panel placeholder; WC shell host |
+| `packages/cli` | `@saasagent/cli` | `agentsaas` binary — `init` / `dev` / `registry` CLI stubs |
+| `infra/docker-compose.yml` | — | Full polyglot dev stack: PG + Qdrant + Redpanda + ClickHouse + Neo4j (per ADR-032) |
+
+Gate: `pnpm install && pnpm build && pnpm test` — all green (4/4 builds, 8/8 tests with `--passWithNoTests`). Runtime smoke (`[saasagent/runtime v0.0.0] starting`) and CLI smoke (`agentsaas --help / --version / init / dev / registry`) both pass.
+
+**Source:** Session 2026-05-03 — Phase 0 implementation; commit 80da183.
+
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).
