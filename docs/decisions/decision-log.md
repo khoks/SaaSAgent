@@ -629,6 +629,22 @@
   - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
 - **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).
 
+## ADR-039 — DataSource `computed` expression kind: deliberately unspecified at MVP
+- **Date:** 2026-05-03
+- **Status:** accepted
+- **Context:** During Phase 1.1, `@saasagent/protocol` defined five `DataSource` kinds for wiring data into composed UI component props: `literal | memory | host-api | sub-agent | computed`. The `computed` kind requires an expression language to evaluate data derivations at render time. Three candidates were identified: JSONPath (widely known, existing libs), JMESPath (better for nested queries), or a tiny safe custom DSL. No real composition use cases existed yet to drive the choice.
+- **Options considered:**
+  - A. Lock to JSONPath now.
+  - B. Lock to JMESPath now.
+  - C. Custom minimal DSL (max control; build cost).
+  - D. **Keep expression deliberately vague — accept an opaque string; defer language choice until real use cases emerge.**
+- **Decision:** D. `DataSource.computed` carries an opaque expression string at MVP. The evaluation engine is not specified. No `computed`-sourced props are renderable at MVP; the kind is a schema placeholder.
+- **Consequences:**
+  - Avoids locking an expression language before seeing actual composition needs in Phase 1.4 (first real Feature/Service doc compositions).
+  - Schema is additive — the expression language choice adds an evaluator without changing the existing `DataSource` union type.
+  - A decision to lock the language is deferred to Phase 1.4 (Atomic UI Components registry + first real `.feature.md` compositions). JSONPath is the current leading candidate.
+- **Source:** Conversation 2026-05-03, Phase 1.1 build review: Claude asked "Want me to lock [DataSource.computed] down at slice 1.2, or leave loose until we see real use cases?" → Rahul confirmed: "keep the schemas loose."
+
 ## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
 - **Date:** 2026-05-08
 - **Status:** accepted (closes Q6.3)

@@ -111,9 +111,33 @@ User turn / proactive trigger
 
 ## Bidirectional typed-JSON instruction protocol
 
-- **Schema-first.** All UI ↔ runtime traffic is typed JSON. Domain-dev natural-language specs in Feature/Service docs are compiled to the same typed JSON at registration time.
-- **Causality-tracked.** Every emit carries the parent compose-cycle ID for memory + observability.
+- **Schema-first.** All UI ↔ runtime traffic is typed JSON. Feature/Service docs are read directly by the planner as context (no compilation per ADR-013); inline typed-JSON escape hatches in those docs are validated at registration time for registry-reference integrity only.
+- **Causality-tracked.** Every emit carries the parent compose-cycle ID (`composeCycleId` in `InstructionEnvelope`) for memory + observability — every user action is traceable to the compose cycle that rendered the widget.
 - **Replayable.** Memory captures the full trajectory: composed artifact → user interaction → re-plan → next artifact.
+
+## `@saasagent/protocol` — canonical typed-JSON wire format (Phase 1.1)
+
+`packages/protocol` (`@saasagent/protocol`) is the single source of truth for all typed-JSON contracts. Every other package imports from here; no type duplication across packages is permitted.
+
+| Type | Purpose |
+|---|---|
+| `LayoutNode` | One node in the composed layout tree — component ID, props (via `DataSource`), emit spec |
+| `ComposedLayout` | Full artifact emitted by the UIComposer — array of `LayoutNode`s + metadata |
+| `DataSource` | How a prop value is sourced: `literal \| memory \| host-api \| sub-agent \| computed` (expression TBD per ADR-039) |
+| `EmitSpec` | When/what to emit from a user interaction — event type, payload shape, `debounceMs` (kept; guards double-click) |
+| `InstructionEnvelope` | Shell → runtime interaction emit; carries `composeCycleId` for causality tracking |
+| `InstructionAck` | Runtime acknowledgment of a processed instruction |
+| `UIComposer` | Interface all composer implementations satisfy; parameterized by `ComposeContext` + `MobileContext` |
+| `AtomicComponent` | Registry schema entry for a design-system primitive (per ADR-005, ADR-009) |
+| `EmitTransport` | Transport abstraction shared by the `LayoutRenderer` (web-shell) and the runtime client — decouples both from the specific SSE/WS implementation |
+| DTCG types | W3C Design Tokens Canonical Group representation (per ADR-025) |
+
+**Key design choices:**
+- `EmitTransport` lives in `@saasagent/protocol` (not in a consumer package) so both the renderer and the runtime client reference the same interface without a dependency cycle.
+- `DataSource.computed` expression string is deliberately unspecified at MVP — see ADR-039.
+- `InstructionEnvelope.composeCycleId` makes every user action traceable to the compose cycle that rendered the interacted widget, enabling memory trajectory reconstruction and observability.
+
+**Source:** Conversation 2026-05-03, Phase 1.1 build: "Phase 1 slice 1.1 done and pushed"; schema confirmed in Phase 1.1/1.2 design review with Rahul.
 
 ## Memory architecture
 
@@ -153,11 +177,13 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
-### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
+### Closed in Batch 6 (2026-05-03)
+- ✅ Real-time transport — SSE (planner output stream → shell) + WebSocket (bidirectional instruction emit); WebRTC reserved for voice Phase 5 [ADR-038]
+
+### Still open (Batch 6 — v1/v2 details, groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-3. **Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
-4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+3. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

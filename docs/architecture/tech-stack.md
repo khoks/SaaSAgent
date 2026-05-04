@@ -56,3 +56,5 @@
 | Monorepo tooling | pnpm WS / Yarn WS / Nx / Turborepo / Bun WS | **pnpm workspaces + Turborepo** (TS); Python SDK in `packages/sdk-py` with uv or poetry | [ADR-037](../decisions/decision-log.md) |
 | Build team | Rahul-only / Rahul+Claude / external hires | **Rahul + Claude only** (no external hires for MVP) | [ADR-036](../decisions/decision-log.md) |
 | CI/CD | GitHub Actions (default for our build) | GitHub Actions | — |
+| Monorepo packages (Phase 0+1) | — | `@saasagent/protocol` (wire format), `@saasagent/runtime` (orchestrator), `@saasagent/sdk` (TS sub-agent SDK), `@saasagent/web-shell` (`<saas-agent>` WC + `LayoutRenderer`), `@saasagent/cli` (`agentsaas` binary) | [ADR-037](../decisions/decision-log.md) |
+| DataSource expression language | JSONPath / JMESPath / custom DSL | **Unspecified at MVP** — `computed` kind carries opaque expression string; language choice deferred to Phase 1.4 when first real compositions land | [ADR-039](../decisions/decision-log.md) |
