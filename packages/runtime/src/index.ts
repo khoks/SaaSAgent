@@ -19,13 +19,24 @@ import { PROTOCOL_VERSION, type UIComposer } from '@saasagent/protocol';
 
 import { HaikuComposer, StubComposer } from './composer/index.js';
 import { AnthropicProvider } from './model/index.js';
-import { InMemoryComponentRegistry, type ComponentRegistryStore } from './registry/index.js';
+import {
+  InMemoryComponentRegistry,
+  InMemoryThemeRegistry,
+  type ComponentRegistryStore,
+  type ThemeRegistryStore,
+} from './registry/index.js';
 import { RuntimeServer } from './transport/index.js';
 
 export const VERSION = '0.0.0';
 export { StubComposer, HaikuComposer } from './composer/index.js';
 export { RuntimeServer } from './transport/index.js';
-export { InMemoryComponentRegistry, type ComponentRegistryStore } from './registry/index.js';
+export {
+  InMemoryComponentRegistry,
+  InMemoryThemeRegistry,
+  flattenDTCG,
+  type ComponentRegistryStore,
+  type ThemeRegistryStore,
+} from './registry/index.js';
 export {
   AnthropicProvider,
   MockProvider,
@@ -58,6 +69,8 @@ export class Runtime {
   private server: RuntimeServer | null = null;
   /** Public so demo seeders / tests can pre-register primitives before start(). */
   readonly componentRegistry: ComponentRegistryStore = new InMemoryComponentRegistry();
+  /** Public theme registry for the same reason. */
+  readonly themeRegistry: ThemeRegistryStore = new InMemoryThemeRegistry();
 
   constructor(public readonly config: RuntimeConfig = {}) {}
 
@@ -68,6 +81,7 @@ export class Runtime {
       port,
       composer,
       componentRegistry: this.componentRegistry,
+      themeRegistry: this.themeRegistry,
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(

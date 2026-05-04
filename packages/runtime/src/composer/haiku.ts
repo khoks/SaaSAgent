@@ -54,9 +54,9 @@ export class HaikuComposer implements UIComposer {
   }
 
   async compose(intent: string, context: ComposeContext): Promise<ComposedLayout> {
-    // Cache key includes the registry version so a registry change naturally
-    // invalidates cached layouts that referenced the old vocabulary.
-    const cacheKey = `${context.components.version}::${canonicalIntent(intent)}`;
+    // Cache key includes both registry versions so a change to either the
+    // component vocabulary or the theme naturally invalidates cached layouts.
+    const cacheKey = `${context.components.version}::${context.theme.version}::${canonicalIntent(intent)}`;
 
     const cached = this.cache.get(cacheKey);
     if (cached !== undefined) {
@@ -69,9 +69,9 @@ export class HaikuComposer implements UIComposer {
     }
 
     // System prompt is rebuilt per-compose since the registry can change at
-    // runtime (REST POST /registry/components). The Anthropic prompt cache
-    // still hits as long as the registry version is stable across calls.
-    const systemBlocks = buildComposerSystemPrompt(context.components);
+    // runtime (REST PUT /registry/components or /registry/theme). The Anthropic
+    // prompt cache still hits as long as both versions are stable across calls.
+    const systemBlocks = buildComposerSystemPrompt(context.components, context.theme);
     const userPrompt = buildUserPrompt(intent, context);
 
     // 1. Try Haiku composer first.

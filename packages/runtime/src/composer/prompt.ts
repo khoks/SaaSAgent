@@ -13,9 +13,14 @@
  * vocabulary changes, otherwise the composer would emit stale primitives).
  */
 
-import type { AtomicComponent, AtomicComponentRegistry } from '@saasagent/protocol';
+import type {
+  AtomicComponent,
+  AtomicComponentRegistry,
+  ThemeRegistration,
+} from '@saasagent/protocol';
 
 import type { SystemBlock } from '../model/types.js';
+import { flattenDTCG } from '../registry/theme.js';
 
 const COMPOSER_INSTRUCTIONS = `You are the UI Composer for the SaaSAgent platform.
 
@@ -70,20 +75,42 @@ const EXAMPLE_BLOCK = `Example output:
  * Block layout:
  *   1. Stable instruction prefix              ← cache: true (changes only on platform release)
  *   2. Atomic components list (from registry) ← cache: true (changes when registry version bumps)
- *   3. Example block (stable)                 ← cache: true
+ *   3. Theme tokens summary (from registry)   ← cache: true (changes when theme version bumps)
+ *   4. Example block (stable)                 ← cache: true
  *
- * All three blocks are cacheable. Cache cap on Haiku (4096 tokens prefix) means
+ * All four blocks are cacheable. Cache cap on Haiku (4096 tokens prefix) means
  * Phase 1.4 prompts will start caching as the registry grows past ~50 components.
  */
-export function buildComposerSystemPrompt(registry?: AtomicComponentRegistry): SystemBlock[] {
+export function buildComposerSystemPrompt(
+  registry?: AtomicComponentRegistry,
+  theme?: ThemeRegistration,
+): SystemBlock[] {
   const componentsDoc = registry && Object.keys(registry.components).length > 0
     ? renderRegistryAsPromptDoc(registry)
     : PLACEHOLDER_COMPONENTS_DOC;
-  return [
+  const blocks: SystemBlock[] = [
     { text: COMPOSER_INSTRUCTIONS, cache: true },
     { text: componentsDoc, cache: true },
-    { text: EXAMPLE_BLOCK, cache: true },
   ];
+  const themeDoc = renderThemeAsPromptDoc(theme);
+  if (themeDoc) blocks.push({ text: themeDoc, cache: true });
+  blocks.push({ text: EXAMPLE_BLOCK, cache: true });
+  return blocks;
+}
+
+function renderThemeAsPromptDoc(theme?: ThemeRegistration): string | null {
+  if (!theme || Object.keys(theme.tokens).length === 0) return null;
+  const flat = flattenDTCG(theme.tokens);
+  if (Object.keys(flat).length === 0) return null;
+  const lines: string[] = [
+    `Theme tokens (host-registered theme "${theme.name}", version ${theme.version}). When applying styling overrides on a LayoutNode, reference these token paths via the optional "theme" field. Do not invent token paths.`,
+    '',
+  ];
+  const sorted = Object.entries(flat).sort(([a], [b]) => a.localeCompare(b));
+  for (const [path, value] of sorted) {
+    lines.push(`  ${path.padEnd(40)} = ${value}`);
+  }
+  return lines.join('\n');
 }
 
 function renderRegistryAsPromptDoc(registry: AtomicComponentRegistry): string {

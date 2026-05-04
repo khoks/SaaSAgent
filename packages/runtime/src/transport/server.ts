@@ -29,7 +29,9 @@ import type {
 import { ProviderError } from '../model/types.js';
 import {
   type ComponentRegistryStore,
+  type ThemeRegistryStore,
   InMemoryComponentRegistry,
+  InMemoryThemeRegistry,
 } from '../registry/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
@@ -41,6 +43,8 @@ export interface RuntimeServerOptions {
   composer: UIComposer;
   /** Atomic UI Components registry store. Defaults to a fresh InMemoryComponentRegistry. */
   componentRegistry?: ComponentRegistryStore;
+  /** Theme & branding tokens registry store. Defaults to a fresh InMemoryThemeRegistry. */
+  themeRegistry?: ThemeRegistryStore;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -57,17 +61,18 @@ const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Max-Age': '86400',
 };
 
-const DEFAULT_THEME = { name: 'default', version: '0.0.0', tokens: {} } as const;
 
 export class RuntimeServer {
   private readonly httpServer: Server;
   private readonly wss: WebSocketServer;
   private readonly sseClients = new Set<ServerResponse>();
   private readonly componentRegistry: ComponentRegistryStore;
+  private readonly themeRegistry: ThemeRegistryStore;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
     this.componentRegistry = options.componentRegistry ?? new InMemoryComponentRegistry();
+    this.themeRegistry = options.themeRegistry ?? new InMemoryThemeRegistry();
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -160,9 +165,46 @@ export class RuntimeServer {
           sseClients: this.sseClients.size,
           componentRegistryVersion: this.componentRegistry.get().version,
           componentCount: Object.keys(this.componentRegistry.get().components).length,
+          themeName: this.themeRegistry.get().name,
+          themeVersion: this.themeRegistry.get().version,
         }),
       );
       return;
+    }
+
+    // Theme registry endpoints.
+    if (url === '/registry/theme') {
+      if (req.method === 'GET') {
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(this.themeRegistry.get()));
+        return;
+      }
+      if (req.method === 'PUT') {
+        const body = (await readJsonBody(req)) as {
+          name?: string;
+          description?: string;
+          tokens?: Record<string, unknown>;
+        } | null;
+        if (!body || typeof body.name !== 'string' || !body.tokens) {
+          res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'PUT body must be { name: string, tokens: DTCGTokenGroup, description?: string }' }));
+          return;
+        }
+        const updated = this.themeRegistry.replace({
+          name: body.name,
+          description: body.description,
+          tokens: body.tokens as never,
+        });
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(updated));
+        return;
+      }
+      if (req.method === 'DELETE') {
+        const updated = this.themeRegistry.clear();
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(updated));
+        return;
+      }
     }
 
     // Atomic UI Components registry endpoints.
@@ -233,7 +275,7 @@ export class RuntimeServer {
   private buildContext(intent: string): ComposeContext {
     return {
       components: this.componentRegistry.get(),
-      theme: DEFAULT_THEME,
+      theme: this.themeRegistry.get(),
       conversationContext: { intent },
     };
   }
