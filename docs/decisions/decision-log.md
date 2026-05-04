@@ -674,3 +674,38 @@
   - **WebRTC reserved for voice (Phase 5)** when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel.
   - Native browser support for both is universal; no polyfills required.
 - **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).
+
+## ADR-040 — ComponentRegistryStore: REST CRUD for atomic UI primitives; HaikuComposer reads registry at compose time
+- **Date:** 2026-05-04
+- **Status:** accepted
+- **Context:** ADR-005 requires the UI Composer to draw its vocabulary only from the host's registered atomic design-system primitives. Phase 1.4.1 implements this: an in-memory store for atomic component registrations, a REST API to manage them, and wiring of the store into `HaikuComposer` so vocabulary constraint is enforced at compose time.
+- **Options considered:**
+  - A. Hardcode primitives in `HaikuComposer/prompt.ts` (placeholder strategy used through Phase 1.3).
+  - B. **In-memory `ComponentRegistryStore` with REST CRUD + composer reads full registry at each compose call**.
+  - C. File-backed / DB-backed store at MVP (premature; adapter interface handles this later).
+- **Decision:** B. `ComponentRegistryStore` is an in-memory store (replaceable by a persistent adapter later) with REST endpoints: `PUT /registry/components/:id` (upsert), `GET /registry/components/:id` (fetch), `GET /registry/components` (list all), `DELETE /registry/components/:id` (remove). `HaikuComposer` reads the full component list and includes it in the stable `SystemBlock[]` prefix of every Anthropic API call (prompt-cached via `cache_control: {type: "ephemeral"}`). The composer is now vocabulary-constrained: it can only reference primitives that exist in the registry.
+- **Consequences:**
+  - **On-brand guarantee holds by construction** — HaikuComposer's composed layouts can only reference registered primitives; off-brand components are not in its vocabulary.
+  - **CORS enabled** on the runtime server so the browser-hosted demo-host (Vite dev server on port 5173) can call the REST API on port 8080 without preflight failures.
+  - When the registry is empty (cold start), the composer falls back to placeholder primitives to remain functional; once populated, it uses only registered names.
+  - The `SystemBlock[]` prefix (component registry + theme tokens) is the Anthropic prompt-cache prime target — cache hit rate increases as the registry grows toward the 4096-token minimum on Haiku 4.5.
+  - Store is in-memory only at MVP; a `ComponentRegistryAdapter` interface allows persistent backing (Postgres, Redis, file) without changing the composer.
+  - **End-to-end browser-verified (Phase 1.4.1):** after populating 6 e-commerce primitives via REST, HaikuComposer (live Anthropic API) composed a layout referencing `Card`, `PageHeading`, `BodyText` from the registry — confirming vocabulary constraint. Standard placeholder `Heading`, `Text`, `Button` primitives were NOT used.
+- **Source:** Conversation 2026-05-04, Phase 1.4.1: "HaikuComposer composed the welcome layout using only registered primitives: Card (from registry, version 1.0.0), PageHeading (from registry), BodyText (from registry). Heading / Text / Button placeholder primitives — not used — composer obeyed the registry vocabulary."
+
+## ADR-041 — ThemeRegistryStore: REST GET/PUT for DTCG theme tokens; tokens included in HaikuComposer system prompt
+- **Date:** 2026-05-04
+- **Status:** accepted
+- **Context:** ADR-025 chose DTCG as the canonical theme/branding token schema. Phase 1.4.2 wires the theme store into the runtime and into `HaikuComposer`, so the composer has full brand context at compose time.
+- **Options considered:**
+  - A. Hardcode theme tokens in `HaikuComposer/prompt.ts` (no dynamic theme support).
+  - B. **`ThemeRegistryStore` with REST `GET/PUT /registry/theme` + tokens appended to the stable `SystemBlock[]` prefix alongside the component registry**.
+  - C. Pass theme as a per-request parameter (breaks the stable-prefix / prompt-cache design).
+- **Decision:** B. A single `ThemeRegistryStore` instance holds the active DTCG token set for the deployment (one active theme at a time at MVP). REST: `GET /registry/theme` returns the current token set; `PUT /registry/theme` upserts it. `HaikuComposer` appends the serialized token set to the stable `SystemBlock[]` prefix — the same Anthropic `ephemeral` cache block that holds the component registry. The `/health` endpoint reports `themeName` and `themeVersion` so operators can confirm what's loaded.
+- **Consequences:**
+  - Composer has full theme context at compose time: spacing, color, typography, border-radius, and other brand conventions are visible to the model when selecting how to arrange registered primitives.
+  - Combined (component registry + theme tokens) in one stable prefix maximizes Anthropic prompt-cache efficiency — one cache entry covers both.
+  - One active theme at MVP; multi-theme support (e.g., light/dark, tenant-specific) is a future concern.
+  - Health endpoint reflects live registry state — useful during development and in production monitoring.
+  - **End-to-end browser-verified (Phase 1.4.2):** after PUT-ing a "walmart-archetype" theme (v1.0.0), `/health` confirmed `themeName: "walmart-archetype", themeVersion: "1.0.0"`; HaikuComposer's next compose used both the component registry AND the theme in scope.
+- **Source:** Conversation 2026-05-04, Phase 1.4.2: "Composer used the registered atomic primitives AND had the theme in scope (/health shows themeName: 'walmart-archetype', themeVersion: '1.0.0'). Phase 1.4.2 verified end-to-end."
