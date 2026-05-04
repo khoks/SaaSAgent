@@ -1,6 +1,6 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phase 0 done; Phase 1 in-progress — slice 1.1 done)
+- **Status:** in-progress (Phase 0 done; Phase 1 gate satisfied — slices 1.1 + 1.2 done; remaining slices 1.3-1.5 in backlog)
 - **Created:** 2026-04-26
 - **Last updated:** 2026-05-03
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
@@ -32,14 +32,15 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 **Phase 0 gate:** `pnpm install && pnpm build && pnpm test` succeeds end-to-end on a fresh clone. ✅
 
-### Phase 1 — Composition — **in-progress** (slice 1.1 done 2026-05-03)
-- [EPIC-008 — Phase 1 Composition](../epics/EPIC-008-phase-1-composition.md) — **in-progress**
+### Phase 1 — Composition — **in-progress** (gate satisfied 2026-05-03)
+- [EPIC-008 — Phase 1 Composition](../epics/EPIC-008-phase-1-composition.md) — **in-progress** (gate ✅)
   - ✅ **Slice 1.1** — `@saasagent/protocol` package, stub UIComposer, layout renderer skeleton, bidirectional loop validated in JSDOM (18 tests) — `5a4c97c`
-  - Slice 1.2 — WC shell side-panel + atomic component registry *(backlog)*
-  - Slice 1.3 — Theme tokens registry *(backlog)*
-  - Slice 1.4 — Live UI Composer (Haiku + SSE/WebSocket per ADR-038) *(backlog)*
+  - ✅ **Slice 1.2** — Real SSE + WebSocket transport; `/health`, `/sse`, `/ws` endpoints; 29 tests; full bidirectional loop over live network — `b796d02`
+  - Slice 1.3 — WC shell side-panel + atomic component registry *(backlog)*
+  - Slice 1.4 — Theme tokens registry *(backlog)*
+  - Slice 1.5 — Live UI Composer (Haiku + cached templates + Sonnet fallback) *(backlog)*
 
-**Phase 1 gate:** end-to-end composed artifact renders from a hand-crafted layout-tree input.
+**Phase 1 gate:** end-to-end composed artifact renders from a hand-crafted layout-tree input. ✅ **Satisfied 2026-05-03** — Composer → SSE → renderer → click → WS → re-compose → SSE → re-render proven over live network.
 
 ### Phase 2 — Planning *(MVP-of-MVP gate)*
 - Planner (Sonnet, on Claude Agent SDK)
