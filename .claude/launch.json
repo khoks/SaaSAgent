@@ -4,7 +4,7 @@
     {
       "name": "runtime",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["packages/runtime/dist/index.js"],
+      "runtimeArgs": [".claude/launch-runtime.mjs"],
       "port": 8080
     },
     {
