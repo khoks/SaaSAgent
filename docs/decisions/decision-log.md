@@ -628,3 +628,23 @@
   - Python SDK lives in `packages/sdk-py/` as a sibling (Python tooling — uv or poetry — orthogonal to the JS workspace).
   - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
 - **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).
+
+## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
+- **Date:** 2026-05-08
+- **Status:** accepted (closes Q6.3)
+- **Context:** The Web Component shell needs a real-time channel to the runtime: planner streams composed UI updates + status to the shell as it generates them, and the shell streams typed-JSON interaction emits back as the user clicks/types/hovers (per ADR-005 + ADR-013).
+- **Options considered:**
+  - A. WebSocket only (bidirectional single channel).
+  - B. SSE only (server→client; client uses HTTP POST for emits).
+  - C. **SSE for streaming planner output + WebSocket for bidirectional emit (split channels)**.
+  - D. WebRTC (over-engineered for the chat surface; reserved for voice in Phase 5).
+  - E. HTTP/2 Server Push (legacy / unreliable browser support).
+- **Decision:** C.
+- **Consequences:**
+  - **SSE channel** (server → shell): planner streams composed layout updates (typed JSON `LayoutTree` deltas), status events, narration text. SSE has native reconnect/Last-Event-ID semantics — robust against network blips. Simpler one-way contract.
+  - **WebSocket channel** (shell ↔ runtime): user interaction emits flow as `InstructionEnvelope` messages from shell; runtime can also push live control messages (cancel composition, switch render mode, force re-render) when bidirectionality is needed.
+  - **2 transports to operate, 2 to test** — mitigated by the clean concern split (SSE = output stream, WS = interaction RPC).
+  - **Both endpoints share auth** (host SSO token from initial connect handshake).
+  - **WebRTC reserved for voice (Phase 5)** when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel.
+  - Native browser support for both is universal; no polyfills required.
+- **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).

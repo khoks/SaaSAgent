@@ -1,8 +1,8 @@
 {
-  "name": "@saasagent/web-shell",
+  "name": "@saasagent/protocol",
   "version": "0.0.0",
   "private": true,
-  "description": "SaaSAgent embeddable Web Component shell",
+  "description": "SaaSAgent typed-JSON protocol — LayoutTree, InstructionEnvelope, AtomicComponent registry, DTCG theme tokens, UIComposer interface. Shared by runtime, web-shell, and SDKs.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,13 +21,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
-  "dependencies": {
-    "@saasagent/protocol": "workspace:*"
-  },
   "devDependencies": {
     "typescript": "^5.6.3",
     "vitest": "^2.1.5",
-    "@types/node": "^22.9.0",
-    "jsdom": "^25.0.1"
+    "@types/node": "^22.9.0"
   }
 }

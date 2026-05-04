@@ -3,13 +3,20 @@
  *
  * The runtime is the substrate that orchestrates Skills, Sub-Agents, Tools,
  * and the UI Composer. It runs inside the enterprise's data plane (per ADR-006)
- * and is consumed by the Web Component shell over a real-time transport.
+ * and is consumed by the Web Component shell over the SSE + WebSocket transport
+ * (per ADR-038).
  *
- * Status: Phase 0 (foundation scaffolding only — not yet functional).
- * See docs/work/initiatives/INIT-003-build-mvp.md for the build plan.
+ * Status: Phase 1 slice 1.1 (protocol + stub composer wired; real transport + LLM
+ * composer in subsequent slices).
  */
 
+import { fileURLToPath } from 'node:url';
+import { realpathSync } from 'node:fs';
+
+import { PROTOCOL_VERSION } from '@saasagent/protocol';
+
 export const VERSION = '0.0.0';
+export { StubComposer } from './composer/index.js';
 
 export interface RuntimeConfig {
   /** Anthropic API key (or path through enterprise's provider — Bedrock / Vertex / Azure). */
@@ -30,19 +37,15 @@ export class Runtime {
   constructor(public readonly config: RuntimeConfig) {}
 
   async start(): Promise<void> {
-    // Phase 0 stub. Real wiring lands in Phase 1+.
-    console.log(`[saasagent/runtime v${VERSION}] starting (Phase 0 skeleton — registries, planner, composer not yet wired).`);
+    console.log(
+      `[saasagent/runtime v${VERSION}] starting (Phase 1.1 — protocol v${PROTOCOL_VERSION} + stub composer wired; transport + LLM composer in next slices).`,
+    );
   }
 
   async stop(): Promise<void> {
     console.log(`[saasagent/runtime v${VERSION}] stopping.`);
   }
 }
-
-// Allow `node dist/index.js` invocation for smoke testing.
-// Cross-platform main-module detection: fileURLToPath normalizes the path the same way on Windows + POSIX.
-import { fileURLToPath } from 'node:url';
-import { realpathSync } from 'node:fs';
 
 const isMain = (() => {
   if (!process.argv[1]) return false;

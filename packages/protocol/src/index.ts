@@ -1,0 +1,44 @@
+/**
+ * @saasagent/protocol — typed-JSON wire formats and shared interfaces.
+ *
+ * Imported by:
+ *   - @saasagent/runtime (composer + planner consume LayoutTree, AtomicComponentRegistry, etc.)
+ *   - @saasagent/web-shell (renderer consumes LayoutTree; emits InstructionEnvelope)
+ *   - @saasagent/sdk (sub-agents reference these types in their federation contract)
+ *
+ * Versioned per {@link PROTOCOL_VERSION}.
+ */
+
+export { PROTOCOL_VERSION, type ProtocolVersion } from './version.js';
+export type {
+  LayoutNode,
+  ComposedLayout,
+  ComposedLayoutMetadata,
+  DataSource,
+  MemoryQuery,
+  EmitSpec,
+} from './layout.js';
+export type { InstructionEnvelope, InstructionAck } from './instruction.js';
+export type {
+  DTCGValue,
+  DTCGCompositeValue,
+  DTCGToken,
+  DTCGTokenGroup,
+  ThemeRegistration,
+  ThemeOverride,
+} from './theme.js';
+export type {
+  ComponentFramework,
+  AtomicComponent,
+  ComponentExample,
+  ComponentAccessibility,
+  AtomicComponentRegistry,
+} from './atomic-component.js';
+export type {
+  UIComposer,
+  ComposeContext,
+  ConversationContext,
+  ConversationTurn,
+  MemoryRecall,
+  MobileContext,
+} from './composer.js';

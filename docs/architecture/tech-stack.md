@@ -31,7 +31,7 @@
 | DOM observation eventing | MutationObserver, +IntersectionObserver, +custom semantic events | **MO + IO + custom semantic event channel from host via Adapters registry**; MO+IO-only fallback when host doesn't emit custom events | [ADR-022](../decisions/decision-log.md) |
 | Mobile embedding | React Native, native SDKs, **WebView bridge** | **WebView bridge with mobile-context-aware composition** at MVP; native SDKs at v1.5 | [ADR-017](../decisions/decision-log.md) |
 | Multi-tenancy model | Pool, silo, hybrid | **Single-tenant (one deployment per enterprise)** | derivative of [ADR-006](../decisions/decision-log.md) |
-| Real-time transport | WebSocket, SSE, WebRTC (for voice), hybrid | TBD | — |
+| Real-time transport (shell ↔ runtime) | WebSocket, SSE, WebRTC, hybrid | **SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit**; WebRTC reserved for voice (Phase 5) | [ADR-038](../decisions/decision-log.md) |
 | Observability stack | OpenTelemetry, custom, hosted | OpenTelemetry (host-controlled exporters) | derivative of [ADR-006](../decisions/decision-log.md) |
 | Auth model | Bring-your-own (host SSO), platform-issued tokens | **Bring-your-own (host SSO)** | derivative of [ADR-006](../decisions/decision-log.md) |
 | Sub-agent execution model | In-process / process-isolated / WASM / VM / **federated runtimes** | **Sub-agents are separate runtimes built by domain teams via SDK + boilerplate; federate into platform via Sub-Agent registry over defined protocol; isolation is automatic (separate services)** | [ADR-021](../decisions/decision-log.md) |
