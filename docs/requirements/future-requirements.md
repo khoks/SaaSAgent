@@ -52,3 +52,13 @@ Each entry:
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
+
+### [2026-05-03] Native mobile SDKs (iOS Swift + Android Kotlin) at v1.5
+**Source:** ADR-017 (2026-04-28): "v1.5: native SDKs (iOS / Android) for hosts who need full native UX."
+**Category:** capability / integration
+**Notes:** MVP uses a WebView bridge with a thin native shim (ADR-017). Hosts with high-performance native UX requirements — deep animations, biometrics, OS-level push, intricate gesture handling — will need first-class native SDKs. SDK contracts are designed at MVP to allow native SDK addition at v1.5 without re-architecting the protocol or registry layers. Thin shim per platform handles: launching the agent overlay, providing app-screen state, routing native events (microphone, push, biometrics).
+
+### [2026-05-03] Voice I/O via WebRTC (Phase 5)
+**Source:** ADR-038 (2026-05-03): "WebRTC reserved for voice (Phase 5) when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel."
+**Category:** capability
+**Notes:** Phase 5 introduces a third real-time channel alongside SSE (planner streaming) and WebSocket (instruction emit). Voice requires: (a) microphone capture with voice-activity detection, (b) TTS narration model (host-supplied or bundled), (c) WebRTC for the low-latency duplex audio path. Mobile WebView bridge shim must route native microphone permissions. Desktop uses Web Audio API. Voice is architecturally separated because it has fundamentally different codec, latency, and session-lifecycle characteristics from the text-based protocol channels.

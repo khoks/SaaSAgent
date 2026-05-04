@@ -161,3 +161,37 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).
+
+## Batch 6 closure notes (2026-05-03)
+
+From the "Still open (Batch 6)" list above:
+- **✅ Item 3 closed — Real-time transport (WC shell ↔ runtime):** SSE (server → shell, planner streaming output) + WebSocket (bidirectional instruction emit, shell → runtime); WebRTC reserved for voice (Phase 5). See [ADR-038](../decisions/decision-log.md).
+
+Items 1, 2, and 4 remain open.
+
+## Phase 1.1 — Protocol type model (concrete)
+
+`@saasagent/protocol` implemented in Phase 1.1 (commit `5a4c97c`). These are the concrete wire-format types that everything else (sub-agents, eval, churn, mobile composer, registries) builds on:
+
+**`DataSource` discriminated union** — declares how a `LayoutNode` prop gets its runtime value:
+- `literal` — hardcoded value inline in the layout tree
+- `memory` — fetched from agent memory by key
+- `host-api` — fetched from a host-registered API endpoint
+- `sub-agent` — produced by a named sub-agent capability
+- `computed` — derived via an expression (JSONPath / JMESPath / safe DSL — deliberately left loose at MVP until real use cases accumulate; to be locked in slice 1.2 or deferred to v1)
+
+Every `LayoutNode` in a `ComposedLayout` carries `DataSource` entries for each bound prop. This is the agent's runtime data-wiring contract and the primary extension surface for sub-agents and host integrations.
+
+**`EmitSpec`** — declares what user interactions a `LayoutNode` should observe and emit back as `InstructionEnvelope` messages. Carries optional `debounceMs` for double-click protection (kept for now, flagged for removal if unused by v1).
+
+**`InstructionEnvelope` + `InstructionAck`** — bidirectional event wire format. The `composeCycleId` field links every shell-emitted event back to the compose cycle that produced the triggering UI artifact, enabling causality-tracked memory and replay.
+
+**`UIComposer` interface** — accepts `ComposeContext` (turn + memory + registry refs) and optional `MobileContext` (platform / screen size / touch capability / network class), returns a typed-JSON `ComposedLayout`. `MobileContext` is the concrete implementation of mobile-aware composition per [ADR-017](../decisions/decision-log.md).
+
+**Phase 1 build sequencing:**
+| Slice | Focus | Status |
+|---|---|---|
+| 1.1 | protocol types + StubComposer + LayoutRenderer (JSDOM-validated bidirectional loop) | ✅ done |
+| 1.2 | real Node SSE server + `ws` WebSocket server + shell client, end-to-end wire loop | planned |
+| 1.3 | real Haiku/Sonnet Composer LLM call + cached layout templates per intent (ADR-012) | planned |
+| 1.4 | Atomic UI Components registry (manual JSON + Storybook + metadata) + DTCG theme importer + hot-reload (ADR-009, ADR-025) | planned |
