@@ -628,3 +628,18 @@
   - Python SDK lives in `packages/sdk-py/` as a sibling (Python tooling — uv or poetry — orthogonal to the JS workspace).
   - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
 - **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).
+
+## ADR-039 — Protocol schema design: loose, extensible types over strict compile-time constraints
+- **Date:** 2026-05-03
+- **Status:** accepted
+- **Context:** During Phase 1.2 review, Claude offered the option to tighten the `LayoutNode` and related protocol schemas (discriminated-union exhaustiveness, stricter child constraints, narrower `DataSource` literals). Rahul was asked whether to tighten or keep loose.
+- **Options considered:**
+  - A. **Strict schemas** — exhaustive discriminated unions, compile-time enforcement of valid compositions, narrower generics. Catches bugs earlier but breaks frequently as the protocol evolves.
+  - B. **Loose, extensible schemas** — types describe the shape broadly; runtime enforcement via Zod parse + integration tests. Easier to evolve without breaking changes across the monorepo.
+- **Decision:** B. Keep schemas loose. Rahul's explicit call: "keep the schemas loose."
+- **Consequences:**
+  - Protocol types (`LayoutNode`, `ComposedLayout`, `DataSource`, `EmitSpec`, `InstructionEnvelope`, etc.) are intentionally permissive — they describe the expected shape without exhaustive literal unions or recursive-depth constraints.
+  - Runtime correctness is enforced by Zod validators at the composer output boundary and by integration tests that run the full bidirectional loop.
+  - Reduces monorepo-wide churn when protocol fields are added or changed — no cascading type errors across all packages for additive changes.
+  - Revisit at v1 if runtime validation misses too much vs. a stricter approach.
+- **Source:** Conversation 2026-05-03 (Rahul Phase 1.2 review: "keep the schemas loose").

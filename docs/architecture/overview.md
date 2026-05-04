@@ -156,7 +156,7 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 ### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-3. **Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
+3. ~~**Real-time transport**~~ ✅ **Closed** — SSE (server→shell) + WebSocket (shell↔runtime) [ADR-038].
 4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
 
 ## Phase 0 scaffold (completed 2026-05-03)
@@ -174,6 +174,35 @@ Monorepo is bootstrapped and all gate checks pass. Package structure:
 Gate: `pnpm install && pnpm build && pnpm test` — all green (4/4 builds, 8/8 tests with `--passWithNoTests`). Runtime smoke (`[saasagent/runtime v0.0.0] starting`) and CLI smoke (`agentsaas --help / --version / init / dev / registry`) both pass.
 
 **Source:** Session 2026-05-03 — Phase 0 implementation; commit 80da183.
+
+## Phase 1 protocol + transport (completed 2026-05-03)
+
+Three slices landed in the same session, all gates green (42 tests across 5 packages).
+
+**Phase 1.1 — `@saasagent/protocol` + StubComposer + LayoutRenderer**
+
+New shared package `packages/protocol` (`@saasagent/protocol`) defines the full typed-JSON contract between runtime and shell:
+
+| Module | Defines |
+|---|---|
+| `version.ts` | `PROTOCOL_VERSION = '0.1.0'` |
+| `layout.ts` | `LayoutNode`, `ComposedLayout`, `DataSource` (literal/memory/host-api/sub-agent/computed), `EmitSpec` |
+| `instruction.ts` | `InstructionEnvelope`, `InstructionAck` (with `composeCycleId` for causality tracking) |
+| `theme.ts` | DTCG-compatible token types (per ADR-025) |
+| `atomic-component.ts` | `AtomicComponent` registry shape (per ADR-005, ADR-009) |
+| `composer.ts` | `UIComposer` interface, `ComposeContext`, `MobileContext` |
+
+`StubComposer` implements `UIComposer`, returns a hand-crafted `Card → Text → Button` layout for any intent. `LayoutRenderer` in `web-shell` walks a `ComposedLayout`, renders DOM nodes, subscribes to interaction events, emits `InstructionEnvelope` back to runtime.
+
+**Phase 1.2 — Real SSE + WebSocket transport (closes ADR-038)**
+
+Runtime HTTP server (`@saasagent/runtime`) exposes `GET /health`, `GET /sse` (planner → shell), `WS /ws` (bidirectional instruction channel). Full loop validated: SSE welcome layout → shell renders → click → WS emit → re-compose → SSE re-render.
+
+**Phase 1.3 — HaikuComposer + ModelProvider abstraction + Zod output validation**
+
+`StubComposer` replaced by `HaikuComposer`. New `ModelProvider` interface wraps Anthropic SDK (`AnthropicProvider`) + test double (`MockProvider`) — provider swap is one new class implementation. Composer pipeline: (1) CompositionCache lookup → return on hit; (2) `claude-haiku-4-5` call with cacheable system blocks; (3) `extractFirstJsonObject` + `Zod.safeParse`; (4) on failure → `claude-sonnet-4-6` with `thinking: {type: "adaptive"}` + re-parse; (5) throw with both error reasons if both fail. `composeCycleId` threads through for memory and observability. Schema design kept deliberately loose per ADR-039.
+
+**Source:** Session 2026-05-03 — commits 5a4c97c (Phase 1.1), b796d02 (Phase 1.2), aed268f (Phase 1.3).
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).
