@@ -1,6 +1,6 @@
 # EPIC-008 — Phase 1 Composition
 
-- **Status:** in-progress (Phase 1 gate satisfied 2026-05-03; remaining slices: WC shell, themes, live LLM composer)
+- **Status:** in-progress (Phase 1 gate satisfied 2026-05-03; LLM composer done; remaining: WC shell, themes)
 - **Created:** 2026-05-03
 - **Last updated:** 2026-05-03
 - **Parent initiative:** [INIT-003 — Build MVP runtime + embeddable shell](../initiatives/INIT-003-build-mvp.md)
@@ -50,11 +50,16 @@ End-to-end composed artifact renders from a hand-crafted layout-tree input, with
 - Style Dictionary importer
 - CSS variable fallback emission
 
-### Slice 1.5 — Live UI Composer *(backlog)*
-- Haiku + cached layout templates per intent
-- Sonnet fallback for uncached intents
-- Native-renderer escape hatch primitive
+### Slice 1.5 — Live UI Composer — **done 2026-05-03**
+- `AnthropicProvider` + `MockProvider` behind `ModelProvider` abstraction (ADR-007 honored)
+- `HaikuComposer` pipeline: intent cache → `claude-haiku-4-5` call → Zod-validate → cache
+- Two-layer caching: `CompositionCache` (in-process) + Anthropic server-side prompt cache
+- `extractFirstJsonObject` strips markdown fences; Sonnet fallback for repeated haiku failures
+- Schema kept loose by design (ADR-039): recursive `LayoutNode.children` prevents strict Zod inference
+- 42 tests passing across 5 packages; live smoke confirmed against real Anthropic API
+- Commit: `aed268f`
 
 ## Child stories
 - [STORY-024 — Slice 1.1: protocol package, stub composer, renderer validated](../stories/STORY-024-phase-1-slice-1-1-protocol.md)
 - [STORY-025 — Slice 1.2: real SSE + WebSocket transport validated over live network](../stories/STORY-025-phase-1-slice-1-2-transport.md)
+- [STORY-026 — Slice 1.3: real Composer LLM call — HaikuComposer + ModelProvider abstraction](../stories/STORY-026-phase-1-slice-1-3-composer.md)

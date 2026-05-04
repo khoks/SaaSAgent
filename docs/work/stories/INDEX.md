@@ -13,5 +13,6 @@
 | STORY-023 | [Phase 0 monorepo scaffold validated](STORY-023-phase-0-monorepo-validated.md) | EPIC-007 | done | 2026-05-03 | 2026-05-03 |
 | STORY-024 | [Slice 1.1: protocol package, stub composer, renderer validated](STORY-024-phase-1-slice-1-1-protocol.md) | EPIC-008 | done | 2026-05-03 | 2026-05-03 |
 | STORY-025 | [Slice 1.2: real SSE + WebSocket transport validated over live network](STORY-025-phase-1-slice-1-2-transport.md) | EPIC-008 | done | 2026-05-03 | 2026-05-03 |
+| STORY-026 | [Slice 1.3: real Composer LLM call — HaikuComposer + ModelProvider abstraction](STORY-026-phase-1-slice-1-3-composer.md) | EPIC-008 | done | 2026-05-03 | 2026-05-03 |
 
 > Note: STORY-007 through STORY-022 are reserved — assigned on an unmerged work-management branch from 2026-05-01.
