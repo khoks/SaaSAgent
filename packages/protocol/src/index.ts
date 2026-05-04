@@ -19,6 +19,11 @@ export type {
   EmitSpec,
 } from './layout.js';
 export type { InstructionEnvelope, InstructionAck, EmitTransport } from './instruction.js';
+export {
+  ERROR_CATEGORIES,
+  type ErrorCategory,
+  type ErrorEnvelope,
+} from './error.js';
 export type {
   DTCGValue,
   DTCGCompositeValue,

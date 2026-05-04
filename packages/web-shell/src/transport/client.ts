@@ -8,10 +8,12 @@
  * EventSource and WebSocket constructors are injectable for testing (and for SSR/Node embedding).
  */
 
-import type {
-  ComposedLayout,
-  EmitTransport,
-  InstructionEnvelope,
+import {
+  ERROR_CATEGORIES,
+  type ComposedLayout,
+  type EmitTransport,
+  type ErrorEnvelope,
+  type InstructionEnvelope,
 } from '@saasagent/protocol';
 
 export type EventSourceCtor = new (url: string, init?: EventSourceInit) => EventSource;
@@ -22,7 +24,9 @@ export interface RuntimeClientOptions {
   runtimeUrl: string;
   /** Called when a new ComposedLayout arrives over SSE. */
   onLayout: (layout: ComposedLayout) => void;
-  /** Called on transport errors (SSE error, WS close, parse failures). */
+  /** Called when the runtime sends an ErrorEnvelope (composer/planner/etc. failure). */
+  onServerError?: (envelope: ErrorEnvelope) => void;
+  /** Called on transport-level errors (SSE connection error, WS close, parse failures). */
   onError?: (err: Error) => void;
   /** Override EventSource constructor (test injection). */
   EventSourceCtor?: EventSourceCtor;
@@ -59,6 +63,19 @@ export class RuntimeClient implements EmitTransport {
         this.options.onError?.(err as Error);
       }
     });
+    // Server-emitted error events use specific category names (composer-error,
+    // planner-error, …) rather than 'error' to avoid colliding with EventSource's
+    // native error event (connection-level, no .data).
+    for (const category of ERROR_CATEGORIES) {
+      this.sse.addEventListener(category, (e) => {
+        try {
+          const envelope = JSON.parse((e as MessageEvent).data) as ErrorEnvelope;
+          this.options.onServerError?.(envelope);
+        } catch (err) {
+          this.options.onError?.(err as Error);
+        }
+      });
+    }
     this.sse.onerror = () => {
       this.options.onError?.(new Error('SSE connection error'));
     };

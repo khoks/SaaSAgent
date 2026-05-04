@@ -12,7 +12,21 @@
  * Multi-line payloads are split into multiple `data:` lines per the SSE spec.
  */
 
-export type SSEEventName = 'layout' | 'status' | 'narration' | 'error';
+/**
+ * Server-emitted SSE event names. Error categories use specific names rather
+ * than a generic 'error' to avoid colliding with EventSource's native `error`
+ * event (fired on connection-level failures with no `.data`).
+ */
+export type SSEEventName =
+  | 'layout'
+  | 'status'
+  | 'narration'
+  | 'composer-error'
+  | 'planner-error'
+  | 'transport-error'
+  | 'tool-error'
+  | 'subagent-error'
+  | 'unknown-error';
 
 export interface SSEMessage {
   event: SSEEventName;

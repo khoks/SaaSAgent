@@ -19,7 +19,10 @@
     "test": "vitest run",
     "lint": "echo 'lint TODO (Phase 1)'",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+    "clean": "rm -rf dist .turbo *.tsbuildinfo",
+    "smoke:sdk": "node scripts/smoke-sdk.mjs",
+    "smoke:composer": "node scripts/smoke-composer.mjs",
+    "smoke:server": "node scripts/smoke-server.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.65.0",

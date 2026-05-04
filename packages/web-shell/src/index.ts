@@ -89,6 +89,15 @@ export class SaaSAgentShell extends HTMLElement {
     this.client = new RuntimeClient({
       runtimeUrl,
       onLayout: (layout) => this.renderer?.render(layout),
+      onServerError: (envelope) => {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[saas-agent shell] server error (${envelope.category}/${envelope.code}, retryable=${envelope.retryable}):`,
+          envelope.message,
+        );
+        // Phase 1.4: render an error layout from registered atomic primitives.
+        // Phase 1.3.1: log only.
+      },
       onError: (err) => {
         // eslint-disable-next-line no-console
         console.error('[saas-agent shell] transport error:', err);

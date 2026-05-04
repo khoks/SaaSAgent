@@ -20,9 +20,12 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type {
   ComposedLayout,
   ComposeContext,
+  ErrorEnvelope,
   InstructionEnvelope,
   UIComposer,
 } from '@saasagent/protocol';
+
+import { ProviderError } from '../model/types.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 
@@ -110,6 +113,22 @@ export class RuntimeServer {
     }
   }
 
+  /** Push an ErrorEnvelope to every connected SSE client. */
+  broadcastError(envelope: ErrorEnvelope): void {
+    const wire = formatSSEMessage({
+      event: envelope.category,
+      data: envelope,
+      id: `err-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    for (const client of this.sseClients) {
+      try {
+        client.write(wire);
+      } catch {
+        // ignore — connection closed
+      }
+    }
+  }
+
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = req.url ?? '/';
 
@@ -127,11 +146,22 @@ export class RuntimeServer {
       req.on('close', () => this.sseClients.delete(res));
 
       // Auto-emit a welcome layout so the shell has something to render immediately.
-      const layout = await this.options.composer.compose('welcome', {
-        ...PLACEHOLDER_CONTEXT,
-        conversationContext: { intent: 'welcome' },
-      });
-      res.write(formatSSEMessage({ event: 'layout', data: layout, id: layout.composeCycleId }));
+      try {
+        const layout = await this.options.composer.compose('welcome', {
+          ...PLACEHOLDER_CONTEXT,
+          conversationContext: { intent: 'welcome' },
+        });
+        res.write(formatSSEMessage({ event: 'layout', data: layout, id: layout.composeCycleId }));
+      } catch (err) {
+        const envelope = buildErrorEnvelope(err);
+        res.write(
+          formatSSEMessage({
+            event: envelope.category,
+            data: envelope,
+            id: `err-${Date.now()}`,
+          }),
+        );
+      }
       return;
     }
 
@@ -172,7 +202,45 @@ export class RuntimeServer {
         .catch((err: unknown) => {
           // eslint-disable-next-line no-console
           console.error('[runtime] re-compose failed:', err);
+          this.broadcastError(buildErrorEnvelope(err, envelope.composeCycleId));
         });
     });
   }
+}
+
+/**
+ * Translate a thrown error into a typed-JSON ErrorEnvelope the shell can render.
+ * ProviderError carries an explicit retryable flag; generic errors are conservatively
+ * marked non-retryable so the shell doesn't loop on permanent failures.
+ */
+function buildErrorEnvelope(err: unknown, composeCycleId?: string): ErrorEnvelope {
+  const emittedAt = new Date().toISOString();
+  if (err instanceof ProviderError) {
+    return {
+      category: 'composer-error',
+      code: 'provider-error',
+      message: err.message,
+      retryable: err.retryable,
+      emittedAt,
+      composeCycleId,
+    };
+  }
+  if (err instanceof Error) {
+    return {
+      category: 'composer-error',
+      code: 'compose-failed',
+      message: err.message,
+      retryable: false,
+      emittedAt,
+      composeCycleId,
+    };
+  }
+  return {
+    category: 'unknown-error',
+    code: 'unknown',
+    message: String(err),
+    retryable: false,
+    emittedAt,
+    composeCycleId,
+  };
 }

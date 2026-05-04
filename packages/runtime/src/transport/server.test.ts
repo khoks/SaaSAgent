@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { WebSocket } from 'ws';
 import { EventSource } from 'eventsource';
-import type { ComposedLayout, InstructionEnvelope } from '@saasagent/protocol';
+import type {
+  ComposedLayout,
+  ComposeContext,
+  ErrorEnvelope,
+  InstructionEnvelope,
+  UIComposer,
+} from '@saasagent/protocol';
 
+import { ProviderError } from '../model/types.js';
 import { StubComposer } from '../composer/stub.js';
 import { RuntimeServer } from './server.js';
 
@@ -108,4 +115,83 @@ async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<voi
     if (Date.now() - start > timeoutMs) throw new Error('waitFor timed out');
     await new Promise((r) => setTimeout(r, 25));
   }
+}
+
+class FailingComposer implements UIComposer {
+  constructor(private readonly toThrow: () => Error) {}
+  async compose(_intent: string, _ctx: ComposeContext): Promise<ComposedLayout> {
+    throw this.toThrow();
+  }
+}
+
+describe('RuntimeServer error propagation', () => {
+  it('emits a composer-error SSE event when the welcome composer throws', async () => {
+    const failing = new RuntimeServer({
+      port: 0,
+      composer: new FailingComposer(() => new ProviderError('test API failure', undefined, false)),
+    });
+    await failing.start();
+    try {
+      const envelope = await receiveFirstSSEError(`http://127.0.0.1:${failing.port}/sse`);
+      expect(envelope.category).toBe('composer-error');
+      expect(envelope.code).toBe('provider-error');
+      expect(envelope.message).toContain('test API failure');
+      expect(envelope.retryable).toBe(false);
+    } finally {
+      await failing.stop();
+    }
+  });
+
+  it('emits an unknown-error SSE event when a non-Error value is thrown', async () => {
+    const failing = new RuntimeServer({
+      port: 0,
+      composer: new FailingComposer(() => 'string-thrown' as unknown as Error),
+    });
+    await failing.start();
+    try {
+      const envelope = await receiveFirstSSEError(`http://127.0.0.1:${failing.port}/sse`);
+      expect(envelope.category).toBe('unknown-error');
+      expect(envelope.code).toBe('unknown');
+      expect(envelope.message).toBe('string-thrown');
+    } finally {
+      await failing.stop();
+    }
+  });
+
+  it('emits a composer-error SSE event for plain Error throws (non-ProviderError)', async () => {
+    const failing = new RuntimeServer({
+      port: 0,
+      composer: new FailingComposer(() => new Error('sad path')),
+    });
+    await failing.start();
+    try {
+      const envelope = await receiveFirstSSEError(`http://127.0.0.1:${failing.port}/sse`);
+      expect(envelope.category).toBe('composer-error');
+      expect(envelope.code).toBe('compose-failed');
+      expect(envelope.retryable).toBe(false);
+    } finally {
+      await failing.stop();
+    }
+  });
+});
+
+async function receiveFirstSSEError(sseUrl: string): Promise<ErrorEnvelope> {
+  return new Promise((resolve, reject) => {
+    const sse = new EventSource(sseUrl);
+    const timeout = setTimeout(() => {
+      sse.close();
+      reject(new Error('timed out waiting for SSE composer-error event'));
+    }, 2000);
+    const handler = (e: Event): void => {
+      clearTimeout(timeout);
+      sse.close();
+      try {
+        resolve(JSON.parse((e as MessageEvent).data) as ErrorEnvelope);
+      } catch (err) {
+        reject(err as Error);
+      }
+    };
+    sse.addEventListener('composer-error', handler);
+    sse.addEventListener('unknown-error', handler);
+  });
 }

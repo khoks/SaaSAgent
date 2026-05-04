@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { ComposedLayout, InstructionEnvelope } from '@saasagent/protocol';
+import type {
+  ComposedLayout,
+  ErrorEnvelope,
+  InstructionEnvelope,
+} from '@saasagent/protocol';
 import { RuntimeClient, type EventSourceCtor, type WebSocketCtor } from './client.js';
 
 /**
@@ -20,6 +24,9 @@ class FakeEventSource extends EventTarget {
   }
   emitLayout(layout: ComposedLayout): void {
     this.dispatchEvent(new MessageEvent('layout', { data: JSON.stringify(layout) }));
+  }
+  emitServerError(envelope: ErrorEnvelope): void {
+    this.dispatchEvent(new MessageEvent(envelope.category, { data: JSON.stringify(envelope) }));
   }
   fireError(): void {
     this.onerror?.call(this as unknown as EventSource, new Event('error'));
@@ -58,15 +65,20 @@ describe('RuntimeClient', () => {
     FakeWebSocket.instances = [];
   });
 
-  function makeClient(received: ComposedLayout[] = [], errors: Error[] = []) {
+  function makeClient(
+    received: ComposedLayout[] = [],
+    errors: Error[] = [],
+    serverErrors: ErrorEnvelope[] = [],
+  ) {
     const client = new RuntimeClient({
       runtimeUrl: 'http://localhost:8080',
       onLayout: (l) => received.push(l),
+      onServerError: (e) => serverErrors.push(e),
       onError: (e) => errors.push(e),
       EventSourceCtor: FakeEventSource as unknown as EventSourceCtor,
       WebSocketCtor: FakeWebSocket as unknown as WebSocketCtor,
     });
-    return { client, received, errors };
+    return { client, received, errors, serverErrors };
   }
 
   it('connects to /sse and /ws on the configured runtime URL', () => {
@@ -141,5 +153,35 @@ describe('RuntimeClient', () => {
     client.disconnect();
     // Re-firing open on the orphaned fake should not blow up.
     expect(() => FakeWebSocket.instances[0]!.open()).not.toThrow();
+  });
+
+  it('forwards composer-error events to onServerError', () => {
+    const { client, serverErrors } = makeClient();
+    client.connect();
+    const envelope: ErrorEnvelope = {
+      category: 'composer-error',
+      code: 'provider-error',
+      message: 'API failure',
+      retryable: true,
+      emittedAt: '2026-05-08T00:00:00Z',
+    };
+    FakeEventSource.instances[0]!.emitServerError(envelope);
+    expect(serverErrors).toHaveLength(1);
+    expect(serverErrors[0]?.code).toBe('provider-error');
+  });
+
+  it('forwards unknown-error events to onServerError', () => {
+    const { client, serverErrors } = makeClient();
+    client.connect();
+    const envelope: ErrorEnvelope = {
+      category: 'unknown-error',
+      code: 'unknown',
+      message: 'something blew up',
+      retryable: false,
+      emittedAt: '2026-05-08T00:00:00Z',
+    };
+    FakeEventSource.instances[0]!.emitServerError(envelope);
+    expect(serverErrors).toHaveLength(1);
+    expect(serverErrors[0]?.category).toBe('unknown-error');
   });
 });
