@@ -188,7 +188,7 @@
 - **Source:** Conversation 2026-04-26 (Rahul Q10 answer, sub-question (a) only).
 
 ## ADR-012 — UI Composer: Haiku + cached layout templates per intent + Sonnet fallback
-- **Date:** 2026-04-26
+- **Date:** 2026-04-26 (refined 2026-05-08 with current model versions)
 - **Status:** accepted
 - **Context:** UI composition is a per-turn structured-output task (more if user interactions cascade). Cost and latency stack across turns; need a strategy that doesn't scale linearly with usage.
 - **Options considered:**
@@ -197,12 +197,20 @@
   - C. **Haiku composer + cached layout templates per canonical intent + Sonnet fallback for novel intents**.
   - D. Fine-tuned model — optimal but brittle to design-system changes.
 - **Decision:** C. Sonnet remains the planner.
+- **Refinement (2026-05-08):** Lock in current model versions per the `claude-api` skill's model catalog:
+  - **Composer model:** `claude-haiku-4-5` ($1/$5 per 1M tokens, 200K context, fast).
+  - **Fallback model on novel intents:** `claude-sonnet-4-6` ($3/$15 per 1M tokens, 1M context). Note: Sonnet 4.5 was named in the original ADR but is now legacy — use 4.6 going forward.
+  - **Planner model:** `claude-sonnet-4-6` (Phase 2). Originally specified Sonnet generically; refined to current version.
+  - Haiku 4.5 does not support `effort` or `adaptive` thinking — composer uses plain `messages.create`. Sonnet 4.6 fallback may use `thinking: {type: "adaptive"}` on novel-intent invocations for better composition quality.
 - **Consequences:**
   - Best amortized cost on common e-commerce flows (product comparison, cart review, returns, recommendations).
-  - Cache invalidation strategy needed (DS version change, theme token change, Feature/Service doc edit → invalidate affected templates).
-  - Cold-start cases use Sonnet — slightly slower first paint for novel intents, acceptable tradeoff.
+  - **Two cache layers, both load-bearing:**
+    - **Application-level CompositionCache** — LRU keyed by canonical intent fingerprint, stores typed-JSON `ComposedLayout` directly. Invalidation on DS version change, theme token change, Feature/Service doc edit.
+    - **Anthropic prompt cache** (`cache_control: {type: "ephemeral"}`) — stable system prefix (atomic-component registry + theme tokens) cached at API level. Min cacheable prefix on Haiku 4.5 is 4096 tokens — won't actually hit until Phase 1.4 when the registry fills out, but design for it from Phase 1.3.
+  - Cold-start cases use Sonnet 4.6 — slightly slower first paint for novel intents, acceptable tradeoff.
   - Cached templates are themselves typed-JSON layout trees keyed by canonical intent — supports the bidirectional-emit patentability story.
-- **Source:** Conversation 2026-04-26 (Rahul Q14 answer).
+  - **Recursive-schema constraint:** the Anthropic structured-outputs surface (`output_config.format`) does not support recursive schemas, and `LayoutNode.children: LayoutNode[]` is recursive. Composer therefore uses raw JSON output steered by system prompt + Zod-based runtime validation + retry, not strict structured outputs. Acceptable tradeoff; revisit if Anthropic adds recursive-schema support.
+- **Source:** Conversation 2026-04-26 (Rahul Q14 answer); refined 2026-05-08 via `claude-api` skill consultation during Phase 1.3 design.
 
 ## ADR-013 — Feature/Service docs are agent-readable super-skill documents (NO compilation step)
 - **Date:** 2026-04-28

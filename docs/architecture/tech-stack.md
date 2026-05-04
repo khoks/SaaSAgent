@@ -9,8 +9,9 @@
 | Agent runtime language | TypeScript, Python, Rust, Go | TBD (TS leaning, given WC shell + Claude Agent SDK ergonomics) | — |
 | Foundation model provider | Anthropic (default), provider abstraction | **Anthropic** at v0, behind a thin internal interface | [ADR-007](../decisions/decision-log.md) |
 | Agent framework | Claude Agent SDK, LangGraph, bespoke | **Claude Agent SDK** at substrate; bespoke orchestrator/planner/thinker/composer on top | [ADR-007](../decisions/decision-log.md) |
-| Planner model | Sonnet, Opus, Haiku | **Sonnet** (default planner) | derivative of [ADR-012](../decisions/decision-log.md) |
-| UI Composer model | Sonnet, Haiku, fine-tuned | **Haiku composer + cached layout templates per intent + Sonnet fallback for novel intents** | [ADR-012](../decisions/decision-log.md) |
+| Planner model | Sonnet, Opus, Haiku | **`claude-sonnet-4-6`** (default planner; Sonnet 4.5 was original spec, refined to current version) | derivative of [ADR-012](../decisions/decision-log.md) |
+| UI Composer model | Sonnet, Haiku, fine-tuned | **`claude-haiku-4-5` composer + CompositionCache + Anthropic prompt cache + `claude-sonnet-4-6` fallback for novel intents** | [ADR-012](../decisions/decision-log.md) |
+| Composer JSON output strategy | Strict structured outputs / raw JSON + validation / tool use | **Raw JSON output (system-prompt steered) + Zod-based runtime validation + retry** — recursive `LayoutNode` schema rules out strict structured outputs | [ADR-012](../decisions/decision-log.md) |
 | Embed surface | Web Component, React SDK, iframe, all | **Web Component shell** with multi-framework component registry inside | [ADR-004](../decisions/decision-log.md) |
 | UI rendering model | SDUI catalog, shipped components, generative UI, **DS composition** | **Runtime composition from host's atomic design system** | [ADR-005](../decisions/decision-log.md) |
 | Component registry framework support | React only / multi-framework | **React + vanilla WC at MVP**; Vue/Svelte/Angular at v1.5 (multi-framework adapter ready) | [ADR-004](../decisions/decision-log.md), [ADR-015](../decisions/decision-log.md) |
