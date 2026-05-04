@@ -6,7 +6,7 @@
 
 | Layer | Candidate options | Decision | ADR |
 |---|---|---|---|
-| Agent runtime language | TypeScript, Python, Rust, Go | TBD (TS leaning, given WC shell + Claude Agent SDK ergonomics) | — |
+| Agent runtime language | TypeScript, Python, Rust, Go | **TypeScript** (confirmed by Phase 0–1.4 implementation; all packages in TS monorepo under pnpm + Turborepo) | [ADR-039](../decisions/decision-log.md) |
 | Foundation model provider | Anthropic (default), provider abstraction | **Anthropic** at v0, behind a thin internal interface | [ADR-007](../decisions/decision-log.md) |
 | Agent framework | Claude Agent SDK, LangGraph, bespoke | **Claude Agent SDK** at substrate; bespoke orchestrator/planner/thinker/composer on top | [ADR-007](../decisions/decision-log.md) |
 | Planner model | Sonnet, Opus, Haiku | **`claude-sonnet-4-6`** (default planner; Sonnet 4.5 was original spec, refined to current version) | derivative of [ADR-012](../decisions/decision-log.md) |

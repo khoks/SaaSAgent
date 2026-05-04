@@ -637,23 +637,32 @@
   - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
 - **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).
 
-## ADR-039 — MVP sub-agent federation runtime: HTTP fetch + typed JSON envelopes (gRPC deferred to v1)
-- **Date:** 2026-05-05
-- **Status:** accepted (MVP concession; gRPC per ADR-028 is the v1 north star)
-- **Context:** ADR-021 requires sub-agents to federate over a defined protocol. ADR-028 specifies gRPC bidirectional streaming for the runtime planner ↔ sub-agent channel, but implementing gRPC in Phase 2.4 would have required a proto toolchain, code-gen, and multi-language stub setup — complexity disproportionate to the MVP goal of proving end-to-end federation semantics. The team chose HTTP for MVP.
+## ADR-039 — Agent runtime language: TypeScript (confirmed)
+- **Date:** 2026-05-08
+- **Status:** accepted (closes the TBD in tech-stack.md; was "TS leaning")
+- **Context:** Tech-stack.md listed "TBD (TS leaning)" for agent runtime language. Phase 0 through Phase 1.4 are now complete — all packages (`@saasagent/protocol`, `@saasagent/runtime`, `@saasagent/sdk`, `@saasagent/web-shell`, `@saasagent/cli`, `apps/demo-host`) are TypeScript. This is now a confirmed implementation fact, not a preference.
 - **Options considered:**
-  - A. gRPC bidirectional streaming from day 1 (ADR-028 target) — correct for production; adds proto toolchain to MVP.
-  - B. **HTTP fetch + typed JSON envelopes (`FederationRequest` / `FederationResponse`) at MVP** — simpler; aligns with existing REST admin plane; loses streaming progress signals from sub-agents.
-- **Decision:** B for MVP.
-- **Consequences:**
-  - `SubAgentExecutor` dispatches federation requests as HTTP `POST` to the sub-agent's registered endpoint; request body is `FederationRequest` JSON; response is `FederationResponse` JSON.
-  - No real-time streaming of sub-agent progress at MVP (HTTP is request/response) — intermediate progress signals are not propagated to the planner.
-  - v1 upgrade path: switch `SubAgentExecutor` to gRPC bidirectional streaming per ADR-028; update sub-agent SDK server stubs (TS + Python) to expose a gRPC server. The executor and SDK stubs are the only upgrade surface.
-  - ADR-028 gRPC target remains the architectural north star; this ADR is a phasing concession only.
-  - Live-verified in Phase 2.4g: `[sonnet-planner] subagent__weather-specialist({"intent":"...", "payload":{"location":"Tokyo"}}) → ok (372ms)` — federation round-trip confirmed.
-- **Source:** Phase 2.4 plan (conversation 2026-05-05): "2.4c: SubAgentExecutor — HTTP fetch + federation envelope marshaling + tests"; implicit decision accepted when Rahul confirmed "(B). start 2.1a and keep building till you exhaust the complete plan."
+  - A. TypeScript — chosen by implementation (Claude Agent SDK ergonomics, WC shell ecosystem, pnpm/Turborepo monorepo).
+  - B. Python — SDK sibling (`packages/sdk-py`) for Sub-Agent SDK per ADR-027; not the platform runtime.
+  - C. Rust / Go — deferred; not needed for MVP scope.
+- **Decision:** TypeScript is the runtime language. Python is a sibling for the Sub-Agent SDK only (ADR-027). Rust/Go remain deferred.
+- **Consequences:** All runtime, protocol, shell, CLI packages are TypeScript. Python Sub-Agent SDK (`packages/sdk-py`) gets its own toolchain (uv or poetry) alongside the JS workspace. No mixed-runtime complexity in the platform core.
+- **Source:** Phase 0–1.4 implementation (conversation 2026-05-08); tech-stack confirmation.
 
----
+## ADR-040 — Protocol schemas kept loose (not strict Zod exhaustive constraints)
+- **Date:** 2026-05-08
+- **Status:** accepted
+- **Context:** After Phase 1.2 landed the `@saasagent/protocol` package (LayoutNode, ComposedLayout, InstructionEnvelope, ErrorEnvelope, EmitTransport), Rahul reviewed the output and gave explicit direction: "keep the schemas loose."
+- **Options considered:**
+  - A. **Strict Zod schemas** — exhaustive field-level constraints, no unknown keys, precise union discriminants. Maximally type-safe; breaks on any schema evolution without explicit version bumps.
+  - B. **Loose Zod schemas** — validate required fields and structure; pass through additional/unknown fields; union types use string literals without exhaustive enum enforcement.
+- **Decision:** B. Loose schemas. The protocol is young and will evolve; strict schemas would create excessive friction at this stage.
+- **Consequences:**
+  - Schema validation catches shape errors but does not reject unknown fields — forward-compatible by default.
+  - `LayoutNode.children: LayoutNode[]` remains recursive (rules out Anthropic strict structured-output surface regardless — ADR-012 already uses raw JSON + Zod validation + retry for this reason).
+  - Future schema tightening is additive; no breaking changes to accumulated data in the CompositionCache when we evolve the schema.
+  - Trade: type safety is softer; mitigated by TypeScript static types (runtime schema + TS type work together).
+- **Source:** Conversation 2026-05-08: Rahul reviewing Phase 1.2 protocol output — "1. keep the schemas loose."
 
 ## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
 - **Date:** 2026-05-08
