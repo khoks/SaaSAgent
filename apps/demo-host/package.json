@@ -1,0 +1,21 @@
+{
+  "name": "@saasagent/demo-host",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser demo host page for the SaaSAgent platform — Vite-bundled HTML that loads the WC shell and connects to a local runtime",
+  "type": "module",
+  "scripts": {
+    "predev": "pnpm --filter @saasagent/web-shell --filter @saasagent/protocol build",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@saasagent/web-shell": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10",
+    "typescript": "^5.6.3"
+  }
+}
