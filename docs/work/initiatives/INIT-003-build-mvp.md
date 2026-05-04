@@ -1,6 +1,6 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phase 0 done; Phase 1 next)
+- **Status:** in-progress (Phase 0 done; Phase 1 in-progress — slice 1.1 done)
 - **Created:** 2026-04-26
 - **Last updated:** 2026-05-03
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
@@ -32,13 +32,12 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 **Phase 0 gate:** `pnpm install && pnpm build && pnpm test` succeeds end-to-end on a fresh clone. ✅
 
-### Phase 1 — Composition
-- WC shell (side-panel render mode)
-- Atomic UI Components registry schema + storage + hot-reload
-- Theme tokens registry (DTCG canonical + Style Dictionary importer + CSS variable fallback)
-- UI Composer (Haiku + cached layout templates per intent + Sonnet fallback)
-- Bidirectional typed-JSON instruction protocol
-- Native-renderer escape hatch primitive
+### Phase 1 — Composition — **in-progress** (slice 1.1 done 2026-05-03)
+- [EPIC-008 — Phase 1 Composition](../epics/EPIC-008-phase-1-composition.md) — **in-progress**
+  - ✅ **Slice 1.1** — `@saasagent/protocol` package, stub UIComposer, layout renderer skeleton, bidirectional loop validated in JSDOM (18 tests) — `5a4c97c`
+  - Slice 1.2 — WC shell side-panel + atomic component registry *(backlog)*
+  - Slice 1.3 — Theme tokens registry *(backlog)*
+  - Slice 1.4 — Live UI Composer (Haiku + SSE/WebSocket per ADR-038) *(backlog)*
 
 **Phase 1 gate:** end-to-end composed artifact renders from a hand-crafted layout-tree input.
 
