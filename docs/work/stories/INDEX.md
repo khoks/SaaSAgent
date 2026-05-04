@@ -17,3 +17,5 @@
 | STORY-011 | [Browser demo host with live Haiku compose](STORY-011-browser-demo-host.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
 | STORY-012 | [AtomicComponentRegistry store and REST API](STORY-012-atomic-component-registry.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
 | STORY-013 | [ThemeRegistryStore and REST API](STORY-013-theme-registry-store.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
+| STORY-014 | [Shell inline error banner on composer failure](STORY-014-shell-error-banner.md) | EPIC-003 | done | 2026-05-08 | 2026-05-08 |
+| STORY-015 | [Style Dictionary and CSS variable importers](STORY-015-style-dictionary-importers.md) | EPIC-003 | done | 2026-05-08 | 2026-05-08 |

@@ -2,8 +2,8 @@
 
 - **Status:** done
 - **Created:** 2026-05-04
-- **Last updated:** 2026-05-04
-- **Completed:** 2026-05-04
+- **Last updated:** 2026-05-08
+- **Completed:** 2026-05-08
 - **Parent initiative:** [INIT-003 — Build MVP runtime + embeddable shell](../initiatives/INIT-003-build-mvp.md)
 
 ## Outcome
@@ -27,6 +27,8 @@ End-to-end composed artifact renders from a hand-crafted / Haiku-composed layout
 | 1.4.0 Browser demo host (apps/demo-host) | d49241a | Vite-bundled `<saas-agent>` in mock host page; pnpm demo:runtime + demo:host |
 | 1.4.1 AtomicComponentRegistry + REST API | 54f4d9e (via) | 53 tests; PUT/GET /registry/components; composer constrained to registry vocab |
 | 1.4.2 ThemeRegistryStore + REST API + composer | a24a29c | 60+ tests; DTCG theme tokens in PUT/GET /registry/theme; composer prompt includes theme |
+| 1.4.3 Shell error banner on ErrorEnvelope | e813673 | 96+ tests; inline error banner in WC shell; clears on next successful layout |
+| 1.4.4 Style Dictionary + CSS variable importers | 31da46a | 105+ tests; both formats normalise to DTCG; closes Phase 1.4 |
 
 ## Child stories
 
@@ -36,3 +38,5 @@ End-to-end composed artifact renders from a hand-crafted / Haiku-composed layout
 - [STORY-011 — Browser demo host with live Haiku compose](../stories/STORY-011-browser-demo-host.md)
 - [STORY-012 — AtomicComponentRegistry store and REST API](../stories/STORY-012-atomic-component-registry.md)
 - [STORY-013 — ThemeRegistryStore and REST API](../stories/STORY-013-theme-registry-store.md)
+- [STORY-014 — Shell inline error banner on composer failure](../stories/STORY-014-shell-error-banner.md)
+- [STORY-015 — Style Dictionary and CSS variable importers](../stories/STORY-015-style-dictionary-importers.md)
