@@ -61,10 +61,10 @@ Without a groomed baseline, MVP scope will drift, and architectural decisions wi
 - ✅ **Q5.5 Eval dashboard tech** — bundled SPA at MVP (React + chart lib); optional exporters at v1 ([ADR-030](../../decisions/decision-log.md)).
 - ✅ **Q5.6 Customer Churn ML Model architecture** — LightGBM + pluggable adapter + generic-prior cold-start; SHAP explainability ([ADR-031](../../decisions/decision-log.md)).
 
-### Batch 6 — open (implementation details + v2 scope; can groom in parallel with MVP build)
-- **Q6.1 Cross-store consistency failure-recovery semantics**.
+### Batch 6 — Q6.3 closed 2026-05-08; Q6.1 + Q6.2 + Q6.4 still open (non-blocking)
+- ✅ **Q6.3 Real-time transport** — SSE for streaming planner output + WebSocket for bidirectional emit ([ADR-038](../../decisions/decision-log.md)).
+- **Q6.1 Cross-store consistency failure-recovery semantics** (post-MVP concern).
 - **Q6.2 Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-- **Q6.3 Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
 - **Q6.4 Adapters registry transport** — how host event bus → platform Redpanda topic (webhook for MVP-simple hosts vs. SDK adapter library for production-grade).
 
 ## Done-ness assessment (2026-05-04)

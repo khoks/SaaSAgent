@@ -1,8 +1,8 @@
 {
-  "name": "@saasagent/runtime",
+  "name": "@saasagent/protocol",
   "version": "0.0.0",
   "private": true,
-  "description": "SaaSAgent runtime — orchestrator + planner + composer + registries",
+  "description": "SaaSAgent typed-JSON protocol — LayoutTree, InstructionEnvelope, AtomicComponent registry, DTCG theme tokens, UIComposer interface. Shared by runtime, web-shell, and SDKs.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,22 +16,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "lint": "echo 'lint TODO (Phase 1)'",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.65.0",
-    "@saasagent/protocol": "workspace:*",
-    "ws": "^8.18.0",
-    "zod": "^3.23.8"
-  },
   "devDependencies": {
     "typescript": "^5.6.3",
     "vitest": "^2.1.5",
-    "@types/node": "^22.9.0",
-    "@types/ws": "^8.5.13",
-    "eventsource": "^3.0.2"
+    "@types/node": "^22.9.0"
   }
 }
