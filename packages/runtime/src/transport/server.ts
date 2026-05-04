@@ -32,6 +32,8 @@ import {
   type ThemeRegistryStore,
   InMemoryComponentRegistry,
   InMemoryThemeRegistry,
+  importStyleDictionary,
+  importCssVariables,
 } from '../registry/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
@@ -172,38 +174,30 @@ export class RuntimeServer {
       return;
     }
 
-    // Theme registry endpoints.
-    if (url === '/registry/theme') {
-      if (req.method === 'GET') {
-        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(this.themeRegistry.get()));
-        return;
-      }
-      if (req.method === 'PUT') {
-        const body = (await readJsonBody(req)) as {
-          name?: string;
-          description?: string;
-          tokens?: Record<string, unknown>;
-        } | null;
-        if (!body || typeof body.name !== 'string' || !body.tokens) {
-          res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'PUT body must be { name: string, tokens: DTCGTokenGroup, description?: string }' }));
+    // Theme registry endpoints. PUT supports ?format=dtcg (default) | style-dictionary | css-variables.
+    if (url.startsWith('/registry/theme')) {
+      const parsed = new URL(url, 'http://localhost');
+      if (parsed.pathname === '/registry/theme') {
+        if (req.method === 'GET') {
+          res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(this.themeRegistry.get()));
           return;
         }
-        const updated = this.themeRegistry.replace({
-          name: body.name,
-          description: body.description,
-          tokens: body.tokens as never,
-        });
-        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(updated));
-        return;
-      }
-      if (req.method === 'DELETE') {
-        const updated = this.themeRegistry.clear();
-        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(updated));
-        return;
+        if (req.method === 'PUT') {
+          const format = parsed.searchParams.get('format') ?? 'dtcg';
+          const updated = await this.handleThemePut(req, res, format, parsed.searchParams);
+          if (updated) {
+            res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(updated));
+          }
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const cleared = this.themeRegistry.clear();
+          res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(cleared));
+          return;
+        }
       }
     }
 
@@ -280,6 +274,66 @@ export class RuntimeServer {
     };
   }
 
+  /**
+   * Handle PUT /registry/theme for the supported import formats.
+   * Returns the updated theme on success, or `null` after writing a 4xx response on bad input.
+   */
+  private async handleThemePut(
+    req: IncomingMessage,
+    res: ServerResponse,
+    format: string,
+    qs: URLSearchParams,
+  ): Promise<ReturnType<ThemeRegistryStore['replace']> | null> {
+    if (format === 'style-dictionary') {
+      const body = (await readJsonBody(req)) as
+        | { name?: string; description?: string; tokens?: Record<string, unknown> }
+        | Record<string, unknown>
+        | null;
+      const sdTokens =
+        body && typeof body === 'object' && 'tokens' in body ? body.tokens : body;
+      const tokens = importStyleDictionary(sdTokens);
+      const name =
+        qs.get('name') ??
+        (body && typeof body === 'object' && 'name' in body && typeof body.name === 'string'
+          ? body.name
+          : 'imported-style-dictionary');
+      const description =
+        body && typeof body === 'object' && 'description' in body && typeof body.description === 'string'
+          ? body.description
+          : undefined;
+      return this.themeRegistry.replace({ name, description, tokens });
+    }
+
+    if (format === 'css-variables') {
+      const css = await readTextBody(req);
+      const tokens = importCssVariables(css);
+      const name = qs.get('name') ?? 'imported-css-variables';
+      return this.themeRegistry.replace({ name, tokens });
+    }
+
+    // Default: DTCG canonical body { name, description?, tokens }.
+    const body = (await readJsonBody(req)) as {
+      name?: string;
+      description?: string;
+      tokens?: Record<string, unknown>;
+    } | null;
+    if (!body || typeof body.name !== 'string' || !body.tokens) {
+      res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          error:
+            'PUT body must be { name: string, tokens: DTCGTokenGroup, description?: string } when no format query param is set, or use ?format=style-dictionary | css-variables for non-DTCG input',
+        }),
+      );
+      return null;
+    }
+    return this.themeRegistry.replace({
+      name: body.name,
+      description: body.description,
+      tokens: body.tokens as never,
+    });
+  }
+
   private handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
     if (req.url === '/ws') {
       this.wss.handleUpgrade(req, socket, head, (ws) => {
@@ -317,15 +371,19 @@ export class RuntimeServer {
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
-  const raw = Buffer.concat(chunks).toString('utf-8').trim();
+  const raw = await readTextBody(req);
   if (raw.length === 0) return null;
   try {
     return JSON.parse(raw);
   } catch (err) {
     throw new Error(`Malformed JSON body: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+async function readTextBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
+  return Buffer.concat(chunks).toString('utf-8').trim();
 }
 
 /**

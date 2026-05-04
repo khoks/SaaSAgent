@@ -7,3 +7,5 @@ export {
   flattenDTCG,
   type ThemeRegistryStore,
 } from './theme.js';
+export { importStyleDictionary, inferType } from './sd-importer.js';
+export { importCssVariables } from './css-importer.js';
