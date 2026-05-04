@@ -16,14 +16,10 @@
 import type {
   ComposedLayout,
   EmitSpec,
+  EmitTransport,
   InstructionEnvelope,
   LayoutNode,
 } from '@saasagent/protocol';
-
-/** Strategy for shipping {@link InstructionEnvelope}s back to the runtime. */
-export interface EmitTransport {
-  send(envelope: InstructionEnvelope): void | Promise<void>;
-}
 
 export interface RenderOptions {
   /** Shadow root or HTMLElement to render into. */

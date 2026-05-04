@@ -31,3 +31,12 @@ export interface InstructionAck {
   /** Optional: estimated time to next layout. */
   estimatedNextLayoutMs?: number;
 }
+
+/**
+ * Strategy for shipping {@link InstructionEnvelope}s back to the runtime.
+ * Implemented by the shell's RuntimeClient (over WebSocket per ADR-038);
+ * implemented by mocks in unit tests.
+ */
+export interface EmitTransport {
+  send(envelope: InstructionEnvelope): void | Promise<void>;
+}

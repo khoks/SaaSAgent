@@ -1,44 +1,100 @@
 /**
  * @saasagent/web-shell — embeddable Web Component agent shell.
  *
- * Per ADR-004 / ADR-005 / ADR-038: the host embeds <saas-agent /> in their web app.
- * The shell:
+ * Per ADR-004 / ADR-005 / ADR-038 / ADR-022:
  *   - Renders the conversational pane (side-panel render mode at MVP).
- *   - Hosts the LayoutRenderer that walks ComposedLayouts emitted by the runtime.
- *   - Subscribes to DOM observation events (MO + IO + custom semantic events per ADR-022).
- *   - Bridges typed-JSON instruction emit ↔ runtime over SSE (planner stream) +
- *     WebSocket (interaction emit) (per ADR-038).
+ *   - LayoutRenderer walks ComposedLayouts emitted by the runtime.
+ *   - RuntimeClient bridges SSE (planner stream) + WebSocket (interaction emit).
+ *   - DOM observation (MO + IO + custom semantic events) lands in Phase 5.
  *
- * Status: Phase 1.1 — LayoutRenderer + custom element wired; real SSE/WS transport
- * lands in Phase 1.2.
+ * Status: Phase 1.2 — full transport-and-render loop wired. RuntimeClient connects
+ * to the runtime; LayoutRenderer renders incoming layouts; user clicks emit
+ * InstructionEnvelopes back over WebSocket.
+ *
+ * Usage:
+ *   <saas-agent runtime="http://localhost:8080" mode="side-panel"></saas-agent>
  */
 
 export const VERSION = '0.0.0';
-export { LayoutRenderer, type EmitTransport, type RenderOptions } from './renderer.js';
+export { LayoutRenderer, type RenderOptions } from './renderer.js';
+export type { EmitTransport } from '@saasagent/protocol';
+export {
+  RuntimeClient,
+  type RuntimeClientOptions,
+  type EventSourceCtor,
+  type WebSocketCtor,
+} from './transport/index.js';
+
+import { LayoutRenderer } from './renderer.js';
+import { RuntimeClient } from './transport/index.js';
 
 /** Render modes per ADR-004 (side-panel only at MVP; others at v1+). */
 export type RenderMode = 'side-panel' | 'full-page' | 'drawer' | 'eject';
 
 export class SaaSAgentShell extends HTMLElement {
+  private client: RuntimeClient | null = null;
+  private renderer: LayoutRenderer | null = null;
+  private contentEl: HTMLDivElement | null = null;
+
   static get observedAttributes(): string[] {
     return ['mode', 'runtime'];
   }
 
   connectedCallback(): void {
-    this.render();
+    this.renderShell();
+    this.attachClient();
   }
 
-  attributeChangedCallback(): void {
-    this.render();
+  disconnectedCallback(): void {
+    this.client?.disconnect();
+    this.client = null;
+    this.renderer = null;
+    this.contentEl = null;
   }
 
-  private render(): void {
-    const mode = (this.getAttribute('mode') as RenderMode | null) ?? 'side-panel';
+  attributeChangedCallback(name: string): void {
+    if (name === 'mode' && this.contentEl) {
+      this.contentEl.setAttribute('data-mode', this.getMode());
+    }
+    if (name === 'runtime') {
+      this.client?.disconnect();
+      this.attachClient();
+    }
+  }
+
+  private getMode(): RenderMode {
+    return (this.getAttribute('mode') as RenderMode | null) ?? 'side-panel';
+  }
+
+  private renderShell(): void {
+    const mode = this.getMode();
     this.innerHTML = `
       <div data-saas-agent-shell="${mode}" style="font-family: system-ui; padding: 8px; border: 1px dashed #888; color: #555;">
-        SaaSAgent shell v${VERSION} — Phase 1.1 scaffold (mode: ${mode}). LayoutRenderer ready; SSE/WS transport in Phase 1.2.
+        <div style="font-size: 12px; color: #999; margin-bottom: 4px;">SaaSAgent shell v${VERSION} — Phase 1.2 (mode: ${mode})</div>
+        <div data-saas-agent-content data-mode="${mode}"></div>
       </div>
     `;
+    this.contentEl = this.querySelector('[data-saas-agent-content]') as HTMLDivElement;
+  }
+
+  private attachClient(): void {
+    const runtimeUrl = this.getAttribute('runtime');
+    if (!runtimeUrl || !this.contentEl) return;
+
+    this.renderer = new LayoutRenderer({
+      container: this.contentEl,
+      transport: { send: (env) => this.client?.send(env) },
+    });
+
+    this.client = new RuntimeClient({
+      runtimeUrl,
+      onLayout: (layout) => this.renderer?.render(layout),
+      onError: (err) => {
+        // eslint-disable-next-line no-console
+        console.error('[saas-agent shell] transport error:', err);
+      },
+    });
+    this.client.connect();
   }
 }
 

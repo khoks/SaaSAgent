@@ -18,7 +18,7 @@ export type {
   MemoryQuery,
   EmitSpec,
 } from './layout.js';
-export type { InstructionEnvelope, InstructionAck } from './instruction.js';
+export type { InstructionEnvelope, InstructionAck, EmitTransport } from './instruction.js';
 export type {
   DTCGValue,
   DTCGCompositeValue,
