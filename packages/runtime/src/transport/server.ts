@@ -18,6 +18,7 @@ import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
 
 import type {
+  AtomicComponent,
   ComposedLayout,
   ComposeContext,
   ErrorEnvelope,
@@ -26,6 +27,10 @@ import type {
 } from '@saasagent/protocol';
 
 import { ProviderError } from '../model/types.js';
+import {
+  type ComponentRegistryStore,
+  InMemoryComponentRegistry,
+} from '../registry/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 
@@ -34,6 +39,8 @@ export interface RuntimeServerOptions {
   port: number;
   /** Composer to invoke on connect / instruction. */
   composer: UIComposer;
+  /** Atomic UI Components registry store. Defaults to a fresh InMemoryComponentRegistry. */
+  componentRegistry?: ComponentRegistryStore;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -42,19 +49,25 @@ export interface RuntimeServerOptions {
   onWSConnect?: () => void;
 }
 
-const PLACEHOLDER_CONTEXT: ComposeContext = {
-  components: { version: '0.0.0', components: {} },
-  theme: { name: 'default', version: '0.0.0', tokens: {} },
-  conversationContext: { intent: '' },
+/** CORS headers applied to every JSON / control-plane response. SSE endpoint adds them in SSE_HEADERS. */
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Max-Age': '86400',
 };
+
+const DEFAULT_THEME = { name: 'default', version: '0.0.0', tokens: {} } as const;
 
 export class RuntimeServer {
   private readonly httpServer: Server;
   private readonly wss: WebSocketServer;
   private readonly sseClients = new Set<ServerResponse>();
+  private readonly componentRegistry: ComponentRegistryStore;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
+    this.componentRegistry = options.componentRegistry ?? new InMemoryComponentRegistry();
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -132,10 +145,61 @@ export class RuntimeServer {
   private async handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = req.url ?? '/';
 
-    if (url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', sseClients: this.sseClients.size }));
+    // CORS preflight — answer all OPTIONS uniformly.
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, CORS_HEADERS);
+      res.end();
       return;
+    }
+
+    if (url === '/health') {
+      res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          status: 'ok',
+          sseClients: this.sseClients.size,
+          componentRegistryVersion: this.componentRegistry.get().version,
+          componentCount: Object.keys(this.componentRegistry.get().components).length,
+        }),
+      );
+      return;
+    }
+
+    // Atomic UI Components registry endpoints.
+    if (url === '/registry/components') {
+      if (req.method === 'GET') {
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(this.componentRegistry.get()));
+        return;
+      }
+      if (req.method === 'PUT') {
+        const body = await readJsonBody(req);
+        const components = Array.isArray(body)
+          ? (body as ReadonlyArray<AtomicComponent>)
+          : ((body as { components?: ReadonlyArray<AtomicComponent> })?.components ?? []);
+        const updated = this.componentRegistry.replace(components);
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(updated));
+        return;
+      }
+      if (req.method === 'POST') {
+        const body = (await readJsonBody(req)) as AtomicComponent;
+        if (!body?.name) {
+          res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'POST body must be an AtomicComponent with a name field' }));
+          return;
+        }
+        const updated = this.componentRegistry.upsert(body);
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(updated));
+        return;
+      }
+      if (req.method === 'DELETE') {
+        const updated = this.componentRegistry.clear();
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(updated));
+        return;
+      }
     }
 
     if (url === '/sse' && req.method === 'GET') {
@@ -147,10 +211,7 @@ export class RuntimeServer {
 
       // Auto-emit a welcome layout so the shell has something to render immediately.
       try {
-        const layout = await this.options.composer.compose('welcome', {
-          ...PLACEHOLDER_CONTEXT,
-          conversationContext: { intent: 'welcome' },
-        });
+        const layout = await this.options.composer.compose('welcome', this.buildContext('welcome'));
         res.write(formatSSEMessage({ event: 'layout', data: layout, id: layout.composeCycleId }));
       } catch (err) {
         const envelope = buildErrorEnvelope(err);
@@ -165,8 +226,16 @@ export class RuntimeServer {
       return;
     }
 
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.writeHead(404, { ...CORS_HEADERS, 'Content-Type': 'text/plain' });
     res.end('not found');
+  }
+
+  private buildContext(intent: string): ComposeContext {
+    return {
+      components: this.componentRegistry.get(),
+      theme: DEFAULT_THEME,
+      conversationContext: { intent },
+    };
   }
 
   private handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
@@ -192,12 +261,9 @@ export class RuntimeServer {
       }
       this.options.onInstruction?.(envelope);
       // Re-compose in response to the user's interaction. Phase 2 will route this
-      // through the planner; Phase 1.2 routes directly to composer with envelope.type as intent.
+      // through the planner; Phase 1.x routes directly to composer with envelope.type as intent.
       this.options.composer
-        .compose(envelope.type, {
-          ...PLACEHOLDER_CONTEXT,
-          conversationContext: { intent: envelope.type },
-        })
+        .compose(envelope.type, this.buildContext(envelope.type))
         .then((layout) => this.broadcastLayout(layout))
         .catch((err: unknown) => {
           // eslint-disable-next-line no-console
@@ -205,6 +271,18 @@ export class RuntimeServer {
           this.broadcastError(buildErrorEnvelope(err, envelope.composeCycleId));
         });
     });
+  }
+}
+
+async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string));
+  const raw = Buffer.concat(chunks).toString('utf-8').trim();
+  if (raw.length === 0) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`Malformed JSON body: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

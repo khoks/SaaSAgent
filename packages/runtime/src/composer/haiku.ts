@@ -43,7 +43,6 @@ export class HaikuComposer implements UIComposer {
   private readonly fallbackAdaptiveThinking: boolean;
   private readonly cache: CompositionCache;
   private readonly maxTokens: number;
-  private readonly systemBlocks = buildComposerSystemPrompt();
 
   constructor(options: HaikuComposerOptions) {
     this.provider = options.provider;
@@ -55,12 +54,12 @@ export class HaikuComposer implements UIComposer {
   }
 
   async compose(intent: string, context: ComposeContext): Promise<ComposedLayout> {
-    const cacheKey = canonicalIntent(intent);
+    // Cache key includes the registry version so a registry change naturally
+    // invalidates cached layouts that referenced the old vocabulary.
+    const cacheKey = `${context.components.version}::${canonicalIntent(intent)}`;
 
     const cached = this.cache.get(cacheKey);
     if (cached !== undefined) {
-      // Stamp a fresh compose-cycle id so the renderer treats this as a new
-      // compose cycle even though the layout body came from cache.
       return {
         ...cached,
         composeCycleId: makeCycleId('cache'),
@@ -69,12 +68,16 @@ export class HaikuComposer implements UIComposer {
       };
     }
 
+    // System prompt is rebuilt per-compose since the registry can change at
+    // runtime (REST POST /registry/components). The Anthropic prompt cache
+    // still hits as long as the registry version is stable across calls.
+    const systemBlocks = buildComposerSystemPrompt(context.components);
     const userPrompt = buildUserPrompt(intent, context);
 
     // 1. Try Haiku composer first.
     const primary = await this.provider.generate({
       model: this.composerModel,
-      system: this.systemBlocks,
+      system: systemBlocks,
       messages: [{ role: 'user', content: userPrompt }],
       maxTokens: this.maxTokens,
     });
@@ -88,7 +91,7 @@ export class HaikuComposer implements UIComposer {
     // 2. Fall back to Sonnet (with adaptive thinking) on parse/validation failure.
     const fallback = await this.provider.generate({
       model: this.fallbackModel,
-      system: this.systemBlocks,
+      system: systemBlocks,
       messages: [
         { role: 'user', content: userPrompt },
         {

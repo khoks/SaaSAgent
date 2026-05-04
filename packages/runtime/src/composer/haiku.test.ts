@@ -51,6 +51,18 @@ describe('HaikuComposer', () => {
     expect(b.root.component).toBe(a.root.component);
   });
 
+  it('cache key includes registry version so a registry change forces re-compose', async () => {
+    const provider = new MockProvider([validLayout, validLayout]);
+    const cache = new CompositionCache();
+    const composer = new HaikuComposer({ provider, cache });
+
+    await composer.compose('intent', ctx);
+    await composer.compose('intent', { ...ctx, components: { version: 'bumped', components: {} } });
+
+    // Two distinct cache keys → two model calls.
+    expect(provider.requests).toHaveLength(2);
+  });
+
   it('falls back to Sonnet on parse failure and re-prompts with the error', async () => {
     const provider = new MockProvider([
       'I cannot help with that.', // Haiku junk output

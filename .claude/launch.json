@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "runtime",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["packages/runtime/dist/index.js"],
+      "port": 8080
+    },
+    {
+      "name": "demo-host",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@saasagent/demo-host", "dev"],
+      "port": 5173
+    }
+  ]
+}

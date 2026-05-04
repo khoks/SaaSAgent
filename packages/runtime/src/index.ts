@@ -19,11 +19,13 @@ import { PROTOCOL_VERSION, type UIComposer } from '@saasagent/protocol';
 
 import { HaikuComposer, StubComposer } from './composer/index.js';
 import { AnthropicProvider } from './model/index.js';
+import { InMemoryComponentRegistry, type ComponentRegistryStore } from './registry/index.js';
 import { RuntimeServer } from './transport/index.js';
 
 export const VERSION = '0.0.0';
 export { StubComposer, HaikuComposer } from './composer/index.js';
 export { RuntimeServer } from './transport/index.js';
+export { InMemoryComponentRegistry, type ComponentRegistryStore } from './registry/index.js';
 export {
   AnthropicProvider,
   MockProvider,
@@ -54,6 +56,8 @@ export interface RuntimeConfig {
 
 export class Runtime {
   private server: RuntimeServer | null = null;
+  /** Public so demo seeders / tests can pre-register primitives before start(). */
+  readonly componentRegistry: ComponentRegistryStore = new InMemoryComponentRegistry();
 
   constructor(public readonly config: RuntimeConfig = {}) {}
 
@@ -63,6 +67,7 @@ export class Runtime {
     this.server = new RuntimeServer({
       port,
       composer,
+      componentRegistry: this.componentRegistry,
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(
