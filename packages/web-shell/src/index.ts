@@ -24,9 +24,11 @@ export {
   type EventSourceCtor,
   type WebSocketCtor,
 } from './transport/index.js';
+export { showErrorBanner, clearErrorBanner } from './error-banner.js';
 
 import { LayoutRenderer } from './renderer.js';
 import { RuntimeClient } from './transport/index.js';
+import { showErrorBanner, clearErrorBanner } from './error-banner.js';
 
 /** Render modes per ADR-004 (side-panel only at MVP; others at v1+). */
 export type RenderMode = 'side-panel' | 'full-page' | 'drawer' | 'eject';
@@ -35,6 +37,7 @@ export class SaaSAgentShell extends HTMLElement {
   private client: RuntimeClient | null = null;
   private renderer: LayoutRenderer | null = null;
   private contentEl: HTMLDivElement | null = null;
+  private errorAreaEl: HTMLDivElement | null = null;
 
   static get observedAttributes(): string[] {
     return ['mode', 'runtime'];
@@ -50,6 +53,7 @@ export class SaaSAgentShell extends HTMLElement {
     this.client = null;
     this.renderer = null;
     this.contentEl = null;
+    this.errorAreaEl = null;
   }
 
   attributeChangedCallback(name: string): void {
@@ -70,11 +74,13 @@ export class SaaSAgentShell extends HTMLElement {
     const mode = this.getMode();
     this.innerHTML = `
       <div data-saas-agent-shell="${mode}" style="font-family: system-ui; padding: 8px; border: 1px dashed #888; color: #555;">
-        <div style="font-size: 12px; color: #999; margin-bottom: 4px;">SaaSAgent shell v${VERSION} — Phase 1.2 (mode: ${mode})</div>
+        <div style="font-size: 12px; color: #999; margin-bottom: 4px;">SaaSAgent shell v${VERSION} — Phase 1.4 (mode: ${mode})</div>
+        <div data-saas-agent-error-area></div>
         <div data-saas-agent-content data-mode="${mode}"></div>
       </div>
     `;
     this.contentEl = this.querySelector('[data-saas-agent-content]') as HTMLDivElement;
+    this.errorAreaEl = this.querySelector('[data-saas-agent-error-area]') as HTMLDivElement;
   }
 
   private attachClient(): void {
@@ -88,15 +94,21 @@ export class SaaSAgentShell extends HTMLElement {
 
     this.client = new RuntimeClient({
       runtimeUrl,
-      onLayout: (layout) => this.renderer?.render(layout),
+      onLayout: (layout) => {
+        // A successful layout supersedes any pending error display.
+        if (this.errorAreaEl) clearErrorBanner(this.errorAreaEl);
+        this.renderer?.render(layout);
+      },
       onServerError: (envelope) => {
+        // Render visible error banner above the (possibly stale) layout. Per Phase 1.4.3
+        // design: the error display is plain DOM, NOT composed from registered atomic
+        // primitives — the failure path can't depend on the composer/registry being healthy.
         // eslint-disable-next-line no-console
         console.error(
           `[saas-agent shell] server error (${envelope.category}/${envelope.code}, retryable=${envelope.retryable}):`,
           envelope.message,
         );
-        // Phase 1.4: render an error layout from registered atomic primitives.
-        // Phase 1.3.1: log only.
+        if (this.errorAreaEl) showErrorBanner(this.errorAreaEl, envelope);
       },
       onError: (err) => {
         // eslint-disable-next-line no-console
