@@ -51,4 +51,24 @@ Each entry:
 ### [2026-04-26] Cached composition templates per recurring intent
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
-**Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
+**Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency. **Status:** Application-level `CompositionCache` (LRU keyed by canonical intent fingerprint) is implemented in Phase 1.3. Anthropic prompt cache on the stable system prefix is wired; will activate once Phase 1.4 fills the registry to the 4096-token minimum.
+
+### [2026-05-03] Phase 1.4.1 — AtomicComponentRegistry REST API + composer reads from registry
+**Source:** Session 2026-05-03 — end-of-Phase-1.4.0 roadmap: "Phase 1.4.1 — `AtomicComponentRegistry` storage in the runtime + REST API for host registration + composer reads atomic primitives from the registry (replacing the hardcoded `Card/Heading/Text/Button/List` set in `composer/prompt.ts`)."
+**Category:** capability
+**Notes:** The hardcoded primitive set in `prompt.ts` is a stub. Phase 1.4.1 replaces it with a live registry stored in the runtime, exposed over REST so the host can register their own primitives. The HaikuComposer then reads from the registry dynamically at compose time. This is the foundational step for ADR-005 (runtime composition from the host's actual design system), not a mock catalog.
+
+### [2026-05-03] Phase 1.4.2 — DTCG theme tokens importer
+**Source:** Session 2026-05-03 — end-of-Phase-1.4.0 roadmap: "Phase 1.4.2 (DTCG theme tokens importer)."
+**Category:** capability
+**Notes:** Per ADR-025, the canonical theme representation is W3C Design Tokens (DTCG). Phase 1.4.2 wires a Style Dictionary importer that reads the host's token file and populates the runtime theme store, enabling the HaikuComposer to reference real brand tokens when building the system prompt. CSS variable fallback path needed for hosts without formal token systems.
+
+### [2026-05-03] Phase 1.4.3 — Shell renders error layout from registered primitives on ErrorEnvelope
+**Source:** Session 2026-05-03 — end-of-Phase-1.4.0 roadmap: "Phase 1.4.3 (shell renders an error layout from registered primitives when an `ErrorEnvelope` arrives)."
+**Category:** capability
+**Notes:** Currently the shell's `onServerError` callback fires when an `ErrorEnvelope` arrives (Phase 1.3.1), but error rendering is host-handled — the shell has no default error UI. Phase 1.4.3 gives the shell a default error layout built from registered atomic primitives (e.g., `ErrorCard` + `RetryButton` from the host's design system). Graceful degradation: if no error-specific primitives are registered, the shell falls back to a plain text message.
+
+### [2026-05-03] Phase 2 — Planner + 3-tier capability invocation + .feature.md (MVP-of-MVP gate)
+**Source:** Session 2026-05-03 — Phase sequencing summary: "Phase 2 → Planner + 3-tier capability invocation + .feature.md (MVP-of-MVP gate)."
+**Category:** capability
+**Notes:** Phase 2 is the first gate where the platform can do something useful end-to-end for the e-commerce + travel verticals. Key deliverables: (1) real Planner (`claude-sonnet-4-6`) that reads conversation context + Feature/Service docs + registry metadata and determines which Tools / Skills / Sub-Agents to invoke; (2) 3-tier capability invocation path (Tool = HTTP call, Skill = in-process function, Sub-Agent = gRPC federated call per ADR-028); (3) at least one `.feature.md` per vertical (`find-similar-product.feature.md` for e-commerce, `plan-multi-city-trip.feature.md` for travel) that the planner reads as super-skill context (ADR-013). After Phase 2, the agent can execute real workflows — not just render composed layouts from stubs.

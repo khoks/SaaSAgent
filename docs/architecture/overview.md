@@ -204,5 +204,17 @@ Runtime HTTP server (`@saasagent/runtime`) exposes `GET /health`, `GET /sse` (pl
 
 **Source:** Session 2026-05-03 — commits 5a4c97c (Phase 1.1), b796d02 (Phase 1.2), aed268f (Phase 1.3).
 
+**Phase 1.3.1 — ErrorEnvelope + SSE error events (closes ADR-040)**
+
+When the Composer throws (e.g., credit exhaustion, parse failure, network error), the runtime now emits `event: error\ndata: <ErrorEnvelope JSON>\n\n` over SSE instead of silently hanging. `ErrorEnvelope` (`{ type: "error"; code; message; composeCycleId?; retryable }`) is a first-class type in `@saasagent/protocol`. Shell exposes `onServerError` callback. 47 tests total; smoke validated against live Anthropic API — credit-exhausted `ProviderError` correctly surfaces as a typed SSE error event with no hang.
+
+**Source:** Session 2026-05-03 — commit d39e3d4.
+
+**Phase 1.4.0 — `apps/demo-host` Vite-bundled browser demo**
+
+New app `apps/demo-host` (Vite + TypeScript) renders a mock host page with `<saas-agent>` embedded. Running `pnpm demo:runtime` + `pnpm demo:host` starts the full loop in an actual browser. With `ANTHROPIC_API_KEY` in scope the agent panel renders a real Haiku-composed `Card → Heading → Text → Buttons` welcome layout. User clicks → `InstructionEnvelope` over WS → re-compose → SSE → re-render in browser.
+
+**Source:** Session 2026-05-03 — commit d49241a.
+
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

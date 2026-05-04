@@ -643,3 +643,20 @@
   - Reduces monorepo-wide churn when protocol fields are added or changed — no cascading type errors across all packages for additive changes.
   - Revisit at v1 if runtime validation misses too much vs. a stricter approach.
 - **Source:** Conversation 2026-05-03 (Rahul Phase 1.2 review: "keep the schemas loose").
+
+## ADR-040 — ErrorEnvelope as a first-class SSE protocol event; composer failures become renderable UI state
+- **Date:** 2026-05-03
+- **Status:** accepted
+- **Context:** During Phase 1.3 smoke testing, the runtime was observed to silently hang when the Composer threw (credit exhausted → `ProviderError`). The SSE client received no event and timed out after 30 s. Claude identified two options and asked Rahul to decide.
+- **Options considered:**
+  - A. **Silent hang / timeout** — no change; the shell just reconnects. Simplest, worst UX.
+  - B. **Emit `event: error\ndata: {...}\n\n` SSE message** with a typed `ErrorEnvelope`, so the shell can render an error layout instead of hanging. Add `ErrorEnvelope` to the `@saasagent/protocol` package.
+  - C. **Defer to Phase 1.4** as part of broader renderer-side error handling.
+- **Decision:** B immediately, as Phase 1.3.1 polish before moving to Phase 1.4. Rahul: "do it now."
+- **Consequences:**
+  - `ErrorEnvelope` is now a first-class type in `@saasagent/protocol` (`packages/protocol/src/error.ts`): `{ type: "error"; code: string; message: string; composeCycleId?: string; retryable: boolean }`.
+  - Runtime `SSEHandler` wraps all Composer invocations in a try/catch; on failure it emits `event: error\ndata: <ErrorEnvelope JSON>\n\n` before closing the stream.
+  - Shell `<saas-agent>` element listens for `message` events with `event: error` and exposes an `onServerError` callback — host can render an appropriate error layout using registered primitives.
+  - 5 new tests added (47 total); live smoke validated: credit-exhausted ProviderError results in an immediate SSE error event, no hang.
+  - **Design principle:** errors in the agentic loop are renderable events, not exceptions that silently break the channel. This applies to all future failure modes (planner timeout, sub-agent unreachable, memory read failure) — each should emit a typed SSE error rather than hanging.
+- **Source:** Conversation 2026-05-03 — Phase 1.3.1 implementation; Rahul: "for the phase 1.3.1 polish - do it now"; commit d39e3d4.
