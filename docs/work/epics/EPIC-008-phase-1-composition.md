@@ -1,8 +1,8 @@
 # EPIC-008 — Phase 1 Composition
 
-- **Status:** in-progress (Phase 1 gate satisfied 2026-05-03; LLM composer done; remaining: WC shell, themes)
+- **Status:** in-progress (Phase 1 gate ✅ 2026-05-03; slices 1.3.1 + 1.4.0 done 2026-05-03; remaining: AtomicRegistry REST API, DTCG themes, error layout rendering)
 - **Created:** 2026-05-03
-- **Last updated:** 2026-05-03
+- **Last updated:** 2026-05-04
 - **Parent initiative:** [INIT-003 — Build MVP runtime + embeddable shell](../initiatives/INIT-003-build-mvp.md)
 
 ## Outcome
@@ -45,10 +45,24 @@ End-to-end composed artifact renders from a hand-crafted layout-tree input, with
 - Atomic UI Components registry: schema, storage, hot-reload
 - WC-wrap default renderer wired to real DOM
 
+### Slice 1.3.1 — ErrorEnvelope SSE protocol event — **done 2026-05-03**
+- `ErrorEnvelope` type + `ErrorCode` discriminated union added to `@saasagent/protocol`
+- Runtime emits `event: error\ndata: {...}` on composer failure (ADR-040)
+- Web-shell `onServerError` callback dispatches `ErrorEnvelope` to host handler
+- 47 tests passing (5 new for error propagation path)
+- Commit: `d39e3d4`
+
 ### Slice 1.4 — Theme tokens registry *(backlog)*
 - DTCG canonical schema
 - Style Dictionary importer
 - CSS variable fallback emission
+
+### Slice 1.4.0 — Vite browser demo host — **done 2026-05-03**
+- `apps/demo-host` Vite workspace app embedding `<saas-agent>` in mock host page
+- `pnpm demo:runtime` + `pnpm demo:host` runs live loop in real browser at `http://localhost:5173`
+- HaikuComposer composes welcome layout; button click → WS emit → re-compose → re-render
+- Build: 382 ms, 3.67 kB gzip
+- Commit: `d49241a`
 
 ### Slice 1.5 — Live UI Composer — **done 2026-05-03**
 - `AnthropicProvider` + `MockProvider` behind `ModelProvider` abstraction (ADR-007 honored)
@@ -63,3 +77,5 @@ End-to-end composed artifact renders from a hand-crafted layout-tree input, with
 - [STORY-024 — Slice 1.1: protocol package, stub composer, renderer validated](../stories/STORY-024-phase-1-slice-1-1-protocol.md)
 - [STORY-025 — Slice 1.2: real SSE + WebSocket transport validated over live network](../stories/STORY-025-phase-1-slice-1-2-transport.md)
 - [STORY-026 — Slice 1.3: real Composer LLM call — HaikuComposer + ModelProvider abstraction](../stories/STORY-026-phase-1-slice-1-3-composer.md)
+- [STORY-027 — Slice 1.3.1: ErrorEnvelope as first-class SSE protocol event](../stories/STORY-027-phase-1-slice-1-3-1-error-envelope.md)
+- [STORY-028 — Slice 1.4.0: Vite browser demo host](../stories/STORY-028-phase-1-slice-1-4-0-browser-demo.md)
