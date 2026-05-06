@@ -171,14 +171,37 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
-### Closed in Batch 6 (2026-05-05)
-- ✅ Real-time transport for WC shell ↔ runtime — SSE (server → shell, planner stream) + WebSocket (shell ↔ runtime, bidirectional emit); WebRTC reserved for voice Phase 5 [ADR-038]
+### Closed in Phase build (2026-05-05)
+- ✅ Real-time transport — SSE (planner output) + WebSocket (bidirectional instruction emit); WebRTC reserved for voice [ADR-038]
+- ✅ Text input bar as required primary affordance — always-visible alongside composed interactive elements [ADR-039]
 
-### Still open (Batch 7 — implementation/v2 details)
+### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-3. ✅ **Real-time transport** — closed by [ADR-038](../decisions/decision-log.md): SSE for streaming planner output to shell; WebSocket for bidirectional typed-instruction emit; WebRTC reserved for voice Phase 5.
-4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+3. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+
+## Phase 2 capability invocation layer (Phase 2.0c)
+
+Two executor types implement the Tools + Skills tiers of the three-tier capability model (ADR-021). Sub-Agents (the third tier) federate via gRPC+HTTP per ADR-028 — separate from these executors.
+
+```
+Planner calls executor.execute(name, input) — same interface for both tiers
+    │
+    ├─ SkillExecutor (in-process)
+    │   • Handlers registered separately from registry descriptors
+    │   • prompt-template kind → returns unsupported-kind (deferred to planner)
+    │   • sync + async handlers both await-wrapped
+    │   • Returns uniform ExecutionResult { ok, output, errorCode }
+    │
+    └─ ToolExecutor (HTTP API call)
+        • URL template substitution: {paramName} and {nested.key} patterns
+        • Auth modes: none | bearer-env | host-supplied
+        • AbortController-based timeout enforcement
+        • JSON + text response handling
+        • Returns uniform ExecutionResult { ok, output, errorCode }
+```
+
+REST endpoints: `POST /executor/skill/<name>` + `POST /executor/tool/<name>`. HTTP status mapping is exhaustiveness-checked: 404 (not found) / 400 (bad input) / 502 (tool HTTP error) / 504 (timeout).
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

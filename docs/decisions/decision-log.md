@@ -637,32 +637,22 @@
   - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
 - **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).
 
-## ADR-039 — Agent runtime language: TypeScript (confirmed)
-- **Date:** 2026-05-08
-- **Status:** accepted (closes the TBD in tech-stack.md; was "TS leaning")
-- **Context:** Tech-stack.md listed "TBD (TS leaning)" for agent runtime language. Phase 0 through Phase 1.4 are now complete — all packages (`@saasagent/protocol`, `@saasagent/runtime`, `@saasagent/sdk`, `@saasagent/web-shell`, `@saasagent/cli`, `apps/demo-host`) are TypeScript. This is now a confirmed implementation fact, not a preference.
-- **Options considered:**
-  - A. TypeScript — chosen by implementation (Claude Agent SDK ergonomics, WC shell ecosystem, pnpm/Turborepo monorepo).
-  - B. Python — SDK sibling (`packages/sdk-py`) for Sub-Agent SDK per ADR-027; not the platform runtime.
-  - C. Rust / Go — deferred; not needed for MVP scope.
-- **Decision:** TypeScript is the runtime language. Python is a sibling for the Sub-Agent SDK only (ADR-027). Rust/Go remain deferred.
-- **Consequences:** All runtime, protocol, shell, CLI packages are TypeScript. Python Sub-Agent SDK (`packages/sdk-py`) gets its own toolchain (uv or poetry) alongside the JS workspace. No mixed-runtime complexity in the platform core.
-- **Source:** Phase 0–1.4 implementation (conversation 2026-05-08); tech-stack confirmation.
-
-## ADR-040 — Protocol schemas kept loose (not strict Zod exhaustive constraints)
-- **Date:** 2026-05-08
+## ADR-039 — Conversational text input bar is a required primary affordance alongside composed interactive elements
+- **Date:** 2026-05-05
 - **Status:** accepted
-- **Context:** After Phase 1.2 landed the `@saasagent/protocol` package (LayoutNode, ComposedLayout, InstructionEnvelope, ErrorEnvelope, EmitTransport), Rahul reviewed the output and gave explicit direction: "keep the schemas loose."
+- **Context:** After Phase 1.4, the full SSE+WS+Composer loop was working in-browser. Self-review revealed a critical UX gap: the agent shell had **no text input**. All user interaction required clicking composer-generated buttons. The UI Composer correctly judges that ambiguous intents (e.g., "welcome") warrant zero interactive elements — the model has nothing concrete to button-ify, so it outputs a card with copy and no action targets. This left users with no way to continue the conversation. The entire round-trip loop was unreachable without at least one clickable element, which the composer may not always generate.
 - **Options considered:**
-  - A. **Strict Zod schemas** — exhaustive field-level constraints, no unknown keys, precise union discriminants. Maximally type-safe; breaks on any schema evolution without explicit version bumps.
-  - B. **Loose Zod schemas** — validate required fields and structure; pass through additional/unknown fields; union types use string literals without exhaustive enum enforcement.
-- **Decision:** B. Loose schemas. The protocol is young and will evolve; strict schemas would create excessive friction at this stage.
+  - A. Require the composer to always include at least one button or affordance — forces artificial interactive elements onto every layout; bad composition.
+  - B. **Add an always-visible text input bar to the WC shell as a first-class, always-present affordance** — independent of and complementary to whatever the composer decides to render.
+  - C. Add a hardcoded "fallback button" when the composer produces no interactive elements — patch over the symptom.
+- **Decision:** B. The WC shell includes a persistent text input bar at the bottom of the agent panel (Phase 2.0a). Text input is **always reachable** regardless of what the composer renders. Composed interactive elements (buttons, forms, pickers) serve as acceleration shortcuts; the text input is the bootstrapping channel.
 - **Consequences:**
-  - Schema validation catches shape errors but does not reject unknown fields — forward-compatible by default.
-  - `LayoutNode.children: LayoutNode[]` remains recursive (rules out Anthropic strict structured-output surface regardless — ADR-012 already uses raw JSON + Zod validation + retry for this reason).
-  - Future schema tightening is additive; no breaking changes to accumulated data in the CompositionCache when we evolve the schema.
-  - Trade: type safety is softer; mitigated by TypeScript static types (runtime schema + TS type work together).
-- **Source:** Conversation 2026-05-08: Rahul reviewing Phase 1.2 protocol output — "1. keep the schemas loose."
+  - **Resolves the conversation-bootstrapping problem** — users are never trapped without a way to interact.
+  - **Composition-driven UI and text-driven conversation are complementary, not competing.** The agent panel is a two-layer surface: typed-JSON rendered interactive elements (top) + persistent free-text input (bottom). Both funnel through `InstructionEnvelope` over the WebSocket channel.
+  - **Prioritization consequence:** Phase 2.0a (text input) was built before Phase 2.0b/c (Skills/Tools registries + executors) because the registries are useless without a way to exercise them.
+  - **UX convention:** muscle memory is built around both surfaces — button clicks are faster for known intents; text input is the fallback and exploration surface.
+  - **Implication for "wow" target (ADR-034):** the "never limited" and "builds muscle memory" criteria require both surfaces; buttons alone are clumsy for novel or multi-step requests.
+- **Source:** Phase 2.0a self-review, 2026-05-05: "the welcome layout has zero buttons (composer correctly judged 'no concrete intent → no interactive elements'), which means the user has no way to drive the conversation forward. The whole loop is button-only — there's no text input. This is the critical UX gap."
 
 ## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
 - **Date:** 2026-05-08
