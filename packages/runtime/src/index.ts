@@ -20,6 +20,7 @@ import { PROTOCOL_VERSION, type UIComposer } from '@saasagent/protocol';
 import { HaikuComposer, StubComposer } from './composer/index.js';
 import { SkillExecutor, SubAgentExecutor, ToolExecutor } from './executor/index.js';
 import { KeyValueMemoryProvider, type MemoryProvider } from './memory/index.js';
+import { KeyValueEvalProvider, type EvalProvider } from './eval/index.js';
 import { AnthropicProvider } from './model/index.js';
 import { type Planner, SonnetPlanner, StubPlanner } from './planner/index.js';
 import {
@@ -89,6 +90,12 @@ export {
   type MemoryProvider,
   type MemoryQuery,
 } from './memory/index.js';
+export {
+  KeyValueEvalProvider,
+  type KeyValueEvalProviderOptions,
+  type EvalProvider,
+  type EvalFilter,
+} from './eval/index.js';
 export {
   StubPlanner,
   SonnetPlanner,
@@ -171,6 +178,13 @@ export class Runtime {
    */
   readonly memoryProvider: MemoryProvider = new KeyValueMemoryProvider();
   /**
+   * EvalProvider (Phase 2.5). Captures per-turn quality signals via REST POST
+   * /eval and WS envelopes of type 'eval-feedback'. Default in-process
+   * KeyValueEvalProvider; future ClickHouseEvalProvider for durable analytics
+   * per ADR-032.
+   */
+  readonly evalProvider: EvalProvider = new KeyValueEvalProvider();
+  /**
    * Planner (Phase 2.1). Built lazily in start() based on config.planner so we
    * can pick StubPlanner vs SonnetPlanner depending on environment. Public so
    * host code / tests can introspect after start().
@@ -197,6 +211,7 @@ export class Runtime {
       subAgentExecutor: this.subAgentExecutor,
       planner: this.planner,
       memoryProvider: this.memoryProvider,
+      evalProvider: this.evalProvider,
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(

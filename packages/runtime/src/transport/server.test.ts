@@ -18,6 +18,7 @@ import {
 } from '../registry/index.js';
 import { SkillExecutor, SubAgentExecutor, ToolExecutor } from '../executor/index.js';
 import { KeyValueMemoryProvider, NullMemoryProvider } from '../memory/index.js';
+import { KeyValueEvalProvider } from '../eval/index.js';
 import type { Planner } from '../planner/index.js';
 import { RuntimeServer } from './server.js';
 
@@ -1118,5 +1119,170 @@ describe('RuntimeServer /federate endpoint', () => {
     } finally {
       await server.stop();
     }
+  });
+});
+
+/**
+ * Phase 2.5: /eval REST endpoints + WS eval-feedback intercept.
+ */
+describe('RuntimeServer /eval endpoints + eval-feedback WS intercept', () => {
+  let evalProvider: KeyValueEvalProvider;
+  let server: RuntimeServer;
+
+  beforeEach(async () => {
+    evalProvider = new KeyValueEvalProvider();
+    server = new RuntimeServer({ port: 0, composer: new StubComposer(), evalProvider });
+    await server.start();
+  });
+  afterEach(async () => {
+    await server.stop();
+  });
+
+  it('POST /eval records a signal (server stamps `at` if missing)', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/eval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        composeCycleId: 'cyc-1',
+        signal: 'positive',
+        source: 'user-explicit',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { recorded: boolean; total: number };
+    expect(body.recorded).toBe(true);
+    expect(body.total).toBe(1);
+    const stored = await evalProvider.query({});
+    expect(stored).toHaveLength(1);
+    expect(stored[0]!.composeCycleId).toBe('cyc-1');
+    expect(typeof stored[0]!.at).toBe('string');
+    expect(stored[0]!.at.length).toBeGreaterThan(10);
+  });
+
+  it('POST /eval returns 400 on missing required fields', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/eval`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ signal: 'positive' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /eval returns all signals with most-recent-first ordering', async () => {
+    await evalProvider.record({
+      composeCycleId: 'a',
+      signal: 'positive',
+      source: 'user-explicit',
+      at: '2026-01-01T00:00:00Z',
+    });
+    await evalProvider.record({
+      composeCycleId: 'b',
+      signal: 'negative',
+      source: 'user-explicit',
+      at: '2026-01-02T00:00:00Z',
+    });
+    const res = await fetch(`http://127.0.0.1:${server.port}/eval`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { signals: Array<{ composeCycleId: string }>; total: number };
+    expect(body.total).toBe(2);
+    expect(body.signals.map((s) => s.composeCycleId)).toEqual(['b', 'a']);
+  });
+
+  it('GET /eval supports filter query params (signal=)', async () => {
+    await evalProvider.record({
+      composeCycleId: 'a',
+      signal: 'positive',
+      source: 'user-explicit',
+      at: '2026-01-01T00:00:00Z',
+    });
+    await evalProvider.record({
+      composeCycleId: 'b',
+      signal: 'negative',
+      source: 'user-explicit',
+      at: '2026-01-02T00:00:00Z',
+    });
+    const res = await fetch(`http://127.0.0.1:${server.port}/eval?signal=negative`);
+    const body = (await res.json()) as { signals: Array<{ composeCycleId: string }> };
+    expect(body.signals).toHaveLength(1);
+    expect(body.signals[0]!.composeCycleId).toBe('b');
+  });
+
+  it('GET /eval/sessions/<id> returns signals for that session', async () => {
+    await evalProvider.record({
+      composeCycleId: 'a',
+      sessionId: 's1',
+      signal: 'positive',
+      source: 'user-explicit',
+      at: '2026-01-01T00:00:00Z',
+    });
+    await evalProvider.record({
+      composeCycleId: 'b',
+      sessionId: 's2',
+      signal: 'positive',
+      source: 'user-explicit',
+      at: '2026-01-01T00:00:01Z',
+    });
+    const res = await fetch(`http://127.0.0.1:${server.port}/eval/sessions/s1`);
+    const body = (await res.json()) as { sessionId: string; signals: Array<{ composeCycleId: string }> };
+    expect(body.sessionId).toBe('s1');
+    expect(body.signals).toHaveLength(1);
+    expect(body.signals[0]!.composeCycleId).toBe('a');
+  });
+
+  it('WS eval-feedback envelope is captured into the EvalProvider with the per-WS sessionId (no compose)', async () => {
+    // Open SSE so we get a baseline composeCycleId.
+    const sseUrl = `http://127.0.0.1:${server.port}/sse`;
+    const layouts: ComposedLayout[] = [];
+    const sse = new EventSource(sseUrl);
+    sse.addEventListener('layout', (e) => {
+      layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+    });
+    await waitFor(() => layouts.length >= 1, 1500);
+
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+    await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+    const cycleBefore = layouts.length;
+    ws.send(
+      JSON.stringify({
+        composeCycleId: layouts[0]!.composeCycleId,
+        sourceNodeId: 'thumbs-up',
+        emittedAt: new Date().toISOString(),
+        type: 'eval-feedback',
+        sequence: 0,
+        payload: { signal: 'positive', source: 'user-explicit', score: 1, comment: 'great UI' },
+      }),
+    );
+
+    await waitFor(() => evalProvider.count() >= 1, 1500);
+    const stored = await evalProvider.query({});
+    expect(stored).toHaveLength(1);
+    expect(stored[0]).toMatchObject({
+      composeCycleId: layouts[0]!.composeCycleId,
+      signal: 'positive',
+      source: 'user-explicit',
+      score: 1,
+      comment: 'great UI',
+    });
+    expect(stored[0]!.sessionId).toMatch(/^sess-/);
+
+    // No compose was triggered — layouts.length should still be cycleBefore.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(layouts.length).toBe(cycleBefore);
+
+    ws.close();
+    sse.close();
+  });
+
+  it('/health includes evalProvider name + count', async () => {
+    await evalProvider.record({
+      composeCycleId: 'x',
+      signal: 'positive',
+      source: 'user-explicit',
+      at: '2026-01-01T00:00:00Z',
+    });
+    const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+    const body = (await res.json()) as { evalProvider: string; evalSignalCount: number };
+    expect(body.evalProvider).toBe('keyvalue');
+    expect(body.evalSignalCount).toBe(1);
   });
 });

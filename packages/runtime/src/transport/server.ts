@@ -23,6 +23,7 @@ import type {
   ComposeContext,
   ComposedToolInvocation,
   ErrorEnvelope,
+  EvalSignal,
   FederationRequest,
   FederationResponse,
   InstructionEnvelope,
@@ -56,6 +57,7 @@ import {
 } from '../executor/index.js';
 import { type Planner, StubPlanner, type ToolInvocation } from '../planner/index.js';
 import { KeyValueMemoryProvider, type MemoryProvider } from '../memory/index.js';
+import { KeyValueEvalProvider, type EvalProvider } from '../eval/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 
@@ -101,6 +103,13 @@ export interface RuntimeServerOptions {
    * unless explicitly aligned.
    */
   memoryProvider?: MemoryProvider;
+  /**
+   * EvalProvider (Phase 2.5). Captures per-turn quality signals via REST POST
+   * /eval and WS envelopes of type 'eval-feedback'. Defaults to a fresh
+   * KeyValueEvalProvider (per-runtime, in-process). Future: ClickHouseEvalProvider
+   * for durable analytics per ADR-032.
+   */
+  evalProvider?: EvalProvider;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -133,6 +142,7 @@ export class RuntimeServer {
   private readonly subAgentExecutor: SubAgentExecutor;
   private readonly planner: Planner;
   private readonly memoryProvider: MemoryProvider;
+  private readonly evalProvider: EvalProvider;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
@@ -148,6 +158,7 @@ export class RuntimeServer {
       options.subAgentExecutor ?? new SubAgentExecutor({ registry: this.subAgentRegistry });
     this.planner = options.planner ?? new StubPlanner();
     this.memoryProvider = options.memoryProvider ?? new KeyValueMemoryProvider();
+    this.evalProvider = options.evalProvider ?? new KeyValueEvalProvider();
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -251,9 +262,75 @@ export class RuntimeServer {
           subAgentRegistryVersion: this.subAgentRegistry.get().version,
           subAgentCount: Object.keys(this.subAgentRegistry.get().subAgents).length,
           memoryProvider: this.memoryProvider.name,
+          evalProvider: this.evalProvider.name,
+          evalSignalCount: this.evalProvider.count(),
         }),
       );
       return;
+    }
+
+    // Eval REST endpoints (Phase 2.5).
+    // POST /eval                   — record one EvalSignal (server stamps `at` if missing)
+    // GET  /eval                   — query with ?sessionId=&composeCycleId=&signal=&since=&limit=
+    // GET  /eval/sessions/<id>     — convenience: signals for a specific session
+    if (url === '/eval' || url.startsWith('/eval?')) {
+      const parsed = new URL(url, 'http://localhost');
+      if (req.method === 'POST') {
+        const body = (await readJsonBody(req)) as Partial<EvalSignal> | null;
+        if (
+          !body ||
+          typeof body.composeCycleId !== 'string' ||
+          typeof body.signal !== 'string' ||
+          typeof body.source !== 'string'
+        ) {
+          res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: 'POST body must be { composeCycleId, signal, source, ... } EvalSignal',
+            }),
+          );
+          return;
+        }
+        const signal: EvalSignal = {
+          ...body,
+          composeCycleId: body.composeCycleId,
+          signal: body.signal as EvalSignal['signal'],
+          source: body.source as EvalSignal['source'],
+          at: body.at ?? new Date().toISOString(),
+        };
+        await this.evalProvider.record(signal);
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ recorded: true, total: this.evalProvider.count() }));
+        return;
+      }
+      if (req.method === 'GET') {
+        const filter = {
+          ...(parsed.searchParams.get('sessionId') ? { sessionId: parsed.searchParams.get('sessionId')! } : {}),
+          ...(parsed.searchParams.get('composeCycleId')
+            ? { composeCycleId: parsed.searchParams.get('composeCycleId')! }
+            : {}),
+          ...(parsed.searchParams.get('signal')
+            ? { signal: parsed.searchParams.get('signal') as EvalSignal['signal'] }
+            : {}),
+          ...(parsed.searchParams.get('since') ? { since: parsed.searchParams.get('since')! } : {}),
+          ...(parsed.searchParams.get('limit') ? { limit: Number(parsed.searchParams.get('limit')) } : {}),
+        };
+        const signals = await this.evalProvider.query(filter);
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ signals, total: this.evalProvider.count() }));
+        return;
+      }
+    }
+    if (url.startsWith('/eval/sessions/')) {
+      const parsed = new URL(url, 'http://localhost');
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      if (segments.length === 3 && req.method === 'GET') {
+        const sessionId = decodeURIComponent(segments[2]!);
+        const signals = await this.evalProvider.query({ sessionId });
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ sessionId, signals }));
+        return;
+      }
     }
 
     // Federation endpoint (Phase 2.4.x). ANY runtime can be a sub-agent of
@@ -722,6 +799,32 @@ export class RuntimeServer {
         return;
       }
       this.options.onInstruction?.(envelope);
+
+      // Phase 2.5: intercept eval-feedback envelopes BEFORE the planner.
+      // payload shape: { signal: 'positive'|'negative'|'neutral'|'completion',
+      //                  source?: 'user-explicit'|..., score?, comment?, intent? }
+      // The envelope's composeCycleId identifies the layout being scored.
+      if (envelope.type === 'eval-feedback') {
+        const payload = (envelope.payload ?? {}) as Partial<EvalSignal>;
+        const signal: EvalSignal = {
+          composeCycleId: envelope.composeCycleId,
+          sessionId,
+          ...(payload.userId ? { userId: payload.userId } : {}),
+          signal: (payload.signal as EvalSignal['signal']) ?? 'neutral',
+          source: (payload.source as EvalSignal['source']) ?? 'user-explicit',
+          ...(typeof payload.score === 'number' ? { score: payload.score } : {}),
+          ...(typeof payload.comment === 'string' ? { comment: payload.comment } : {}),
+          ...(typeof payload.intent === 'string' ? { intent: payload.intent } : {}),
+          at: new Date().toISOString(),
+        };
+        void this.evalProvider.record(signal).catch((err: unknown) => {
+          // eslint-disable-next-line no-console
+          console.error('[runtime] eval record failed:', err);
+        });
+        // Don't re-compose — feedback envelopes are out-of-band.
+        return;
+      }
+
       // Phase 2.1: route through the planner. Planner extracts intent from the
       // envelope (e.g. payload.text for user-message), invokes any needed
       // skills/tools, then the composer renders. The previous direct

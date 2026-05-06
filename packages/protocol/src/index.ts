@@ -63,6 +63,11 @@ export type {
   FederationResponse,
 } from './subagent.js';
 export type {
+  EvalSignalKind,
+  EvalSource,
+  EvalSignal,
+} from './eval.js';
+export type {
   UIComposer,
   ComposeContext,
   ComposedToolInvocation,
