@@ -18,6 +18,7 @@ import { realpathSync } from 'node:fs';
 import { PROTOCOL_VERSION, type UIComposer } from '@saasagent/protocol';
 
 import { HaikuComposer, StubComposer } from './composer/index.js';
+import { SkillExecutor, ToolExecutor } from './executor/index.js';
 import { AnthropicProvider } from './model/index.js';
 import {
   InMemoryComponentRegistry,
@@ -47,6 +48,18 @@ export {
   type SkillRegistryStore,
   type ToolRegistryStore,
 } from './registry/index.js';
+export {
+  SkillExecutor,
+  ToolExecutor,
+  substituteUrl,
+  type SkillHandler,
+  type SkillExecutorOptions,
+  type ToolExecutorOptions,
+  type ExecutionContext,
+  type ExecutionResult,
+  type ExecutionError,
+  type ExecutionErrorCode,
+} from './executor/index.js';
 export {
   AnthropicProvider,
   MockProvider,
@@ -85,6 +98,13 @@ export class Runtime {
   readonly skillRegistry: SkillRegistryStore = new InMemorySkillRegistry();
   /** Public tools registry (Phase 2.0b). */
   readonly toolRegistry: ToolRegistryStore = new InMemoryToolRegistry();
+  /**
+   * SkillExecutor (Phase 2.0c). Public so host code can `runtime.skillExecutor.registerHandler('foo', fn)`
+   * after construction. Bound to the same skillRegistry instance used by REST + the planner.
+   */
+  readonly skillExecutor: SkillExecutor = new SkillExecutor({ registry: this.skillRegistry });
+  /** ToolExecutor (Phase 2.0c) — uses globalThis.fetch + process.env unless replaced. */
+  readonly toolExecutor: ToolExecutor = new ToolExecutor({ registry: this.toolRegistry });
 
   constructor(public readonly config: RuntimeConfig = {}) {}
 
@@ -98,6 +118,8 @@ export class Runtime {
       themeRegistry: this.themeRegistry,
       skillRegistry: this.skillRegistry,
       toolRegistry: this.toolRegistry,
+      skillExecutor: this.skillExecutor,
+      toolExecutor: this.toolExecutor,
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(

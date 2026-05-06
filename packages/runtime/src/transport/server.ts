@@ -39,6 +39,12 @@ import {
   importStyleDictionary,
   importCssVariables,
 } from '../registry/index.js';
+import {
+  SkillExecutor,
+  ToolExecutor,
+  type ExecutionErrorCode,
+  type ExecutionResult,
+} from '../executor/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 
@@ -55,6 +61,14 @@ export interface RuntimeServerOptions {
   skillRegistry?: SkillRegistryStore;
   /** Tools registry store (Phase 2.0b). Defaults to a fresh InMemoryToolRegistry. */
   toolRegistry?: ToolRegistryStore;
+  /**
+   * SkillExecutor (Phase 2.0c). If omitted, the server constructs a default
+   * SkillExecutor bound to its skillRegistry. Pass an explicit instance to
+   * register handlers before start() (recommended path for host code).
+   */
+  skillExecutor?: SkillExecutor;
+  /** ToolExecutor (Phase 2.0c). If omitted, the server constructs a default bound to its toolRegistry. */
+  toolExecutor?: ToolExecutor;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -80,6 +94,8 @@ export class RuntimeServer {
   private readonly themeRegistry: ThemeRegistryStore;
   private readonly skillRegistry: SkillRegistryStore;
   private readonly toolRegistry: ToolRegistryStore;
+  private readonly skillExecutor: SkillExecutor;
+  private readonly toolExecutor: ToolExecutor;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
@@ -87,6 +103,8 @@ export class RuntimeServer {
     this.themeRegistry = options.themeRegistry ?? new InMemoryThemeRegistry();
     this.skillRegistry = options.skillRegistry ?? new InMemorySkillRegistry();
     this.toolRegistry = options.toolRegistry ?? new InMemoryToolRegistry();
+    this.skillExecutor = options.skillExecutor ?? new SkillExecutor({ registry: this.skillRegistry });
+    this.toolExecutor = options.toolExecutor ?? new ToolExecutor({ registry: this.toolRegistry });
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -230,6 +248,44 @@ export class RuntimeServer {
         res.end(JSON.stringify(updated));
         return;
       }
+    }
+
+    // Executor endpoints (Phase 2.0c) — POST /executor/skill/<name> | POST /executor/tool/<name>.
+    // Body is the input args (JSON object). Response is the wire-form ExecutionResult.
+    // HTTP status maps to the error code so a basic curl/HTTP client can branch without parsing JSON
+    // (planner in Phase 2.1 will use the JSON body directly).
+    if (url.startsWith('/executor/skill/') || url.startsWith('/executor/tool/')) {
+      const isSkill = url.startsWith('/executor/skill/');
+      const parsed = new URL(url, 'http://localhost');
+      const prefix = isSkill ? '/executor/skill/' : '/executor/tool/';
+      const name = decodeURIComponent(parsed.pathname.slice(prefix.length));
+      if (!name) {
+        res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: `name required: POST /executor/${isSkill ? 'skill' : 'tool'}/<name>`,
+          }),
+        );
+        return;
+      }
+      if (req.method !== 'POST') {
+        res.writeHead(405, { ...CORS_HEADERS, 'Content-Type': 'text/plain', Allow: 'POST' });
+        res.end('method not allowed; use POST');
+        return;
+      }
+      const body = await readJsonBody(req);
+      const input = body ?? {};
+      const result: ExecutionResult = isSkill
+        ? await this.skillExecutor.execute(name, input)
+        : await this.toolExecutor.execute(name, input);
+      const status = result.ok ? 200 : executorErrorToHttpStatus(result.error.code);
+      // Strip non-serializable `cause` from the wire response (Error instances etc).
+      const wire = result.ok
+        ? result
+        : { ok: false, durationMs: result.durationMs, error: { code: result.error.code, message: result.error.message, ...(result.error.status !== undefined ? { status: result.error.status } : {}) } };
+      res.writeHead(status, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(wire));
+      return;
     }
 
     // Theme registry endpoints. PUT supports ?format=dtcg (default) | style-dictionary | css-variables.
@@ -425,6 +481,32 @@ export class RuntimeServer {
           this.broadcastError(buildErrorEnvelope(err, envelope.composeCycleId));
         });
     });
+  }
+}
+
+/** Map executor error codes to HTTP statuses for the REST executor endpoints. */
+function executorErrorToHttpStatus(code: ExecutionErrorCode): number {
+  switch (code) {
+    case 'unknown-skill':
+    case 'unknown-tool':
+      return 404;
+    case 'no-handler':
+    case 'unsupported-kind':
+    case 'tool-config':
+    case 'missing-input-param':
+      return 400;
+    case 'http-status':
+    case 'http-network':
+    case 'invalid-json':
+    case 'handler-threw':
+      return 502;
+    case 'timeout':
+      return 504;
+    default: {
+      // Exhaustiveness check — adding a new code without updating this switch should fail to compile.
+      const _exhaustive: never = code;
+      return 500;
+    }
   }
 }
 
