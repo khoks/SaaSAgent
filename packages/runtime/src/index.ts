@@ -19,7 +19,9 @@ import { PROTOCOL_VERSION, type UIComposer } from '@saasagent/protocol';
 
 import { HaikuComposer, StubComposer } from './composer/index.js';
 import { SkillExecutor, ToolExecutor } from './executor/index.js';
+import { NullMemoryProvider, type MemoryProvider } from './memory/index.js';
 import { AnthropicProvider } from './model/index.js';
+import { type Planner, StubPlanner } from './planner/index.js';
 import {
   InMemoryComponentRegistry,
   InMemoryThemeRegistry,
@@ -68,6 +70,18 @@ export {
   type GenerateRequest,
   type GenerateResponse,
 } from './model/index.js';
+export {
+  NullMemoryProvider,
+  type MemoryProvider,
+  type MemoryQuery,
+} from './memory/index.js';
+export {
+  StubPlanner,
+  type Planner,
+  type PlanRequest,
+  type PlanResult,
+  type ToolInvocation,
+} from './planner/index.js';
 
 export interface RuntimeConfig {
   /** HTTP server port (default 8080). */
@@ -76,6 +90,11 @@ export interface RuntimeConfig {
   anthropicApiKey?: string;
   /** Force composer choice; defaults to HaikuComposer when API key present, StubComposer otherwise. */
   composer?: 'auto' | 'stub' | 'haiku';
+  /**
+   * Force planner choice. Defaults to 'stub' in 2.1a; 'auto' will pick SonnetPlanner
+   * when ANTHROPIC_API_KEY is present once Phase 2.1b lands.
+   */
+  planner?: 'auto' | 'stub' | 'sonnet';
   /** Postgres connection string. */
   postgresUrl?: string;
   /** Qdrant URL. */
@@ -105,11 +124,24 @@ export class Runtime {
   readonly skillExecutor: SkillExecutor = new SkillExecutor({ registry: this.skillRegistry });
   /** ToolExecutor (Phase 2.0c) — uses globalThis.fetch + process.env unless replaced. */
   readonly toolExecutor: ToolExecutor = new ToolExecutor({ registry: this.toolRegistry });
+  /**
+   * MemoryProvider (Phase 2.1a stub seam). NullMemoryProvider returns empty
+   * recall and drops record() calls. Phase 2.3 swaps to a real Postgres+Qdrant
+   * impl behind the same interface — so this seam stays stable.
+   */
+  readonly memoryProvider: MemoryProvider = new NullMemoryProvider();
+  /**
+   * Planner (Phase 2.1). Built lazily in start() based on config.planner so we
+   * can pick StubPlanner vs SonnetPlanner depending on environment. Public so
+   * host code / tests can introspect after start().
+   */
+  planner: Planner = new StubPlanner();
 
   constructor(public readonly config: RuntimeConfig = {}) {}
 
   async start(): Promise<void> {
     const composer = this.buildComposer();
+    this.planner = this.buildPlanner();
     const port = this.config.port ?? 8080;
     this.server = new RuntimeServer({
       port,
@@ -120,6 +152,7 @@ export class Runtime {
       toolRegistry: this.toolRegistry,
       skillExecutor: this.skillExecutor,
       toolExecutor: this.toolExecutor,
+      planner: this.planner,
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(
@@ -138,7 +171,7 @@ export class Runtime {
     await this.server.start();
     // eslint-disable-next-line no-console
     console.log(
-      `[saasagent/runtime v${VERSION}] listening on http://localhost:${this.server.port} (protocol v${PROTOCOL_VERSION}, composer=${composer.constructor.name})`,
+      `[saasagent/runtime v${VERSION}] listening on http://localhost:${this.server.port} (protocol v${PROTOCOL_VERSION}, composer=${composer.constructor.name}, planner=${this.planner.name})`,
     );
     // eslint-disable-next-line no-console
     console.log(`  • GET  http://localhost:${this.server.port}/health`);
@@ -170,6 +203,24 @@ export class Runtime {
     return new HaikuComposer({
       provider: new AnthropicProvider({ apiKey: apiKey ?? undefined }),
     });
+  }
+
+  /**
+   * Phase 2.1a: only StubPlanner exists. Phase 2.1b adds SonnetPlanner — at
+   * which point this method will route based on `config.planner` + apiKey
+   * presence the same way buildComposer does.
+   */
+  private buildPlanner(): Planner {
+    const choice = this.config.planner ?? 'auto';
+    if (choice === 'sonnet') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[runtime] config.planner="sonnet" requested but SonnetPlanner is not yet wired (Phase 2.1b). Falling back to StubPlanner.',
+      );
+    }
+    // eslint-disable-next-line no-console
+    console.log('[runtime] using StubPlanner (Phase 2.1a — deterministic routing, no LLM).');
+    return new StubPlanner();
   }
 }
 

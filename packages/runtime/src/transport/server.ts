@@ -45,6 +45,7 @@ import {
   type ExecutionErrorCode,
   type ExecutionResult,
 } from '../executor/index.js';
+import { type Planner, StubPlanner } from '../planner/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 
@@ -69,6 +70,12 @@ export interface RuntimeServerOptions {
   skillExecutor?: SkillExecutor;
   /** ToolExecutor (Phase 2.0c). If omitted, the server constructs a default bound to its toolRegistry. */
   toolExecutor?: ToolExecutor;
+  /**
+   * Planner (Phase 2.1). Sits between the WS boundary and the composer; extracts
+   * intent from envelopes and may invoke skills/tools before composing. Defaults
+   * to StubPlanner (deterministic routing, no LLM).
+   */
+  planner?: Planner;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -96,6 +103,7 @@ export class RuntimeServer {
   private readonly toolRegistry: ToolRegistryStore;
   private readonly skillExecutor: SkillExecutor;
   private readonly toolExecutor: ToolExecutor;
+  private readonly planner: Planner;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
@@ -105,6 +113,7 @@ export class RuntimeServer {
     this.toolRegistry = options.toolRegistry ?? new InMemoryToolRegistry();
     this.skillExecutor = options.skillExecutor ?? new SkillExecutor({ registry: this.skillRegistry });
     this.toolExecutor = options.toolExecutor ?? new ToolExecutor({ registry: this.toolRegistry });
+    this.planner = options.planner ?? new StubPlanner();
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -470,14 +479,32 @@ export class RuntimeServer {
         return;
       }
       this.options.onInstruction?.(envelope);
-      // Re-compose in response to the user's interaction. Phase 2 will route this
-      // through the planner; Phase 1.x routes directly to composer with envelope.type as intent.
-      this.options.composer
-        .compose(envelope.type, this.buildContext(envelope.type))
-        .then((layout) => this.broadcastLayout(layout))
+      // Phase 2.1: route through the planner. Planner extracts intent from the
+      // envelope (e.g. payload.text for user-message), invokes any needed
+      // skills/tools, then the composer renders. The previous direct
+      // composer.compose(envelope.type, ...) call is gone — that path treated
+      // 'user-message' literally as the intent.
+      this.planner
+        .plan({
+          envelope,
+          context: this.buildContext(envelope.type).conversationContext,
+        })
+        .then(async (planResult) => {
+          const baseCtx = this.buildContext(planResult.intent);
+          const composeCtx: ComposeContext = {
+            ...baseCtx,
+            conversationContext: {
+              ...baseCtx.conversationContext,
+              intent: planResult.intent,
+              ...(planResult.narration ? { narrative: planResult.narration } : {}),
+            },
+          };
+          const layout = await this.options.composer.compose(planResult.intent, composeCtx);
+          this.broadcastLayout(layout);
+        })
         .catch((err: unknown) => {
           // eslint-disable-next-line no-console
-          console.error('[runtime] re-compose failed:', err);
+          console.error('[runtime] plan+compose failed:', err);
           this.broadcastError(buildErrorEnvelope(err, envelope.composeCycleId));
         });
     });

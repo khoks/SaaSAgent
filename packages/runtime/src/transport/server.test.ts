@@ -89,6 +89,42 @@ describe('RuntimeServer integration', () => {
     ws.close();
     sse.close();
   });
+
+  /**
+   * Phase 2.1a fix: prior to the planner, a `user-message` envelope was
+   * routed as `composer.compose('user-message', ...)` — composer never saw
+   * the actual text. With StubPlanner, payload.text becomes the intent.
+   */
+  it('routes user-message envelopes via the planner (payload.text becomes intent)', async () => {
+    const sseUrl = `http://127.0.0.1:${server.port}/sse`;
+    const layouts: ComposedLayout[] = [];
+    const sse = new EventSource(sseUrl);
+    sse.addEventListener('layout', (e) => {
+      layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+    });
+    await waitFor(() => layouts.length >= 1, 1500);
+
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+    await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+    const envelope: InstructionEnvelope = {
+      composeCycleId: layouts[0]!.composeCycleId,
+      sourceNodeId: 'user-input',
+      emittedAt: new Date().toISOString(),
+      type: 'user-message',
+      sequence: 0,
+      payload: { text: 'show me a TV under 800 dollars' },
+    };
+    ws.send(JSON.stringify(envelope));
+
+    await waitFor(() => layouts.length >= 2, 1500);
+    // The composer (StubComposer here) sees the actual text as intent, NOT
+    // the literal string 'user-message'.
+    expect(layouts[1]!.metadata?.intent).toBe('show me a TV under 800 dollars');
+    expect(layouts[1]!.metadata?.intent).not.toBe('user-message');
+
+    ws.close();
+    sse.close();
+  });
 });
 
 async function receiveFirstSSELayout(sseUrl: string): Promise<ComposedLayout> {
