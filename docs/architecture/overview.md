@@ -221,7 +221,11 @@ InstructionEnvelope (user-message | action | acknowledge)
 
 **Routing convention:** the LLM sees tool names prefixed with `tool__` (HTTP tools) or `skill__` (in-process skills). The tool-mapper strips the prefix and routes to the correct executor — deterministic from the name, no secondary registry lookup needed.
 
-**Memory seam:** `NullMemoryProvider` stub is wired in Phase 2.1. Real cross-session memory access is Phase 3.
+**Memory seam (updated Phase 2.3):** `NullMemoryProvider` was the Phase 2.1 stub. Phase 2.3 replaced it with `KeyValueMemoryProvider` — an in-memory store keyed by `sessionId` (one session per WebSocket connection), giving the planner real intra-session conversation continuity. Per-session `sessionId` values are UUID-assigned by `RuntimeServer` at WS connection time and threaded through `PlanRequest`. A `/memory` REST endpoint exposes session contents for debugging. Durable cross-session persistence (Postgres, per ADR-008) is Phase 3.
+
+## Phase 2.2 features registry
+
+`.feature.md` documents are registered into the `FeatureRegistry` via `PUT /registry/features`. Each entry has frontmatter (`id`, `name`, `version`, `domain`) and a freeform Markdown body. When the feature registry is non-empty, `SonnetPlanner` prepends all feature documents as a `### Features & Services in scope` block in its system prompt — giving the planner domain context without a compile step, exactly as ADR-013 specifies. If the feature content alone answers the user's question, the planner does not call any tools; tool calls are reserved for information not available in the feature docs.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).
