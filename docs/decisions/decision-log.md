@@ -637,6 +637,23 @@
   - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
 - **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).
 
+## ADR-039 — Conversational text input bar is a required primary affordance alongside composed interactive elements
+- **Date:** 2026-05-05
+- **Status:** accepted
+- **Context:** After Phase 1.4, the full SSE+WS+Composer loop was working in-browser. Self-review revealed a critical UX gap: the agent shell had **no text input**. All user interaction required clicking composer-generated buttons. The UI Composer correctly judges that ambiguous intents (e.g., "welcome") warrant zero interactive elements — the model has nothing concrete to button-ify, so it outputs a card with copy and no action targets. This left users with no way to continue the conversation. The entire round-trip loop was unreachable without at least one clickable element, which the composer may not always generate.
+- **Options considered:**
+  - A. Require the composer to always include at least one button or affordance — forces artificial interactive elements onto every layout; bad composition.
+  - B. **Add an always-visible text input bar to the WC shell as a first-class, always-present affordance** — independent of and complementary to whatever the composer decides to render.
+  - C. Add a hardcoded "fallback button" when the composer produces no interactive elements — patch over the symptom.
+- **Decision:** B. The WC shell includes a persistent text input bar at the bottom of the agent panel (Phase 2.0a). Text input is **always reachable** regardless of what the composer renders. Composed interactive elements (buttons, forms, pickers) serve as acceleration shortcuts; the text input is the bootstrapping channel.
+- **Consequences:**
+  - **Resolves the conversation-bootstrapping problem** — users are never trapped without a way to interact.
+  - **Composition-driven UI and text-driven conversation are complementary, not competing.** The agent panel is a two-layer surface: typed-JSON rendered interactive elements (top) + persistent free-text input (bottom). Both funnel through `InstructionEnvelope` over the WebSocket channel.
+  - **Prioritization consequence:** Phase 2.0a (text input) was built before Phase 2.0b/c (Skills/Tools registries + executors) because the registries are useless without a way to exercise them.
+  - **UX convention:** muscle memory is built around both surfaces — button clicks are faster for known intents; text input is the fallback and exploration surface.
+  - **Implication for "wow" target (ADR-034):** the "never limited" and "builds muscle memory" criteria require both surfaces; buttons alone are clumsy for novel or multi-step requests.
+- **Source:** Phase 2.0a self-review, 2026-05-05: "the welcome layout has zero buttons (composer correctly judged 'no concrete intent → no interactive elements'), which means the user has no way to drive the conversation forward. The whole loop is button-only — there's no text input. This is the critical UX gap."
+
 ## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
 - **Date:** 2026-05-08
 - **Status:** accepted (closes Q6.3)

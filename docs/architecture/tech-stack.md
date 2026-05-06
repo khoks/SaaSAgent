@@ -57,3 +57,7 @@
 | Monorepo tooling | pnpm WS / Yarn WS / Nx / Turborepo / Bun WS | **pnpm workspaces + Turborepo** (TS); Python SDK in `packages/sdk-py` with uv or poetry | [ADR-037](../decisions/decision-log.md) |
 | Build team | Rahul-only / Rahul+Claude / external hires | **Rahul + Claude only** (no external hires for MVP) | [ADR-036](../decisions/decision-log.md) |
 | CI/CD | GitHub Actions (default for our build) | GitHub Actions | — |
+| Skill execution (in-process tier) | In-process handler registry | **SkillExecutor**: handler registry separate from descriptors; `prompt-template` kind deferred to planner; sync + async handlers; uniform `ExecutionResult` | derivative of [ADR-021](../decisions/decision-log.md) |
+| Tool execution (HTTP tier) | HTTP client with URL templates | **ToolExecutor**: `{param}` / `{nested.key}` URL substitution; auth (`none` / `bearer-env` / `host-supplied`); AbortController timeout; JSON+text response handling; uniform `ExecutionResult` | derivative of [ADR-021](../decisions/decision-log.md) |
+| Conversational input affordance | Button-only (composition-driven) / text input / hybrid | **Always-visible text input bar** alongside composition-driven interactive elements; both funnel through `InstructionEnvelope` over WebSocket | [ADR-039](../decisions/decision-log.md) |
+| Monorepo packages (TS) | — | `packages/runtime` · `packages/sdk-ts` · `packages/web-shell` · `packages/cli` · `apps/demo-host` · `infra/docker-compose.yml` | [ADR-037](../decisions/decision-log.md) |
