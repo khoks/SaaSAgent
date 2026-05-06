@@ -10,6 +10,12 @@
  * Render order is tools → system → messages, so a cache mark on the last system
  * block caches all of system. Min cacheable prefix on Haiku 4.5 is 4096 tokens —
  * shorter prefixes silently won't cache (no error, just zero cache reads).
+ *
+ * Phase 2.1b: tools + structured content blocks. When `req.tools` is set we pass
+ * them through to the SDK; messages with structured content (tool_use, tool_result)
+ * are mapped to Anthropic's content-block array shape; the response's content
+ * blocks are surfaced both as concatenated text (back-compat) and as the original
+ * structured array (so tool-use callers can dispatch tool calls).
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -17,9 +23,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import {
   type GenerateRequest,
   type GenerateResponse,
+  type ModelContentBlock,
+  type ModelMessage,
   type ModelProvider,
   ProviderError,
   type SystemBlock,
+  type ToolDefinition,
 } from './types.js';
 
 export interface AnthropicProviderOptions {
@@ -45,11 +54,18 @@ export class AnthropicProvider implements ModelProvider {
     const params: Anthropic.MessageCreateParamsNonStreaming = {
       model: req.model,
       max_tokens: req.maxTokens ?? this.defaultMaxTokens,
-      messages: req.messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: req.messages.map(serializeMessage),
     };
 
     if (req.system !== undefined) {
       params.system = serializeSystem(req.system);
+    }
+
+    if (req.tools && req.tools.length > 0) {
+      params.tools = req.tools.map(serializeTool);
+      if (req.toolChoice) {
+        params.tool_choice = serializeToolChoice(req.toolChoice);
+      }
     }
 
     if (req.adaptiveThinking) {
@@ -65,13 +81,15 @@ export class AnthropicProvider implements ModelProvider {
       throw classifyAnthropicError(err);
     }
 
-    const text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+    const content = response.content.map(deserializeBlock);
+    const text = content
+      .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
       .map((b) => b.text)
       .join('');
 
     return {
       text,
+      content,
       model: response.model,
       stopReason: response.stop_reason ?? 'unknown',
       usage: {
@@ -82,6 +100,37 @@ export class AnthropicProvider implements ModelProvider {
       },
     };
   }
+}
+
+function serializeMessage(msg: ModelMessage): Anthropic.MessageParam {
+  if (typeof msg.content === 'string') {
+    return { role: msg.role, content: msg.content };
+  }
+  // Structured content (tool_use, tool_result, text). Map each block to the
+  // SDK's union type. The cast on tool_use.input is safe — Anthropic accepts
+  // any JSON-serializable value as tool input.
+  const blocks = msg.content.map<Anthropic.ContentBlockParam>((b) => {
+    if (b.type === 'text') {
+      return { type: 'text', text: b.text };
+    }
+    if (b.type === 'tool_use') {
+      return {
+        type: 'tool_use',
+        id: b.id,
+        name: b.name,
+        input: b.input as Record<string, unknown>,
+      };
+    }
+    // tool_result
+    const block: Anthropic.ToolResultBlockParam = {
+      type: 'tool_result',
+      tool_use_id: b.tool_use_id,
+      content: b.content,
+    };
+    if (b.is_error) block.is_error = true;
+    return block;
+  });
+  return { role: msg.role, content: blocks };
 }
 
 function serializeSystem(
@@ -95,6 +144,36 @@ function serializeSystem(
     }
     return textBlock;
   });
+}
+
+function serializeTool(t: ToolDefinition): Anthropic.Tool {
+  return {
+    name: t.name,
+    description: t.description,
+    input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+  };
+}
+
+function serializeToolChoice(
+  choice: NonNullable<GenerateRequest['toolChoice']>,
+): Anthropic.MessageCreateParams['tool_choice'] {
+  if (choice === 'auto') return { type: 'auto' };
+  if (choice === 'any') return { type: 'any' };
+  if (choice === 'none') return { type: 'none' };
+  return { type: 'tool', name: choice.name };
+}
+
+function deserializeBlock(block: Anthropic.ContentBlock): ModelContentBlock {
+  if (block.type === 'text') {
+    return { type: 'text', text: block.text };
+  }
+  if (block.type === 'tool_use') {
+    return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
+  }
+  // Unknown future block types (e.g. server_tool_use, thinking, redacted_thinking)
+  // — surface them as text so callers don't crash. The SonnetPlanner ignores
+  // non-tool_use blocks anyway.
+  return { type: 'text', text: '' };
 }
 
 function classifyAnthropicError(err: unknown): ProviderError {

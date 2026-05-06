@@ -115,4 +115,144 @@ describe('AnthropicProvider', () => {
       expect(err.retryable).toBe(false);
     }
   });
+
+  it('always populates content blocks alongside text (back-compat)', async () => {
+    const { client } = makeFakeClient(fakeMessage('hello world'));
+    const provider = new AnthropicProvider({ client });
+    const res = await provider.generate({
+      model: 'claude-haiku-4-5',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(res.text).toBe('hello world');
+    expect(res.content).toEqual([{ type: 'text', text: 'hello world' }]);
+  });
+
+  it('passes tools + tool_choice through to the SDK', async () => {
+    const { client, create } = makeFakeClient();
+    const provider = new AnthropicProvider({ client });
+    await provider.generate({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'find a tv' }],
+      tools: [
+        {
+          name: 'tool__get-product',
+          description: 'Fetch product details',
+          input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+        },
+      ],
+      toolChoice: 'auto',
+    });
+    const params = create.mock.calls[0]![0];
+    expect(params.tools).toEqual([
+      {
+        name: 'tool__get-product',
+        description: 'Fetch product details',
+        input_schema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      },
+    ]);
+    expect(params.tool_choice).toEqual({ type: 'auto' });
+  });
+
+  it('serializes structured-content messages (tool_use + tool_result)', async () => {
+    const { client, create } = makeFakeClient();
+    const provider = new AnthropicProvider({ client });
+    await provider.generate({
+      model: 'claude-sonnet-4-6',
+      messages: [
+        { role: 'user', content: 'find a TV' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'Calling the catalog…' },
+            { type: 'tool_use', id: 'tu_1', name: 'tool__get-product', input: { id: 'tv-55' } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'tu_1', content: '{"price":799}' },
+          ],
+        },
+      ],
+    });
+    const params = create.mock.calls[0]![0];
+    expect(params.messages).toEqual([
+      { role: 'user', content: 'find a TV' },
+      {
+        role: 'assistant',
+        content: [
+          { type: 'text', text: 'Calling the catalog…' },
+          { type: 'tool_use', id: 'tu_1', name: 'tool__get-product', input: { id: 'tv-55' } },
+        ],
+      },
+      {
+        role: 'user',
+        content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: '{"price":799}' }],
+      },
+    ]);
+  });
+
+  it('flags tool_result with is_error when set', async () => {
+    const { client, create } = makeFakeClient();
+    const provider = new AnthropicProvider({ client });
+    await provider.generate({
+      model: 'claude-sonnet-4-6',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'tu_x', content: 'boom', is_error: true },
+          ],
+        },
+      ],
+    });
+    const block = create.mock.calls[0]![0].messages[0].content[0];
+    expect(block).toMatchObject({ type: 'tool_result', tool_use_id: 'tu_x', is_error: true });
+  });
+
+  it('parses tool_use blocks out of the response and surfaces stopReason=tool_use', async () => {
+    const fake: Anthropic.Message = {
+      id: 'msg_x',
+      type: 'message',
+      role: 'assistant',
+      model: 'claude-sonnet-4-6',
+      content: [
+        { type: 'text', text: 'Looking it up…', citations: null },
+        { type: 'tool_use', id: 'tu_42', name: 'tool__get-product', input: { id: 'tv-55' } },
+      ],
+      stop_reason: 'tool_use',
+      stop_sequence: null,
+      usage: {
+        input_tokens: 200,
+        output_tokens: 30,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        server_tool_use: null,
+        service_tier: 'standard',
+      },
+    };
+    const { client } = makeFakeClient(fake);
+    const provider = new AnthropicProvider({ client });
+    const res = await provider.generate({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'find tv-55' }],
+    });
+    expect(res.stopReason).toBe('tool_use');
+    expect(res.text).toBe('Looking it up…');
+    expect(res.content).toEqual([
+      { type: 'text', text: 'Looking it up…' },
+      { type: 'tool_use', id: 'tu_42', name: 'tool__get-product', input: { id: 'tv-55' } },
+    ]);
+  });
+
+  it('omits tools/tool_choice when no tools are provided', async () => {
+    const { client, create } = makeFakeClient();
+    const provider = new AnthropicProvider({ client });
+    await provider.generate({
+      model: 'claude-haiku-4-5',
+      messages: [{ role: 'user', content: 'hi' }],
+    });
+    expect(create.mock.calls[0]![0].tools).toBeUndefined();
+    expect(create.mock.calls[0]![0].tool_choice).toBeUndefined();
+  });
 });

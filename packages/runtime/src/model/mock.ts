@@ -43,6 +43,7 @@ export class MockProvider implements ModelProvider {
 function defaultResponse(req: GenerateRequest, text: string): GenerateResponse {
   return {
     text,
+    content: text ? [{ type: 'text', text }] : [],
     model: req.model,
     stopReason: 'end_turn',
     usage: { inputTokens: 100, outputTokens: 50 },

@@ -1,0 +1,352 @@
+import { describe, it, expect, vi } from 'vitest';
+import type {
+  ConversationContext,
+  InstructionEnvelope,
+  SkillDescriptor,
+  ToolDescriptor,
+} from '@saasagent/protocol';
+
+import { SkillExecutor, ToolExecutor } from '../executor/index.js';
+import { NullMemoryProvider } from '../memory/index.js';
+import { MockProvider, type GenerateResponse } from '../model/index.js';
+import { InMemorySkillRegistry, InMemoryToolRegistry } from '../registry/index.js';
+
+import { SonnetPlanner, __test } from './sonnet.js';
+
+const baseContext: ConversationContext = { intent: 'welcome' };
+
+function envelope(overrides: Partial<InstructionEnvelope> = {}): InstructionEnvelope {
+  return {
+    composeCycleId: 'cyc-1',
+    sourceNodeId: 'user-input',
+    emittedAt: new Date().toISOString(),
+    type: 'user-message',
+    sequence: 0,
+    payload: { text: 'show me a TV under 800' },
+    ...overrides,
+  };
+}
+
+interface Setup {
+  planner: SonnetPlanner;
+  provider: MockProvider;
+  skillRegistry: InMemorySkillRegistry;
+  toolRegistry: InMemoryToolRegistry;
+  skillExecutor: SkillExecutor;
+  toolExecutor: ToolExecutor;
+  memory: NullMemoryProvider;
+}
+
+function setup(opts: {
+  responses: GenerateResponse[] | Array<Partial<GenerateResponse>>;
+  skills?: ReadonlyArray<SkillDescriptor>;
+  tools?: ReadonlyArray<ToolDescriptor>;
+  fetch?: typeof globalThis.fetch;
+  maxRounds?: number;
+}): Setup {
+  const provider = new MockProvider(opts.responses);
+  const skillRegistry = new InMemorySkillRegistry();
+  if (opts.skills?.length) skillRegistry.replace(opts.skills);
+  const toolRegistry = new InMemoryToolRegistry();
+  if (opts.tools?.length) toolRegistry.replace(opts.tools);
+  const skillExecutor = new SkillExecutor({ registry: skillRegistry });
+  const toolExecutor = new ToolExecutor({ registry: toolRegistry, fetch: opts.fetch });
+  const memory = new NullMemoryProvider();
+  const planner = new SonnetPlanner({
+    provider,
+    skillExecutor,
+    toolExecutor,
+    skillRegistry,
+    toolRegistry,
+    memoryProvider: memory,
+    ...(opts.maxRounds !== undefined ? { maxRounds: opts.maxRounds } : {}),
+  });
+  return { planner, provider, skillRegistry, toolRegistry, skillExecutor, toolExecutor, memory };
+}
+
+/** Build a stub fetch that returns a fixed Response for any URL. */
+function stubFetch(impl: (url: string) => Response): typeof globalThis.fetch {
+  return ((input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+    return Promise.resolve(impl(url));
+  }) as typeof globalThis.fetch;
+}
+
+describe('SonnetPlanner', () => {
+  it('reports its name', () => {
+    const { planner } = setup({ responses: [{ text: 'done', stopReason: 'end_turn' }] });
+    expect(planner.name).toBe('sonnet');
+  });
+
+  it('returns intent + narration when the model responds without calling tools', async () => {
+    const { planner, provider } = setup({
+      responses: [{ text: 'Nothing to fetch — proceeding with what you asked.', stopReason: 'end_turn' }],
+    });
+    const r = await planner.plan({
+      envelope: envelope({ payload: { text: 'just say hi' } }),
+      context: baseContext,
+    });
+    expect(r.intent).toBe('just say hi');
+    expect(r.invocations).toEqual([]);
+    expect(r.narration).toBe('Nothing to fetch — proceeding with what you asked.');
+    // One round used
+    expect(provider.requests).toHaveLength(1);
+  });
+
+  it('runs a single tool-use round, executes the skill, then returns', async () => {
+    const skill: SkillDescriptor = {
+      name: 'price-compare',
+      version: '1.0.0',
+      description: 'Compare prices',
+      whenToUse: 'when comparing two products',
+      kind: 'in-process',
+    };
+    const { planner, provider, skillExecutor } = setup({
+      responses: [
+        // Round 1: model asks to call price-compare
+        {
+          stopReason: 'tool_use',
+          content: [
+            { type: 'text', text: 'Comparing prices…' },
+            {
+              type: 'tool_use',
+              id: 'tu_1',
+              name: 'skill__price-compare',
+              input: { a: 'tv-55', b: 'tv-65' },
+            },
+          ],
+        },
+        // Round 2: model summarizes
+        { text: 'tv-55 is cheaper.', stopReason: 'end_turn' },
+      ],
+      skills: [skill],
+    });
+    skillExecutor.registerHandler<{ a: string; b: string }, { winner: string }>(
+      'price-compare',
+      (input) => ({ winner: input.a }),
+    );
+
+    const r = await planner.plan({
+      envelope: envelope({ payload: { text: 'compare tv-55 vs tv-65' } }),
+      context: baseContext,
+    });
+
+    expect(r.intent).toBe('compare tv-55 vs tv-65');
+    expect(r.invocations).toHaveLength(1);
+    expect(r.invocations[0]).toMatchObject({
+      kind: 'skill',
+      name: 'price-compare',
+      input: { a: 'tv-55', b: 'tv-65' },
+    });
+    expect(r.invocations[0]!.result.ok).toBe(true);
+    expect(r.narration).toBe('tv-55 is cheaper.');
+    expect(provider.requests).toHaveLength(2);
+
+    // Round 2's messages should include the assistant's tool_use turn + a user
+    // tool_result turn with the executor's output JSON-stringified.
+    const round2Messages = provider.requests[1]!.messages;
+    expect(round2Messages).toHaveLength(3); // user, assistant(tool_use), user(tool_result)
+    const lastMsg = round2Messages[2]!;
+    expect(lastMsg.role).toBe('user');
+    const toolResult = (lastMsg.content as Array<{ type: string; content?: string }>)[0]!;
+    expect(toolResult.type).toBe('tool_result');
+    expect(toolResult.content).toContain('"winner":"tv-55"');
+  });
+
+  it('routes tool__-prefixed names to the ToolExecutor', async () => {
+    const tool: ToolDescriptor = {
+      name: 'get-product',
+      version: '1.0.0',
+      description: 'Fetch product',
+      whenToUse: 'product lookup',
+      method: 'GET',
+      urlTemplate: 'https://api.host.com/products/{id}',
+    };
+    const fetcher = stubFetch(
+      () =>
+        new Response(JSON.stringify({ id: 'tv-55', price: 749 }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    const { planner } = setup({
+      responses: [
+        {
+          stopReason: 'tool_use',
+          content: [
+            { type: 'tool_use', id: 'tu_1', name: 'tool__get-product', input: { id: 'tv-55' } },
+          ],
+        },
+        { text: 'Found it for $749.', stopReason: 'end_turn' },
+      ],
+      tools: [tool],
+      fetch: fetcher,
+    });
+    const r = await planner.plan({
+      envelope: envelope({ payload: { text: 'fetch tv-55' } }),
+      context: baseContext,
+    });
+    expect(r.invocations).toHaveLength(1);
+    expect(r.invocations[0]!.kind).toBe('tool');
+    expect(r.invocations[0]!.result.ok).toBe(true);
+    if (r.invocations[0]!.result.ok) {
+      expect(r.invocations[0]!.result.output).toEqual({ id: 'tv-55', price: 749 });
+    }
+  });
+
+  it('passes errored tool results back to the model with is_error=true', async () => {
+    const tool: ToolDescriptor = {
+      name: 'broken',
+      version: '1.0.0',
+      description: 'Always 500s',
+      whenToUse: 'never',
+      method: 'GET',
+      urlTemplate: 'https://api.host.com/{id}',
+    };
+    const fetcher = stubFetch(() => new Response('upstream broken', { status: 500 }));
+    const { planner, provider } = setup({
+      responses: [
+        {
+          stopReason: 'tool_use',
+          content: [
+            { type: 'tool_use', id: 'tu_1', name: 'tool__broken', input: { id: 'x' } },
+          ],
+        },
+        { text: 'The upstream is down — try again later.', stopReason: 'end_turn' },
+      ],
+      tools: [tool],
+      fetch: fetcher,
+    });
+    const r = await planner.plan({ envelope: envelope({ payload: { text: 'fetch x' } }), context: baseContext });
+    expect(r.invocations).toHaveLength(1);
+    expect(r.invocations[0]!.result.ok).toBe(false);
+
+    const round2 = provider.requests[1]!;
+    const lastMsg = round2.messages[2]!;
+    const toolResult = (lastMsg.content as Array<{ type: string; is_error?: boolean; content?: string }>)[0]!;
+    expect(toolResult.is_error).toBe(true);
+    expect(toolResult.content).toContain('http-status');
+  });
+
+  it('reports unknown tool names as is_error tool_results without dispatching', async () => {
+    const skillExecuteSpy = vi.fn();
+    const tool: ToolDescriptor = {
+      name: 'real-tool',
+      version: '1.0.0',
+      description: 'real',
+      whenToUse: 'sometimes',
+      method: 'GET',
+      urlTemplate: 'https://x/{a}',
+    };
+    const { planner, provider, toolExecutor } = setup({
+      responses: [
+        {
+          stopReason: 'tool_use',
+          content: [
+            { type: 'tool_use', id: 'tu_1', name: 'unprefixed-name', input: {} },
+          ],
+        },
+        { text: 'Stopping.', stopReason: 'end_turn' },
+      ],
+      tools: [tool],
+    });
+    toolExecutor.execute = vi.fn(); // shouldn't be called
+    void skillExecuteSpy;
+
+    const r = await planner.plan({ envelope: envelope({ payload: { text: 'go' } }), context: baseContext });
+    expect(r.invocations).toEqual([]);
+    expect(toolExecutor.execute).not.toHaveBeenCalled();
+    const round2 = provider.requests[1]!;
+    const toolResult = (round2.messages[2]!.content as Array<{ is_error?: boolean; content?: string }>)[0]!;
+    expect(toolResult.is_error).toBe(true);
+    expect(toolResult.content).toMatch(/Unknown tool/);
+  });
+
+  it('stops after maxRounds even if the model keeps requesting tools', async () => {
+    const skill: SkillDescriptor = {
+      name: 'inf',
+      version: '1.0.0',
+      description: 'inf',
+      whenToUse: 'inf',
+      kind: 'in-process',
+    };
+    // Build 10 tool_use responses — planner should only run maxRounds (=3)
+    const responses: Array<Partial<GenerateResponse>> = Array.from({ length: 10 }, (_, i) => ({
+      stopReason: 'tool_use',
+      content: [{ type: 'tool_use', id: `tu_${i}`, name: 'skill__inf', input: {} }],
+    }));
+    const { planner, provider, skillExecutor } = setup({
+      responses,
+      skills: [skill],
+      maxRounds: 3,
+    });
+    skillExecutor.registerHandler('inf', () => ({ ok: true }));
+    const r = await planner.plan({ envelope: envelope({ payload: { text: 'forever' } }), context: baseContext });
+    expect(provider.requests.length).toBe(3);
+    expect(r.invocations.length).toBe(3);
+  });
+
+  it('passes tool_use=auto + tools array to the provider', async () => {
+    const skill: SkillDescriptor = {
+      name: 'a',
+      version: '1.0.0',
+      description: 'a',
+      whenToUse: 'a',
+      kind: 'in-process',
+    };
+    const { planner, provider } = setup({
+      responses: [{ text: 'done', stopReason: 'end_turn' }],
+      skills: [skill],
+    });
+    await planner.plan({ envelope: envelope({ payload: { text: 'go' } }), context: baseContext });
+    expect(provider.requests[0]!.tools?.[0]?.name).toBe('skill__a');
+    expect(provider.requests[0]!.toolChoice).toBe('auto');
+  });
+
+  it('omits tools when registries are empty', async () => {
+    const { planner, provider } = setup({
+      responses: [{ text: 'done', stopReason: 'end_turn' }],
+    });
+    await planner.plan({ envelope: envelope({ payload: { text: 'go' } }), context: baseContext });
+    expect(provider.requests[0]!.tools).toBeUndefined();
+    expect(provider.requests[0]!.toolChoice).toBeUndefined();
+  });
+
+  it('records turns into the memory provider after planning', async () => {
+    const { planner, memory } = setup({
+      responses: [{ text: 'okay', stopReason: 'end_turn' }],
+    });
+    const recordSpy = vi.spyOn(memory, 'record');
+    await planner.plan({ envelope: envelope({ payload: { text: 'hi' } }), context: baseContext });
+    expect(recordSpy).toHaveBeenCalledTimes(2);
+    expect(recordSpy.mock.calls[0]![0]).toMatchObject({ speaker: 'user', text: 'hi' });
+    expect(recordSpy.mock.calls[1]![0]).toMatchObject({ speaker: 'agent', text: 'okay' });
+  });
+
+  it('preserves envelope.type as intent for non-user-message envelopes', async () => {
+    const { planner } = setup({ responses: [{ text: '', stopReason: 'end_turn' }] });
+    const r = await planner.plan({
+      envelope: envelope({ type: 'find-similar-tv', payload: { productId: 'sony-bravia' } }),
+      context: baseContext,
+    });
+    expect(r.intent).toBe('find-similar-tv');
+  });
+
+  it('formats memory recall + recent turns into the user message', () => {
+    const msg = __test.buildPlannerUserMessage(
+      'compare these two',
+      {
+        intent: 'compare',
+        recentTurns: [
+          { speaker: 'user', text: 'hi', at: '2026-01-01T00:00:00Z' },
+          { speaker: 'agent', text: 'how can I help?', at: '2026-01-01T00:00:01Z' },
+        ],
+      },
+      [{ store: 'qdrant', summary: 'previously interested in 4K TVs' }],
+    );
+    expect(msg).toContain('User said: "compare these two"');
+    expect(msg).toContain('user: "hi"');
+    expect(msg).toContain('agent: "how can I help?"');
+    expect(msg).toContain('(qdrant) previously interested in 4K TVs');
+  });
+});

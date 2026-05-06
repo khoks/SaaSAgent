@@ -8,12 +8,48 @@
  *
  * Per ADR-012: composer uses Haiku 4.5; planner uses Sonnet 4.6; fallback for
  * novel-intent composition uses Sonnet 4.6 with adaptive thinking.
+ *
+ * Phase 2.1b grew tool_use support: ToolDefinition + structured content blocks
+ * (text | tool_use | tool_result) so the SonnetPlanner can run a multi-round
+ * tool-use loop. Existing string-content callers (HaikuComposer) are unchanged
+ * — `content: string` is still valid on ModelMessage.
  */
+
+/** A tool the model can call (Anthropic tool_use API). */
+export interface ToolDefinition {
+  /** Tool name. Must match `^[a-zA-Z0-9_-]{1,64}$`. */
+  name: string;
+  /** Human-readable description the model uses to decide when to call this tool. */
+  description: string;
+  /** JSON Schema (object type) describing the tool's input arguments. */
+  input_schema: {
+    type: 'object';
+    properties?: Readonly<Record<string, unknown>>;
+    required?: ReadonlyArray<string>;
+    [k: string]: unknown;
+  };
+}
+
+/**
+ * A structured content block in a model message or response.
+ *
+ * - `text`        — natural-language text (unchanged from the simple-text path).
+ * - `tool_use`    — model is asking to invoke a tool. `id` is the correlation key.
+ * - `tool_result` — caller's response to a prior tool_use; matched by `tool_use_id`.
+ */
+export type ModelContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
 
 /** A single message turn passed to the model. */
 export interface ModelMessage {
   role: 'user' | 'assistant';
-  content: string;
+  /**
+   * String for simple text messages (back-compat — all Phase 1.x callers). Array
+   * of structured blocks for tool_use conversations (Phase 2.1b SonnetPlanner).
+   */
+  content: string | ReadonlyArray<ModelContentBlock>;
 }
 
 /**
@@ -39,6 +75,19 @@ export interface GenerateRequest {
    * catalog. AnthropicProvider sets `thinking: {type: "adaptive"}` when true; sends nothing when false.
    */
   adaptiveThinking?: boolean;
+  /**
+   * Tool definitions available to the model. When set, the model may emit
+   * tool_use content blocks; the caller must execute them and feed back
+   * tool_result blocks in the next turn.
+   */
+  tools?: ReadonlyArray<ToolDefinition>;
+  /**
+   * Force a tool-use behavior. Default 'auto' = model decides.
+   *   • 'any'        — model MUST call at least one tool.
+   *   • 'none'       — model MUST NOT call tools (effectively disables them).
+   *   • { name }     — model MUST call this specific tool.
+   */
+  toolChoice?: 'auto' | 'any' | 'none' | { type: 'tool'; name: string };
 }
 
 export interface GenerateUsage {
@@ -51,8 +100,20 @@ export interface GenerateUsage {
 }
 
 export interface GenerateResponse {
+  /**
+   * Concatenated text from all `text` content blocks. Always populated for
+   * back-compat with simple-text callers (HaikuComposer, etc.). When the model
+   * emits only tool_use, this is the empty string.
+   */
   text: string;
+  /**
+   * The full structured content from the model — text and/or tool_use blocks
+   * in their original order. Tool-use callers (SonnetPlanner) iterate this to
+   * dispatch tool calls; simple-text callers can ignore it.
+   */
+  content: ReadonlyArray<ModelContentBlock>;
   model: string;
+  /** 'end_turn' | 'tool_use' | 'max_tokens' | 'stop_sequence' | 'unknown'. */
   stopReason: string;
   usage: GenerateUsage;
 }

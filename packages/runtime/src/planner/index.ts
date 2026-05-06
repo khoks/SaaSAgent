@@ -7,3 +7,12 @@
 
 export type { Planner, PlanRequest, PlanResult, ToolInvocation } from './types.js';
 export { StubPlanner } from './stub.js';
+export { SonnetPlanner, type SonnetPlannerOptions } from './sonnet.js';
+export {
+  descriptorsToTools,
+  parseToolName,
+  qualifyToolName,
+  SKILL_PREFIX,
+  TOOL_PREFIX,
+  type ParsedToolName,
+} from './tool-mapper.js';

@@ -21,7 +21,7 @@ import { HaikuComposer, StubComposer } from './composer/index.js';
 import { SkillExecutor, ToolExecutor } from './executor/index.js';
 import { NullMemoryProvider, type MemoryProvider } from './memory/index.js';
 import { AnthropicProvider } from './model/index.js';
-import { type Planner, StubPlanner } from './planner/index.js';
+import { type Planner, SonnetPlanner, StubPlanner } from './planner/index.js';
 import {
   InMemoryComponentRegistry,
   InMemoryThemeRegistry,
@@ -77,10 +77,17 @@ export {
 } from './memory/index.js';
 export {
   StubPlanner,
+  SonnetPlanner,
+  type SonnetPlannerOptions,
   type Planner,
   type PlanRequest,
   type PlanResult,
   type ToolInvocation,
+  descriptorsToTools,
+  parseToolName,
+  qualifyToolName,
+  SKILL_PREFIX,
+  TOOL_PREFIX,
 } from './planner/index.js';
 
 export interface RuntimeConfig {
@@ -206,21 +213,29 @@ export class Runtime {
   }
 
   /**
-   * Phase 2.1a: only StubPlanner exists. Phase 2.1b adds SonnetPlanner — at
-   * which point this method will route based on `config.planner` + apiKey
-   * presence the same way buildComposer does.
+   * Pick StubPlanner vs SonnetPlanner based on config + API key presence.
+   * Mirrors buildComposer's auto/stub/<llm> tri-state.
    */
   private buildPlanner(): Planner {
+    const apiKey = this.config.anthropicApiKey ?? process.env['ANTHROPIC_API_KEY'];
     const choice = this.config.planner ?? 'auto';
-    if (choice === 'sonnet') {
+    if (choice === 'stub' || (choice === 'auto' && !apiKey)) {
       // eslint-disable-next-line no-console
-      console.warn(
-        '[runtime] config.planner="sonnet" requested but SonnetPlanner is not yet wired (Phase 2.1b). Falling back to StubPlanner.',
-      );
+      console.log('[runtime] using StubPlanner (no ANTHROPIC_API_KEY or planner=stub).');
+      return new StubPlanner();
     }
     // eslint-disable-next-line no-console
-    console.log('[runtime] using StubPlanner (Phase 2.1a — deterministic routing, no LLM).');
-    return new StubPlanner();
+    console.log(
+      '[runtime] using SonnetPlanner (claude-sonnet-4-6 with tool_use, max 5 rounds).',
+    );
+    return new SonnetPlanner({
+      provider: new AnthropicProvider({ apiKey: apiKey ?? undefined }),
+      skillExecutor: this.skillExecutor,
+      toolExecutor: this.toolExecutor,
+      skillRegistry: this.skillRegistry,
+      toolRegistry: this.toolRegistry,
+      memoryProvider: this.memoryProvider,
+    });
   }
 }
 
