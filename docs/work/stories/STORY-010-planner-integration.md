@@ -1,8 +1,9 @@
 # STORY-010 — Planner integration (Phase 2.1)
 
-- **Status:** groomed
+- **Status:** done
 - **Created:** 2026-05-05
 - **Last updated:** 2026-05-05
+- **Completed:** 2026-05-05
 - **Parent epic:** [EPIC-010 — Phase 2 Capability execution layer](../epics/EPIC-010-phase-2-capability-execution.md)
 
 ## User story
@@ -18,3 +19,16 @@ Phase 2.0a/b/c laid the infrastructure (input bar, registries, executors). Phase
 - Planner result drives HaikuComposer → SSE → browser render.
 - Full round-trip verified end-to-end in Chrome.
 - Phase 2 gate satisfied.
+
+## Completion notes (2026-05-05)
+Delivered in 3 slices:
+- **2.1a** (f6591a5): Planner seam + StubPlanner + NullMemoryProvider — closed `user-message` routing gap.
+- **2.1b** (f34e79a): SonnetPlanner — claude-sonnet-4-6 multi-round `tool_use` loop with tool-mapper.
+- **2.1c** (eacb86b): Planner `toolResults` wired into HaikuComposer + ComposeContext.
+
+Phase 2 gate verified live in Chrome: `user-message → tool__fetch-product-info({productId:"tv-55"}) → ok (373ms) → composer rendered httpbin echo as Card`.
+
+## Child tasks
+- [TASK-001 — Planner seam + StubPlanner (2.1a)](../tasks/TASK-001-planner-seam-stub.md) — done
+- [TASK-002 — SonnetPlanner multi-round tool_use loop (2.1b)](../tasks/TASK-002-sonnet-planner.md) — done
+- [TASK-003 — Wire planner toolResults into HaikuComposer (2.1c)](../tasks/TASK-003-planner-composer-wire.md) — done

@@ -13,4 +13,4 @@
 | STORY-007 | [Text input bar in web-shell (Phase 2.0a)](STORY-007-text-input-bar.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
 | STORY-008 | [Skills and Tools registries (Phase 2.0b)](STORY-008-skills-tools-registries.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
 | STORY-009 | [Skill and Tool executors with REST endpoints (Phase 2.0c)](STORY-009-skill-tool-executors.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
-| STORY-010 | [Planner integration (Phase 2.1)](STORY-010-planner-integration.md) | EPIC-010 | groomed | 2026-05-05 | 2026-05-05 |
+| STORY-010 | [Planner integration (Phase 2.1)](STORY-010-planner-integration.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |

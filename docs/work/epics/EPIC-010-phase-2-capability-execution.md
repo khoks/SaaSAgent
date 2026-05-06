@@ -1,8 +1,9 @@
 # EPIC-010 — Phase 2 Capability execution layer
 
-- **Status:** in-progress
+- **Status:** done
 - **Created:** 2026-05-05
 - **Last updated:** 2026-05-05
+- **Completed:** 2026-05-05
 - **Parent initiative:** [INIT-003 — Build MVP runtime + embeddable shell](../initiatives/INIT-003-build-mvp.md)
 
 ## Outcome
@@ -21,4 +22,4 @@ Phase 2 is the MVP-of-MVP gate. Without a planner and capability execution, the 
 - [STORY-007 — Text input bar in web-shell (Phase 2.0a)](../stories/STORY-007-text-input-bar.md) — done
 - [STORY-008 — Skills and Tools registries (Phase 2.0b)](../stories/STORY-008-skills-tools-registries.md) — done
 - [STORY-009 — Skill and Tool executors with REST endpoints (Phase 2.0c)](../stories/STORY-009-skill-tool-executors.md) — done
-- [STORY-010 — Planner integration (Phase 2.1)](../stories/STORY-010-planner-integration.md) — backlog
+- [STORY-010 — Planner integration (Phase 2.1)](../stories/STORY-010-planner-integration.md) — done
