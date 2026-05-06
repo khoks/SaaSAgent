@@ -82,8 +82,6 @@ export interface SonnetPlannerOptions {
   maxRounds?: number;
   /** Max output tokens per round. Default 4096. */
   maxTokens?: number;
-  /** Optional sessionId to scope memory recall. Default undefined → no scoping. */
-  sessionId?: string;
 }
 
 export class SonnetPlanner implements Planner {
@@ -95,9 +93,11 @@ export class SonnetPlanner implements Planner {
     const initialIntent = extractInitialIntent(req.envelope);
 
     // Recall memory before planning so the model can disambiguate references.
+    // Scoped to req.sessionId (Phase 2.3) — RuntimeServer assigns one per WS
+    // connection so concurrent users don't share a turn log.
     const recall = await this.options.memoryProvider.recall({
       text: initialIntent,
-      sessionId: this.options.sessionId,
+      sessionId: req.sessionId,
     });
 
     // Snapshot the registries so the model sees a stable set within this plan.
@@ -161,11 +161,17 @@ export class SonnetPlanner implements Planner {
     }
 
     // Persist the user's message + the planner's narration into memory so
-    // future plans can reference them.
+    // future plans can reference them. Scoped to the same sessionId used for recall.
     const now = new Date().toISOString();
-    await this.options.memoryProvider.record({ speaker: 'user', text: initialIntent, at: now });
+    await this.options.memoryProvider.record(
+      { speaker: 'user', text: initialIntent, at: now },
+      req.sessionId,
+    );
     if (lastText.length > 0) {
-      await this.options.memoryProvider.record({ speaker: 'agent', text: lastText, at: now });
+      await this.options.memoryProvider.record(
+        { speaker: 'agent', text: lastText, at: now },
+        req.sessionId,
+      );
     }
 
     const result: PlanResult = {

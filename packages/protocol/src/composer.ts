@@ -78,7 +78,7 @@ export interface ConversationTurn {
 }
 
 export interface MemoryRecall {
-  store: 'postgres' | 'qdrant' | 'clickhouse' | 'neo4j';
+  store: 'postgres' | 'qdrant' | 'clickhouse' | 'neo4j' | 'in-memory';
   /** Free-form summary the planner consumed. */
   summary: string;
 }

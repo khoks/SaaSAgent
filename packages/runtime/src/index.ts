@@ -19,7 +19,7 @@ import { PROTOCOL_VERSION, type UIComposer } from '@saasagent/protocol';
 
 import { HaikuComposer, StubComposer } from './composer/index.js';
 import { SkillExecutor, ToolExecutor } from './executor/index.js';
-import { NullMemoryProvider, type MemoryProvider } from './memory/index.js';
+import { KeyValueMemoryProvider, type MemoryProvider } from './memory/index.js';
 import { AnthropicProvider } from './model/index.js';
 import { type Planner, SonnetPlanner, StubPlanner } from './planner/index.js';
 import {
@@ -77,6 +77,8 @@ export {
 } from './model/index.js';
 export {
   NullMemoryProvider,
+  KeyValueMemoryProvider,
+  type KeyValueMemoryProviderOptions,
   type MemoryProvider,
   type MemoryQuery,
 } from './memory/index.js';
@@ -142,11 +144,13 @@ export class Runtime {
   /** ToolExecutor (Phase 2.0c) — uses globalThis.fetch + process.env unless replaced. */
   readonly toolExecutor: ToolExecutor = new ToolExecutor({ registry: this.toolRegistry });
   /**
-   * MemoryProvider (Phase 2.1a stub seam). NullMemoryProvider returns empty
-   * recall and drops record() calls. Phase 2.3 swaps to a real Postgres+Qdrant
-   * impl behind the same interface — so this seam stays stable.
+   * MemoryProvider (Phase 2.3 default: KeyValueMemoryProvider — in-process
+   * Map keyed by sessionId). Same instance is shared with the SonnetPlanner
+   * AND the /memory REST endpoints so REST inspection sees what the planner
+   * is reading/writing. Future: PostgresMemoryProvider when config.postgresUrl
+   * is set (deferred to 2.3.x).
    */
-  readonly memoryProvider: MemoryProvider = new NullMemoryProvider();
+  readonly memoryProvider: MemoryProvider = new KeyValueMemoryProvider();
   /**
    * Planner (Phase 2.1). Built lazily in start() based on config.planner so we
    * can pick StubPlanner vs SonnetPlanner depending on environment. Public so
@@ -171,6 +175,7 @@ export class Runtime {
       skillExecutor: this.skillExecutor,
       toolExecutor: this.toolExecutor,
       planner: this.planner,
+      memoryProvider: this.memoryProvider,
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(

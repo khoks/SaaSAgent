@@ -1,12 +1,10 @@
 /**
- * NullMemoryProvider — Phase 2.1a placeholder.
+ * NullMemoryProvider — Phase 2.1a placeholder, kept available for tests
+ * that explicitly want zero memory behavior.
  *
- * Returns no recall and silently drops record() calls. Lets the planner ship
- * without any storage dependency; Phase 2.3 swaps in a real Postgres+Qdrant
- * implementation behind the same interface.
- *
- * Purpose: keep the planner call site `await memory.recall(...)` stable so
- * Phase 2.3 is a constructor swap, not a planner refactor.
+ * Returns no recall and silently drops record() calls. Production uses
+ * KeyValueMemoryProvider as the default in 2.3; this lives on for test
+ * scenarios that want to assert "nothing should be in memory".
  */
 
 import type { ConversationTurn, MemoryRecall } from '@saasagent/protocol';
@@ -20,8 +18,11 @@ export class NullMemoryProvider implements MemoryProvider {
     return [];
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async record(_turn: ConversationTurn): Promise<void> {
+  async record(
+    _turn: ConversationTurn,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _sessionId?: string,
+  ): Promise<void> {
     // no-op
   }
 }

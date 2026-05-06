@@ -1,15 +1,16 @@
 /**
- * MemoryProvider — Phase 2.1a stub seam, real impl in Phase 2.3.
+ * MemoryProvider — Phase 2.1a stub seam, Phase 2.3 real impl.
  *
  * The planner needs prior conversation state to disambiguate things like
- * "show me more" or "the second one" — that's continuity. Phase 2.3 wires this
- * to Postgres (raw turn log) + Qdrant (semantic recall) + ClickHouse (analytics)
- * per ADR-008 / ADR-032. Phase 2.1 ships with NullMemoryProvider so the planner's
- * call site is stable and 2.3 doesn't have to refactor the planner's hot path.
+ * "show me more" or "the second one" — that's continuity. Phase 2.3 ships
+ * KeyValueMemoryProvider as the default (in-process Map keyed by sessionId);
+ * future phases swap in a real Postgres+Qdrant+ClickHouse impl per ADR-008/032
+ * behind the same interface.
  *
- * Interface intentionally minimal: `recall(query)` returns memory snippets the
- * planner can fold into ConversationContext.memoryRecall before invoking the
- * composer. `record(turn)` persists a turn for future recalls.
+ * Per-session scoping: both `recall(query.sessionId)` and `record(turn, sessionId)`
+ * accept a session id so multiple concurrent users on the same runtime don't
+ * cross-contaminate memory. RuntimeServer assigns a sessionId per WebSocket
+ * connection in Phase 2.3.
  */
 
 import type { ConversationTurn, MemoryRecall } from '@saasagent/protocol';
@@ -18,16 +19,17 @@ export interface MemoryProvider {
   /** Provider name for logging / observability. */
   readonly name: string;
   /**
-   * Surface relevant prior turns + facts for the current intent.
-   * Stub returns []. Real impl does Qdrant top-k + Postgres recent-N.
+   * Surface relevant prior turns + facts for the current intent, scoped to
+   * `query.sessionId` if provided. Stub returns []. Real impls do recent-N
+   * + (eventually) Qdrant top-k.
    */
   recall(query: MemoryQuery): Promise<ReadonlyArray<MemoryRecall>>;
   /**
-   * Persist a turn (user → agent) for future recall. Stub no-op; real impl
-   * writes to Postgres synchronously and Qdrant async (per ADR-032's hybrid
-   * latency budget).
+   * Persist a turn (user → agent) for future recall, scoped to the optional
+   * sessionId. Phase 2.1a stub no-ops; KeyValueMemoryProvider stores to an
+   * in-process Map; future Postgres impl writes durably.
    */
-  record(turn: ConversationTurn): Promise<void>;
+  record(turn: ConversationTurn, sessionId?: string): Promise<void>;
 }
 
 export interface MemoryQuery {
@@ -37,6 +39,6 @@ export interface MemoryQuery {
   sessionId?: string;
   /** Optional user id for cross-session recall. */
   userId?: string;
-  /** Max items to return. Stub ignores this. */
+  /** Max items to return. Default 10 in KeyValueMemoryProvider. */
   limit?: number;
 }

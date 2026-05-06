@@ -50,6 +50,7 @@ import {
   type ExecutionResult,
 } from '../executor/index.js';
 import { type Planner, StubPlanner, type ToolInvocation } from '../planner/index.js';
+import { KeyValueMemoryProvider, type MemoryProvider } from '../memory/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 
@@ -82,6 +83,15 @@ export interface RuntimeServerOptions {
    * to StubPlanner (deterministic routing, no LLM).
    */
   planner?: Planner;
+  /**
+   * MemoryProvider (Phase 2.3). Used by /memory REST endpoints for inspection.
+   * The planner gets its own MemoryProvider instance via SonnetPlannerOptions —
+   * pass the same instance here AND there if you want REST inspection of what
+   * the planner is reading/writing. If unset, defaults to a KeyValueMemoryProvider
+   * (per-runtime) — REST endpoints work but planner sees its own (separate) memory
+   * unless explicitly aligned.
+   */
+  memoryProvider?: MemoryProvider;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -111,6 +121,7 @@ export class RuntimeServer {
   private readonly skillExecutor: SkillExecutor;
   private readonly toolExecutor: ToolExecutor;
   private readonly planner: Planner;
+  private readonly memoryProvider: MemoryProvider;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
@@ -122,6 +133,7 @@ export class RuntimeServer {
     this.skillExecutor = options.skillExecutor ?? new SkillExecutor({ registry: this.skillRegistry });
     this.toolExecutor = options.toolExecutor ?? new ToolExecutor({ registry: this.toolRegistry });
     this.planner = options.planner ?? new StubPlanner();
+    this.memoryProvider = options.memoryProvider ?? new KeyValueMemoryProvider();
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -222,9 +234,57 @@ export class RuntimeServer {
           toolCount: Object.keys(this.toolRegistry.get().tools).length,
           featureRegistryVersion: this.featureRegistry.get().version,
           featureCount: Object.keys(this.featureRegistry.get().features).length,
+          memoryProvider: this.memoryProvider.name,
         }),
       );
       return;
+    }
+
+    // Memory inspection endpoints (Phase 2.3). Only meaningful when the
+    // memoryProvider is a KeyValueMemoryProvider; for other providers (Null,
+    // Postgres) the GET endpoints return 501 since there's no in-process state
+    // to enumerate.
+    if (url.startsWith('/memory/sessions')) {
+      const parsed = new URL(url, 'http://localhost');
+      const segments = parsed.pathname.split('/').filter(Boolean); // ['memory','sessions',?id]
+      const provider = this.memoryProvider as Partial<KeyValueMemoryProvider>;
+      if (typeof provider.listSessions !== 'function') {
+        res.writeHead(501, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: `Memory inspection not supported by provider "${this.memoryProvider.name}"`,
+          }),
+        );
+        return;
+      }
+      // /memory/sessions
+      if (segments.length === 2) {
+        if (req.method === 'GET') {
+          res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ sessions: provider.listSessions() }));
+          return;
+        }
+      }
+      // /memory/sessions/<id>
+      if (segments.length === 3) {
+        const id = decodeURIComponent(segments[2]!);
+        if (req.method === 'GET') {
+          res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              sessionId: id,
+              turns: provider.getSession ? provider.getSession(id) : [],
+            }),
+          );
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const cleared = provider.clearSession ? provider.clearSession(id) : false;
+          res.writeHead(cleared ? 200 : 404, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ sessionId: id, cleared }));
+          return;
+        }
+      }
     }
 
     // Features registry endpoints (Phase 2.2).
@@ -539,6 +599,10 @@ export class RuntimeServer {
 
   private handleWsConnection(ws: WebSocket): void {
     this.options.onWSConnect?.();
+    // Phase 2.3: assign one sessionId per WS connection — bounds memory scope
+    // to this conversation. Tab close/reopen → new session (fine for MVP;
+    // cross-session continuity is a Phase 2.4+ concern requiring user identity).
+    const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     ws.on('message', (raw: Buffer) => {
       let envelope: InstructionEnvelope;
       try {
@@ -558,6 +622,7 @@ export class RuntimeServer {
         .plan({
           envelope,
           context: this.buildContext(envelope.type).conversationContext,
+          sessionId,
         })
         .then(async (planResult) => {
           const baseCtx = this.buildContext(planResult.intent);

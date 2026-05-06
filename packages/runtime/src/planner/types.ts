@@ -32,6 +32,12 @@ export interface PlanRequest {
    * may consult `recentTurns` / `memoryRecall` to disambiguate the envelope.
    */
   context: ConversationContext;
+  /**
+   * Logical session id (Phase 2.3). Scopes memory recall + record so concurrent
+   * users on the same runtime don't cross-contaminate. RuntimeServer assigns
+   * one per WebSocket connection.
+   */
+  sessionId?: string;
 }
 
 export interface ToolInvocation {

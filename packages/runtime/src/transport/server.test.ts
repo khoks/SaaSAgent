@@ -13,6 +13,7 @@ import { ProviderError } from '../model/types.js';
 import { StubComposer } from '../composer/stub.js';
 import { InMemorySkillRegistry, InMemoryToolRegistry } from '../registry/index.js';
 import { SkillExecutor, ToolExecutor } from '../executor/index.js';
+import { KeyValueMemoryProvider, NullMemoryProvider } from '../memory/index.js';
 import type { Planner } from '../planner/index.js';
 import { RuntimeServer } from './server.js';
 
@@ -650,5 +651,154 @@ Supports credit card, PayPal, Apple Pay.`;
     expect(del.status).toBe(200);
     const body = (await del.json()) as { features: Record<string, unknown> };
     expect(body.features).toEqual({});
+  });
+});
+
+/**
+ * Phase 2.3: /memory/sessions inspection endpoints + per-WS sessionId threading.
+ */
+describe('RuntimeServer /memory + sessionId threading', () => {
+  it('GET /memory/sessions returns the list when provider is KeyValueMemoryProvider', async () => {
+    const memory = new KeyValueMemoryProvider();
+    await memory.record({ speaker: 'user', text: 'hi from a', at: '2026-01-01T00:00:00Z' }, 'sess-a');
+    await memory.record({ speaker: 'user', text: 'hi from b', at: '2026-01-01T00:00:01Z' }, 'sess-b');
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), memoryProvider: memory });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/memory/sessions`);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { sessions: string[] };
+      expect(body.sessions.sort()).toEqual(['sess-a', 'sess-b']);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('GET /memory/sessions/<id> returns the turns for that session', async () => {
+    const memory = new KeyValueMemoryProvider();
+    await memory.record({ speaker: 'user', text: 'first', at: '2026-01-01T00:00:00Z' }, 'sess-x');
+    await memory.record({ speaker: 'agent', text: 'reply', at: '2026-01-01T00:00:01Z' }, 'sess-x');
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), memoryProvider: memory });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/memory/sessions/sess-x`);
+      const body = (await res.json()) as {
+        sessionId: string;
+        turns: Array<{ speaker: string; text: string }>;
+      };
+      expect(body.sessionId).toBe('sess-x');
+      expect(body.turns).toHaveLength(2);
+      expect(body.turns[0]!.text).toBe('first');
+      expect(body.turns[1]!.text).toBe('reply');
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('DELETE /memory/sessions/<id> drops one session', async () => {
+    const memory = new KeyValueMemoryProvider();
+    await memory.record({ speaker: 'user', text: 'x', at: '2026-01-01T00:00:00Z' }, 'sess-d');
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), memoryProvider: memory });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/memory/sessions/sess-d`, {
+        method: 'DELETE',
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { cleared: boolean };
+      expect(body.cleared).toBe(true);
+      const after = await fetch(`http://127.0.0.1:${server.port}/memory/sessions/sess-d`, {
+        method: 'DELETE',
+      });
+      expect(after.status).toBe(404);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('returns 501 from /memory endpoints when provider does not support inspection', async () => {
+    const server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      memoryProvider: new NullMemoryProvider(),
+    });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/memory/sessions`);
+      expect(res.status).toBe(501);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toMatch(/null/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('threads a per-WS sessionId into PlanRequest.sessionId', async () => {
+    const seen: string[] = [];
+    const planner: Planner = {
+      name: 'capture',
+      plan: async (req) => {
+        if (req.sessionId) seen.push(req.sessionId);
+        return { intent: req.envelope.type, invocations: [] };
+      },
+    };
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), planner });
+    await server.start();
+    try {
+      // Open SSE so welcome layout fires + we have a composeCycleId.
+      const layouts: ComposedLayout[] = [];
+      const sse = new EventSource(`http://127.0.0.1:${server.port}/sse`);
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      // Two messages on the SAME ws → same sessionId
+      const ws1 = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+      await new Promise<void>((r) => ws1.once('open', () => r()));
+      const env = {
+        composeCycleId: layouts[0]!.composeCycleId,
+        sourceNodeId: 'user-input',
+        emittedAt: new Date().toISOString(),
+        type: 'msg',
+        sequence: 0,
+        payload: {},
+      };
+      ws1.send(JSON.stringify(env));
+      ws1.send(JSON.stringify(env));
+      await waitFor(() => seen.length >= 2, 1500);
+      expect(seen[0]).toBe(seen[1]);
+      expect(seen[0]).toMatch(/^sess-/);
+
+      // New ws → different sessionId
+      const ws2 = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+      await new Promise<void>((r) => ws2.once('open', () => r()));
+      ws2.send(JSON.stringify(env));
+      await waitFor(() => seen.length >= 3, 1500);
+      expect(seen[2]).not.toBe(seen[0]);
+      expect(seen[2]).toMatch(/^sess-/);
+
+      ws1.close();
+      ws2.close();
+      sse.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('/health includes memoryProvider.name', async () => {
+    const server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      memoryProvider: new KeyValueMemoryProvider(),
+    });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+      const body = (await res.json()) as { memoryProvider: string };
+      expect(body.memoryProvider).toBe('keyvalue');
+    } finally {
+      await server.stop();
+    }
   });
 });

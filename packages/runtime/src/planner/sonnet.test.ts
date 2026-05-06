@@ -332,6 +332,23 @@ describe('SonnetPlanner', () => {
     expect(recordSpy.mock.calls[1]![0]).toMatchObject({ speaker: 'agent', text: 'okay' });
   });
 
+  it('threads PlanRequest.sessionId into MemoryProvider.recall + record', async () => {
+    const { planner, memory } = setup({
+      responses: [{ text: 'ok', stopReason: 'end_turn' }],
+    });
+    const recallSpy = vi.spyOn(memory, 'recall');
+    const recordSpy = vi.spyOn(memory, 'record');
+    await planner.plan({
+      envelope: envelope({ payload: { text: 'hi' } }),
+      context: baseContext,
+      sessionId: 'sess-XYZ',
+    });
+    expect(recallSpy.mock.calls[0]![0]).toMatchObject({ sessionId: 'sess-XYZ' });
+    // recordSpy: [turn, sessionId]
+    expect(recordSpy.mock.calls[0]![1]).toBe('sess-XYZ');
+    expect(recordSpy.mock.calls[1]![1]).toBe('sess-XYZ');
+  });
+
   it('preserves envelope.type as intent for non-user-message envelopes', async () => {
     const { planner } = setup({ responses: [{ text: '', stopReason: 'end_turn' }] });
     const r = await planner.plan({
