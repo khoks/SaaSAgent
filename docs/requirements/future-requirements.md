@@ -52,3 +52,18 @@ Each entry:
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
+
+### [2026-05-06] Postgres-backed memory persistence (production-grade MemoryProvider)
+**Source:** Phase 2.3 transcript: "Skipping Phase 2.3.x (Postgres seam already proven via KeyValueMemoryProvider; real Postgres impl needs CI/Docker infra that's a future deliverable)."
+**Category:** capability
+**Notes:** `KeyValueMemoryProvider` shipped in Phase 2.3 is an in-memory Map implementation that provides per-WS-session continuity within a single process lifetime. Production deployments need a Postgres-backed adapter so memory survives runtime restarts and scales across replicas. Deferred until CI/Docker infra for DB integration tests is in place.
+
+### [2026-05-06] ClickHouse-backed eval and churn-signal persistence
+**Source:** Phase 2.5–2.6: `KeyValueEvalProvider` and `KeyValueChurnRiskProvider` are in-memory stubs; per ADR-008 and ADR-032 ClickHouse is the intended store.
+**Category:** capability
+**Notes:** Both providers use in-memory Maps. Real ClickHouse-backed implementations needed for: (a) eval signal persistence across restarts, (b) time-windowed aggregation for churn risk scoring, (c) eval dashboard data feeds, (d) VoC analytics pipeline. Deferred until CI/Docker infra is established for ClickHouse integration tests.
+
+### [2026-05-06] Real LightGBM churn model training pipeline
+**Source:** Phase 2.6 ships a heuristic ratio-based `ChurnRiskProvider`; per ADR-031 LightGBM with generic-prior cold-start is the real target.
+**Category:** capability
+**Notes:** Current implementation computes churn risk as a ratio of negative-to-total eval signals in a session window — a lightweight proxy. The real pipeline (ADR-031) needs: (1) feature engineering from stored interaction profiles + VoC signals, (2) LightGBM model training with SHAP explainability, (3) pluggable adapter contract for hosts with existing churn models, (4) generic-prior cold-start from synthetic e-commerce-like signals. Depends on ClickHouse persistence being in place first.

@@ -153,11 +153,19 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
-### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
+### Closed during Phase 2 build (2026-05-06)
+- ✅ Real-time transport — SSE (planner output) + WebSocket (bidirectional instruction emit); WebRTC reserved for voice (Phase 5) [ADR-038, implemented Phase 1.2]
+- ✅ Three-tier capability model — Tools (HTTP) / Skills (in-process) / Sub-Agents (federated) — planner dispatches via `tool__`, `skill__`, `subagent__` prefixes [ADR-039, Phase 2.0c–2.4]
+- ✅ Sub-Agent federation — `/federate` endpoint on every runtime; any runtime can serve as a sub-agent to another; symmetric mesh topology [ADR-042, Phase 2.4.x]
+- ✅ Shell text-input affordance — `InputBar` as mandatory always-present shell element; `user-message` instruction type [ADR-040, Phase 2.0a]
+- ✅ Eval-feedback routing — `eval-feedback` WS envelopes bypass planner, write direct to `EvalProvider` [ADR-041, Phase 2.5]
+
+### Still open (v2 details)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-3. **Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
-4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+3. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+4. **Postgres-backed MemoryProvider** — `KeyValueMemoryProvider` is in-memory; real persistence deferred to when CI/Docker DB infra is in place.
+5. **ClickHouse-backed EvalProvider and ChurnRiskProvider** — currently in-memory stubs; deferred with memory.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

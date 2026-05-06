@@ -656,3 +656,65 @@
   - **WebRTC reserved for voice (Phase 5)** when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel.
   - Native browser support for both is universal; no polyfills required.
 - **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).
+
+## ADR-039 — Typed invocation-kind prefixes in SonnetPlanner tool-mapper (`skill__`, `tool__`, `subagent__`)
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.1b introduced SonnetPlanner, which must dispatch tool invocations to three different executors (SkillExecutor, ToolExecutor, SubAgentExecutor). The Anthropic tool-use API returns a flat tool name string; the planner needs a way to route each call to the right executor without an external registry lookup on every invocation.
+- **Options considered:**
+  - A. Runtime registry lookup on every tool call — correct but adds latency + coupling.
+  - B. Separate tool-use call arrays per executor type — awkward with the Anthropic API which uses a single tools list.
+  - C. **Name-prefix convention: `skill__<name>`, `tool__<name>`, `subagent__<name>`** — zero-latency routing, single tools list, self-documenting.
+- **Decision:** C. The tool-mapper generates tool descriptors for each registered capability and prefixes each name with the invocation kind. SonnetPlanner parses the prefix off the returned tool name to dispatch to the correct executor.
+- **Consequences:**
+  - O(1) routing — no registry lookup at dispatch time.
+  - Tool names visible to the LLM carry semantic context about execution tier (humans debugging traces can read the kind immediately).
+  - Constraint: capability names must not begin with `skill__`, `tool__`, or `subagent__` to avoid ambiguity — validated at registration.
+  - `ToolInvocation.kind` is a first-class enum (`'skill' | 'tool' | 'subagent'`) to carry type safety through the dispatch chain.
+- **Source:** Phase 2.1b–2.4 implementation; tool-mapper module in `runtime/src/planner/tool-mapper.ts`.
+
+## ADR-040 — Conversational text input (InputBar) is a mandatory shell affordance; button-only interaction loops are broken by design
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2 self-review (2026-05-06) discovered a critical UX gap: when the agent composer correctly judges that the welcome turn has no concrete intent, it emits zero interactive buttons. With a button-only shell the user has no mechanism to start or continue a conversation — the loop is stuck. This was hidden during validation because tests always triggered the loop with a pre-formed instruction.
+- **Options considered:**
+  - A. Always force the composer to emit at least one action button — brittle, produces nonsensical UI.
+  - B. **Text input bar (InputBar) as a persistent, always-present affordance in the shell** — user-initiated turns flow as `user-message` instructions regardless of composer output.
+  - C. Voice input only (deferred to Phase 5).
+- **Decision:** B. `InputBar` is built into the Web Component shell (Phase 2.0a) as a permanent affordance. User text submissions emit `{type: "user-message", payload: {text: "..."}}` over WebSocket; the planner extracts `payload.text` as the conversation intent for that turn.
+- **Consequences:**
+  - The interaction loop is now two-path: user can either click a composed widget (agent-driven) OR type freely (user-driven). Both converge on the planner.
+  - The shell is no longer fully headless with respect to UI — it always shows the input bar even when the composer emits an empty layout.
+  - Phase 2.0a closed before Phase 2.1 (planner) to ensure the input affordance was present before multi-turn reasoning work began.
+- **Source:** Phase 2 self-review 2026-05-06: "the user has no way to drive the conversation forward. The whole loop is button-only — there's no text input. This is the critical UX gap that hides if you only validate via re-compose-on-click."
+
+## ADR-041 — eval-feedback WebSocket envelopes bypass the planner entirely, routed direct to EvalProvider
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.5 introduced per-turn quality eval signals. These signals arrive over the same WebSocket channel as user instructions. The question was whether to route them through the planner (for potential follow-up reasoning) or handle them as a side-channel.
+- **Options considered:**
+  - A. Route `eval-feedback` through the planner — consistent routing path; planner could react to poor eval signals (e.g., offer to retry).
+  - B. **Intercept `eval-feedback` envelopes in `handleWsConnection` before planner dispatch; record to EvalProvider; do not plan.** — zero planner latency cost; eval path is silent.
+- **Decision:** B. `type: "eval-feedback"` envelopes are intercepted in the WS message dispatcher and written to `EvalProvider` synchronously without entering the planner loop. The planner never sees them.
+- **Consequences:**
+  - Eval recording adds negligible latency (in-memory write, or async DB write) — no LLM cost.
+  - Planner is decoupled from quality feedback ingestion — eval system can evolve independently.
+  - If future designs want the planner to react to negative quality signals mid-session, a separate mechanism (e.g., a `eval-triggered-replanning` envelope type) can be added without changing the baseline eval path.
+  - This is consistent with the EvalProvider as a separate concern from planning — same separation principle as MemoryProvider.
+- **Source:** Phase 2.5 implementation 2026-05-06; `RuntimeServer.handleWsConnection` intercept block for `eval-feedback`.
+
+## ADR-042 — Symmetric /federate endpoint: any SaaSAgent runtime can serve as a sub-agent to another runtime
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.4 implemented the Sub-Agent registry + SubAgentExecutor so a parent runtime can invoke a registered sub-agent over HTTP. Phase 2.4.x asked: how does a runtime expose itself AS a sub-agent to another runtime?
+- **Options considered:**
+  - A. Separate "sub-agent runtime" binary/config — asymmetric roles baked in at deployment time.
+  - B. **`/federate` endpoint on every runtime** — any runtime that exposes this endpoint can act as a sub-agent; roles (parent/child) are determined at registration time, not at deployment time.
+- **Decision:** B. Every SaaSAgent runtime exposes `POST /federate` which accepts a `FederationRequest` and returns a `FederationResponse`. When Runtime A registers Runtime B as a sub-agent in its Sub-Agent registry, it calls B's `/federate` endpoint at invocation time. B runs its own planner + tools against the delegated task and streams results back. Runtime B is unaware it is acting as a sub-agent — it just receives a federation request.
+- **Consequences:**
+  - **Symmetric** — any runtime is both a potential parent and a potential sub-agent depending on how other runtimes register it. No dedicated "sub-agent mode."
+  - **Emergent mesh** — chains of delegation are possible (A → B → C), with each runtime's planner scoping the task for the next tier.
+  - **Two-runtime demo verified live** — parent runtime (8080) delegated to child runtime (8081); child ran its own planner + tool; parent composed child's response.
+  - **Constraint:** circular delegation (A → B → A) must be detected/prevented — heartbeat/TTL logic at the registry level is the guard.
+  - **Closes ADR-028 at implementation level** — HTTP REST is the admin/federation protocol; gRPC bidirectional streaming remains the v1 target for high-throughput streaming tasks.
+- **Source:** Phase 2.4.x implementation 2026-05-06; commit `455e57a`; live two-runtime verification in Chrome.
