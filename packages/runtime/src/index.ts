@@ -87,7 +87,13 @@ export {
 export {
   NullMemoryProvider,
   KeyValueMemoryProvider,
+  DurableFileMemoryProvider,
+  PostgresMemoryProvider,
+  ChainedMemoryProvider,
   type KeyValueMemoryProviderOptions,
+  type DurableFileMemoryProviderOptions,
+  type PostgresMemoryProviderOptions,
+  type PgClient,
   type MemoryProvider,
   type MemoryQuery,
 } from './memory/index.js';
