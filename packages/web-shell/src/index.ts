@@ -26,11 +26,13 @@ export {
 } from './transport/index.js';
 export { showErrorBanner, clearErrorBanner } from './error-banner.js';
 export { InputBar, type InputBarOptions } from './input-bar.js';
+export { FeedbackBar, type FeedbackBarOptions } from './feedback-bar.js';
 
 import { LayoutRenderer } from './renderer.js';
 import { RuntimeClient } from './transport/index.js';
 import { showErrorBanner, clearErrorBanner } from './error-banner.js';
 import { InputBar } from './input-bar.js';
+import { FeedbackBar } from './feedback-bar.js';
 
 /** Render modes per ADR-004 (side-panel only at MVP; others at v1+). */
 export type RenderMode = 'side-panel' | 'full-page' | 'drawer' | 'eject';
@@ -39,11 +41,14 @@ export class SaaSAgentShell extends HTMLElement {
   private client: RuntimeClient | null = null;
   private renderer: LayoutRenderer | null = null;
   private inputBar: InputBar | null = null;
+  private feedbackBar: FeedbackBar | null = null;
   private contentEl: HTMLDivElement | null = null;
   private errorAreaEl: HTMLDivElement | null = null;
   private inputAreaEl: HTMLDivElement | null = null;
+  private feedbackAreaEl: HTMLDivElement | null = null;
   private lastComposeCycleId: string | null = null;
   private inputSequence = 0;
+  private feedbackSequence = 0;
 
   static get observedAttributes(): string[] {
     return ['mode', 'runtime'];
@@ -59,9 +64,11 @@ export class SaaSAgentShell extends HTMLElement {
     this.client = null;
     this.renderer = null;
     this.inputBar = null;
+    this.feedbackBar = null;
     this.contentEl = null;
     this.errorAreaEl = null;
     this.inputAreaEl = null;
+    this.feedbackAreaEl = null;
   }
 
   attributeChangedCallback(name: string): void {
@@ -82,14 +89,16 @@ export class SaaSAgentShell extends HTMLElement {
     const mode = this.getMode();
     this.innerHTML = `
       <div data-saas-agent-shell="${mode}" style="font-family: system-ui; padding: 8px; border: 1px dashed #888; color: #555; display: flex; flex-direction: column; min-height: 320px;">
-        <div style="font-size: 12px; color: #999; margin-bottom: 4px;">SaaSAgent shell v${VERSION} — Phase 2.0 (mode: ${mode})</div>
+        <div style="font-size: 12px; color: #999; margin-bottom: 4px;">SaaSAgent shell v${VERSION} — Phase 2.5.x (mode: ${mode})</div>
         <div data-saas-agent-error-area></div>
         <div data-saas-agent-content data-mode="${mode}" style="flex: 1; min-height: 0;"></div>
+        <div data-saas-agent-feedback-area></div>
         <div data-saas-agent-input-area></div>
       </div>
     `;
     this.contentEl = this.querySelector('[data-saas-agent-content]') as HTMLDivElement;
     this.errorAreaEl = this.querySelector('[data-saas-agent-error-area]') as HTMLDivElement;
+    this.feedbackAreaEl = this.querySelector('[data-saas-agent-feedback-area]') as HTMLDivElement;
     this.inputAreaEl = this.querySelector('[data-saas-agent-input-area]') as HTMLDivElement;
   }
 
@@ -111,6 +120,17 @@ export class SaaSAgentShell extends HTMLElement {
     });
     this.inputAreaEl.appendChild(this.inputBar.element);
 
+    // Phase 2.5.x: thumbs-up/down feedback widget for the most recent layout.
+    // Emits eval-feedback envelopes the runtime intercepts BEFORE the planner.
+    if (this.feedbackAreaEl) {
+      this.feedbackBar = new FeedbackBar({
+        transport: { send: (env) => this.client?.send(env) },
+        getComposeCycleId: () => this.lastComposeCycleId,
+        getSequence: () => this.feedbackSequence++,
+      });
+      this.feedbackAreaEl.appendChild(this.feedbackBar.element);
+    }
+
     this.client = new RuntimeClient({
       runtimeUrl,
       onLayout: (layout) => {
@@ -119,6 +139,7 @@ export class SaaSAgentShell extends HTMLElement {
         this.lastComposeCycleId = layout.composeCycleId;
         this.renderer?.render(layout);
         this.inputBar?.setBusy(false);
+        this.feedbackBar?.resetForNewCycle(layout.composeCycleId);
       },
       onServerError: (envelope) => {
         // Render visible error banner above the (possibly stale) layout, re-enable input.

@@ -112,6 +112,14 @@ export interface RuntimeServerOptions {
    */
   evalProvider?: EvalProvider;
   /**
+   * Window in milliseconds for the implicit re-ask negative signal (Phase 2.5.x).
+   * When a user-message arrives within this window after a layout broadcast,
+   * the runtime infers a negative/user-implicit signal on the prior layout
+   * (the user re-asked → previous response wasn't satisfying).
+   * Default 8000 (8s). Set to 0 to disable.
+   */
+  implicitReaskWindowMs?: number;
+  /**
    * ChurnRiskCalculator (Phase 2.6). Derives per-session churn-risk score from
    * the EvalProvider's signals. Default: RuleBasedChurnCalculator bound to
    * this server's evalProvider. Future: MLChurnCalculator behind the same
@@ -152,6 +160,7 @@ export class RuntimeServer {
   private readonly memoryProvider: MemoryProvider;
   private readonly evalProvider: EvalProvider;
   private readonly churnCalculator: ChurnRiskCalculator;
+  private readonly implicitReaskWindowMs: number;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
@@ -170,6 +179,7 @@ export class RuntimeServer {
     this.evalProvider = options.evalProvider ?? new KeyValueEvalProvider();
     this.churnCalculator =
       options.churnCalculator ?? new RuleBasedChurnCalculator({ evalProvider: this.evalProvider });
+    this.implicitReaskWindowMs = options.implicitReaskWindowMs ?? 8000;
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -833,6 +843,11 @@ export class RuntimeServer {
     // to this conversation. Tab close/reopen → new session (fine for MVP;
     // cross-session continuity is a Phase 2.4+ concern requiring user identity).
     const sessionId = `sess-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    // Phase 2.5.x: per-connection state for implicit re-ask signal inference.
+    // We track the last layout we BROADCAST to the world (via SSE) plus when —
+    // if a user-message arrives shortly after, that's a re-ask, infer negative.
+    let lastBroadcastCycleId: string | null = null;
+    let lastBroadcastAt = 0;
     ws.on('message', (raw: Buffer) => {
       let envelope: InstructionEnvelope;
       try {
@@ -869,6 +884,32 @@ export class RuntimeServer {
         return;
       }
 
+      // Phase 2.5.x: implicit re-ask negative signal.
+      // If a user-message arrives within implicitReaskWindowMs of a previous
+      // layout broadcast on this WS, infer the user re-asked because the prior
+      // layout missed — record a 'negative' / 'user-implicit' signal on it.
+      // (Action emits like button clicks don't trigger this — only fresh
+      // user-messages, which suggest the user wasn't satisfied with the layout.)
+      if (
+        envelope.type === 'user-message' &&
+        this.implicitReaskWindowMs > 0 &&
+        lastBroadcastCycleId &&
+        Date.now() - lastBroadcastAt < this.implicitReaskWindowMs
+      ) {
+        const implicitSignal: EvalSignal = {
+          composeCycleId: lastBroadcastCycleId,
+          sessionId,
+          signal: 'negative',
+          source: 'user-implicit',
+          comment: `re-ask within ${Date.now() - lastBroadcastAt}ms`,
+          at: new Date().toISOString(),
+        };
+        void this.evalProvider.record(implicitSignal).catch((err: unknown) => {
+          // eslint-disable-next-line no-console
+          console.error('[runtime] implicit eval record failed:', err);
+        });
+      }
+
       // Phase 2.1: route through the planner. Planner extracts intent from the
       // envelope (e.g. payload.text for user-message), invokes any needed
       // skills/tools, then the composer renders. The previous direct
@@ -894,6 +935,9 @@ export class RuntimeServer {
               : {}),
           };
           const layout = await this.options.composer.compose(planResult.intent, composeCtx);
+          // Track this broadcast for the next user-message's re-ask check.
+          lastBroadcastCycleId = layout.composeCycleId;
+          lastBroadcastAt = Date.now();
           this.broadcastLayout(layout);
         })
         .catch((err: unknown) => {

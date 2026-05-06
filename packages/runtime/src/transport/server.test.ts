@@ -1285,6 +1285,117 @@ describe('RuntimeServer /eval endpoints + eval-feedback WS intercept', () => {
     expect(body.evalProvider).toBe('keyvalue');
     expect(body.evalSignalCount).toBe(1);
   });
+
+  /**
+   * Phase 2.5.x: implicit re-ask signal — user-message arriving shortly after
+   * a layout broadcast → negative/user-implicit on the prior layout.
+   */
+  it('records a negative/user-implicit signal when a user-message arrives within the re-ask window', async () => {
+    // Use a short window so the test runs quickly.
+    const evalProv = new KeyValueEvalProvider();
+    const fastServer = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      evalProvider: evalProv,
+      implicitReaskWindowMs: 5000,
+    });
+    await fastServer.start();
+    try {
+      const sse = new EventSource(`http://127.0.0.1:${fastServer.port}/sse`);
+      const layouts: ComposedLayout[] = [];
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      const ws = new WebSocket(`ws://127.0.0.1:${fastServer.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+
+      // First user-message: the planner composes a layout (broadcast as layouts[1]).
+      ws.send(
+        JSON.stringify({
+          composeCycleId: layouts[0]!.composeCycleId,
+          sourceNodeId: 'user-input',
+          emittedAt: new Date().toISOString(),
+          type: 'user-message',
+          sequence: 0,
+          payload: { text: 'hello' },
+        }),
+      );
+      await waitFor(() => layouts.length >= 2, 1500);
+      // No implicit signals expected yet — first user-message has no prior broadcast on this WS.
+      expect(evalProv.count()).toBe(0);
+
+      // Second user-message immediately — should infer negative on layouts[1].
+      ws.send(
+        JSON.stringify({
+          composeCycleId: layouts[1]!.composeCycleId,
+          sourceNodeId: 'user-input',
+          emittedAt: new Date().toISOString(),
+          type: 'user-message',
+          sequence: 1,
+          payload: { text: 'no I meant something else' },
+        }),
+      );
+      await waitFor(() => evalProv.count() >= 1, 1500);
+      const stored = await evalProv.query({});
+      expect(stored).toHaveLength(1);
+      expect(stored[0]).toMatchObject({
+        composeCycleId: layouts[1]!.composeCycleId,
+        signal: 'negative',
+        source: 'user-implicit',
+      });
+      expect(stored[0]!.comment).toMatch(/re-ask within/);
+
+      ws.close();
+      sse.close();
+    } finally {
+      await fastServer.stop();
+    }
+  });
+
+  it('does NOT record an implicit signal when implicitReaskWindowMs=0', async () => {
+    const evalProv = new KeyValueEvalProvider();
+    const noImpl = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      evalProvider: evalProv,
+      implicitReaskWindowMs: 0,
+    });
+    await noImpl.start();
+    try {
+      const sse = new EventSource(`http://127.0.0.1:${noImpl.port}/sse`);
+      const layouts: ComposedLayout[] = [];
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      const ws = new WebSocket(`ws://127.0.0.1:${noImpl.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+
+      const env = (seq: number, text: string) => ({
+        composeCycleId: layouts[layouts.length - 1]!.composeCycleId,
+        sourceNodeId: 'user-input',
+        emittedAt: new Date().toISOString(),
+        type: 'user-message',
+        sequence: seq,
+        payload: { text },
+      });
+      ws.send(JSON.stringify(env(0, 'first')));
+      await waitFor(() => layouts.length >= 2, 1500);
+      ws.send(JSON.stringify(env(1, 'second immediately')));
+      await waitFor(() => layouts.length >= 3, 1500);
+
+      // Window disabled → no implicit signal.
+      expect(evalProv.count()).toBe(0);
+
+      ws.close();
+      sse.close();
+    } finally {
+      await noImpl.stop();
+    }
+  });
 });
 
 /**
