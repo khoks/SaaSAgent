@@ -109,6 +109,24 @@ User turn / proactive trigger
    Back to runtime → re-plan → next composed artifact
 ```
 
+## Planner → Composer data bridge (`ComposeContext.toolResults`)
+
+Implemented in Phase 2.1c and live-verified. After the SonnetPlanner completes its multi-round tool_use loop, the tool execution results (`ToolExecutionResult[]`) are captured in `PlanResponse.toolResults`. `RuntimeServer` threads these through `ComposeContext` so the `HaikuComposer` receives them as first-class inputs alongside conversation history. The composer can therefore incorporate discovered data (e.g., fetched product info, sub-agent responses) into the composed `LayoutTree` without re-invoking tools. This decouples the planning phase (tool dispatch) from the composition phase (UI generation) while preserving information flow between them.
+
+```
+SonnetPlanner (multi-round tool_use loop)
+        │
+        │  PlanResponse { intent, toolResults[], sessionId }
+        ▼
+RuntimeServer
+        │  ComposeContext { history, toolResults[], theme, features }
+        ▼
+HaikuComposer
+        │  LayoutTree (references host atomic components; data from toolResults)
+        ▼
+WC Shell renderer
+```
+
 ## Bidirectional typed-JSON instruction protocol
 
 - **Schema-first.** All UI ↔ runtime traffic is typed JSON. Domain-dev natural-language specs in Feature/Service docs are compiled to the same typed JSON at registration time.
@@ -153,11 +171,14 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
-### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
+### Closed in Batch 6 (2026-05-05)
+- ✅ Real-time transport for WC shell ↔ runtime — SSE (server → shell, planner stream) + WebSocket (shell ↔ runtime, bidirectional emit); WebRTC reserved for voice Phase 5 [ADR-038]
+
+### Still open (Batch 7 — implementation/v2 details)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-3. **Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
-4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+3. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+4. **SubAgentExecutor gRPC upgrade** — switch from HTTP fetch MVP transport to gRPC bidirectional streaming per ADR-028; add proto definitions + SDK server stubs [ADR-039].
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

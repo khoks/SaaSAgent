@@ -39,6 +39,7 @@
 | Skill execution model | In-process / process-isolated / WASM | **Process isolation by default; WASM at v1 for adapter-supplied code** | derivative of [ADR-021](../decisions/decision-log.md) |
 | Sub-Agent SDK languages | TS only / TS+Python / TS+Python+Go / more | **TypeScript + Python at MVP**; Go at v1 if demand | [ADR-027](../decisions/decision-log.md) |
 | Sub-Agent federation protocol | gRPC, HTTP, WebSocket, SSE, hybrid | **HTTP REST for admin/registry/metadata + gRPC bidirectional streaming for runtime (planner ↔ sub-agent)** | [ADR-028](../decisions/decision-log.md) |
+| Sub-Agent runtime transport (MVP) | HTTP fetch / gRPC | **HTTP fetch + `FederationRequest`/`FederationResponse` JSON envelopes at MVP** (ADR-039); gRPC per ADR-028 is the v1 target — upgrade surface is `SubAgentExecutor` + SDK server stubs | [ADR-039](../decisions/decision-log.md) |
 | Sub-Agent discovery | Pull from registry / push (self-register) / hybrid | **Push (self-register on startup) + heartbeat + TTL for cleanup** | [ADR-029](../decisions/decision-log.md) |
 | Sub-Agent authn | mTLS / JWT / both | **mTLS for runtime (intranet trust model, k8s cert-manager); JWT for non-runtime admin APIs** | [ADR-029](../decisions/decision-log.md) |
 | Eval scoring approach | Heuristics / LLM-judge / embedded models / hybrid | **Hybrid: heuristics (cheap high-volume) + LLM-judge sampled (~5%, quality metrics) + embedded models at v1 + auto-generated per-capability eval from registry metadata** | [ADR-023](../decisions/decision-log.md) |
