@@ -982,3 +982,141 @@ describe('RuntimeServer sub-agent endpoints', () => {
     expect(body.subAgentCount).toBe(1);
   });
 });
+
+/**
+ * Phase 2.4.x: /federate endpoint — symmetric federation, any runtime can serve as a sub-agent.
+ */
+describe('RuntimeServer /federate endpoint', () => {
+  it('synthesizes a user-message envelope from FederationRequest.intent and returns planner narration', async () => {
+    const planner: Planner = {
+      name: 'capture',
+      plan: async (req) => {
+        const text = (req.envelope.payload as { text?: string } | undefined)?.text ?? '';
+        return {
+          intent: text,
+          invocations: [],
+          narration: `child-runtime acknowledges: ${text}`,
+        };
+      },
+    };
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), planner });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/federate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ intent: 'tell me a joke' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { narration?: string; output?: unknown };
+      expect(body.narration).toBe('child-runtime acknowledges: tell me a joke');
+      expect(body.output).toBeUndefined();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('returns invocations + aggregated output when the planner ran tools', async () => {
+    const planner: Planner = {
+      name: 'with-tools',
+      plan: async () => ({
+        intent: 'x',
+        invocations: [
+          {
+            name: 'get-weather',
+            kind: 'tool',
+            input: { city: 'Tokyo' },
+            result: { ok: true, output: { tempC: 18, conditions: 'cloudy' }, durationMs: 200 },
+          },
+        ],
+        narration: 'fetched weather for Tokyo',
+      }),
+    };
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), planner });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/federate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ intent: 'weather in Tokyo' }),
+      });
+      const body = (await res.json()) as {
+        narration?: string;
+        output?: { tempC: number; conditions: string };
+        invocations?: Array<{ name: string; ok: boolean; durationMs: number }>;
+      };
+      expect(body.narration).toBe('fetched weather for Tokyo');
+      expect(body.output).toEqual({ tempC: 18, conditions: 'cloudy' });
+      expect(body.invocations).toHaveLength(1);
+      expect(body.invocations![0]).toMatchObject({ name: 'get-weather', ok: true, durationMs: 200 });
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('returns 400 when the body is missing intent', async () => {
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer() });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/federate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ payload: {} }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { code: string; message: string } };
+      expect(body.error.code).toBe('bad-request');
+      expect(body.error.message).toMatch(/intent/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('returns 500 with FederationResponse.error.code=plan-failed when the planner throws', async () => {
+    const planner: Planner = {
+      name: 'failing',
+      // eslint-disable-next-line @typescript-eslint/require-await
+      plan: async () => {
+        throw new Error('planner blew up');
+      },
+    };
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), planner });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/federate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ intent: 'go' }),
+      });
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as { error: { code: string; message: string } };
+      expect(body.error.code).toBe('plan-failed');
+      expect(body.error.message).toMatch(/planner blew up/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('threads FederationRequest.sessionId into PlanRequest.sessionId', async () => {
+    let seen = '';
+    const planner: Planner = {
+      name: 'sid-capture',
+      plan: async (req) => {
+        seen = req.sessionId ?? '<none>';
+        return { intent: 'x', invocations: [] };
+      },
+    };
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), planner });
+    await server.start();
+    try {
+      await fetch(`http://127.0.0.1:${server.port}/federate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ intent: 'go', sessionId: 'remote-sess-42' }),
+      });
+      expect(seen).toBe('remote-sess-42');
+    } finally {
+      await server.stop();
+    }
+  });
+});

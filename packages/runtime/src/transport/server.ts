@@ -23,6 +23,8 @@ import type {
   ComposeContext,
   ComposedToolInvocation,
   ErrorEnvelope,
+  FederationRequest,
+  FederationResponse,
   InstructionEnvelope,
   UIComposer,
 } from '@saasagent/protocol';
@@ -251,6 +253,81 @@ export class RuntimeServer {
           memoryProvider: this.memoryProvider.name,
         }),
       );
+      return;
+    }
+
+    // Federation endpoint (Phase 2.4.x). ANY runtime can be a sub-agent of
+    // another runtime — federation is symmetric. The parent's SubAgentExecutor
+    // POSTs FederationRequest here; we synthesize a user-message envelope from
+    // the intent, run our local planner, and return the planner's narration +
+    // invocations as a FederationResponse.
+    if (url === '/federate' && req.method === 'POST') {
+      const body = (await readJsonBody(req)) as FederationRequest | null;
+      if (!body || typeof body.intent !== 'string' || body.intent.length === 0) {
+        res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: { code: 'bad-request', message: 'FederationRequest must include a non-empty intent string' },
+          } satisfies FederationResponse),
+        );
+        return;
+      }
+      const envelope: InstructionEnvelope = {
+        composeCycleId: `federate-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        sourceNodeId: 'federation-caller',
+        emittedAt: new Date().toISOString(),
+        type: 'user-message',
+        sequence: 0,
+        payload: { text: body.intent, ...(body.payload ?? {}) },
+      };
+      try {
+        const planResult = await this.planner.plan({
+          envelope,
+          context: this.buildContext(envelope.type).conversationContext,
+          ...(body.sessionId ? { sessionId: body.sessionId } : {}),
+        });
+        const fedResponse: FederationResponse = {};
+        if (planResult.narration) fedResponse.narration = planResult.narration;
+        if (planResult.invocations.length > 0) {
+          // Aggregate output: list every successful invocation's output, keyed by name+kind.
+          const okOutputs = planResult.invocations
+            .filter((i) => i.result.ok)
+            .map((i) => ({
+              name: i.name,
+              kind: i.kind,
+              output: i.result.ok ? i.result.output : undefined,
+            }));
+          if (okOutputs.length === 1 && okOutputs[0]) {
+            fedResponse.output = okOutputs[0].output;
+          } else if (okOutputs.length > 1) {
+            fedResponse.output = okOutputs;
+          }
+          fedResponse.invocations = planResult.invocations.map((i) => ({
+            name: i.name,
+            kind: i.kind,
+            input: i.input,
+            ok: i.result.ok,
+            ...(i.result.ok ? { output: i.result.output } : {}),
+            ...(i.result.ok
+              ? {}
+              : { error: { code: i.result.error.code, message: i.result.error.message } }),
+            durationMs: i.result.durationMs,
+          }));
+        }
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(fedResponse));
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[runtime] /federate plan failed:', err);
+        const fedResponse: FederationResponse = {
+          error: {
+            code: 'plan-failed',
+            message: err instanceof Error ? err.message : String(err),
+          },
+        };
+        res.writeHead(500, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(fedResponse));
+      }
       return;
     }
 
