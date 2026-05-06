@@ -1,8 +1,8 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phase 1 complete 2026-05-04; Phase 2 next)
+- **Status:** in-progress (Phase 2.0c reached 2026-05-05)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-04
+- **Last updated:** 2026-05-05
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
 
 ## Why
@@ -146,6 +146,6 @@ Pure post-MVP:
 
 ## Child epics
 
-Owned + maintained by the work-management skill.
-
-- [EPIC-007 — Phase 0 Foundation](../epics/EPIC-007-phase-0-foundation.md) — done
+- [EPIC-002 — Phase 0 Foundation](../epics/EPIC-002-phase-0-foundation.md) — done
+- [EPIC-009 — Phase 1 Composition layer](../epics/EPIC-009-phase-1-composition.md) — done
+- [EPIC-010 — Phase 2 Capability execution layer](../epics/EPIC-010-phase-2-capability-execution.md) — in-progress
