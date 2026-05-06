@@ -10,3 +10,10 @@ export {
   RuleBasedChurnCalculator,
   type RuleBasedChurnCalculatorOptions,
 } from './rule-based.js';
+export {
+  WeightedFeatureChurnCalculator,
+  DEFAULT_WEIGHTS,
+  type WeightedFeatureChurnCalculatorOptions,
+  type ChurnWeights,
+  type FeatureVector,
+} from './weighted-feature.js';

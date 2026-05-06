@@ -105,7 +105,12 @@ export {
 } from './eval/index.js';
 export {
   RuleBasedChurnCalculator,
+  WeightedFeatureChurnCalculator,
+  DEFAULT_WEIGHTS,
   type RuleBasedChurnCalculatorOptions,
+  type WeightedFeatureChurnCalculatorOptions,
+  type ChurnWeights,
+  type FeatureVector,
   type ChurnRiskCalculator,
 } from './churn/index.js';
 export {
