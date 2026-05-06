@@ -16,3 +16,7 @@
 | STORY-010 | [Planner integration (Phase 2.1)](STORY-010-planner-integration.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
 | STORY-011 | [Features registry as planner super-skill context (Phase 2.2)](STORY-011-features-registry.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
 | STORY-012 | [KeyValueMemoryProvider + per-WS sessionId (Phase 2.3)](STORY-012-kv-memory-provider.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-013 | [Federated Sub-Agents (Phase 2.4)](STORY-013-federated-sub-agents.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-014 | [/federate endpoint — symmetric two-runtime federation (Phase 2.4.x)](STORY-014-federate-endpoint.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-015 | [Embedded eval scoring — per-turn quality signals (Phase 2.5)](STORY-015-embedded-eval-scoring.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-016 | [VoC + Customer Churn Risk (Phase 2.6)](STORY-016-voc-churn-risk.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
