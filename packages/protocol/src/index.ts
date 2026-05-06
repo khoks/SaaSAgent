@@ -40,6 +40,17 @@ export type {
   AtomicComponentRegistry,
 } from './atomic-component.js';
 export type {
+  SkillExecutionKind,
+  SkillDescriptor,
+  SkillRegistry,
+} from './skill.js';
+export type {
+  ToolHttpMethod,
+  ToolAuthKind,
+  ToolDescriptor,
+  ToolRegistry,
+} from './tool.js';
+export type {
   UIComposer,
   ComposeContext,
   ConversationContext,

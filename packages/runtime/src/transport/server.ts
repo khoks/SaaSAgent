@@ -30,8 +30,12 @@ import { ProviderError } from '../model/types.js';
 import {
   type ComponentRegistryStore,
   type ThemeRegistryStore,
+  type SkillRegistryStore,
+  type ToolRegistryStore,
   InMemoryComponentRegistry,
   InMemoryThemeRegistry,
+  InMemorySkillRegistry,
+  InMemoryToolRegistry,
   importStyleDictionary,
   importCssVariables,
 } from '../registry/index.js';
@@ -47,6 +51,10 @@ export interface RuntimeServerOptions {
   componentRegistry?: ComponentRegistryStore;
   /** Theme & branding tokens registry store. Defaults to a fresh InMemoryThemeRegistry. */
   themeRegistry?: ThemeRegistryStore;
+  /** Skills registry store (Phase 2.0b). Defaults to a fresh InMemorySkillRegistry. */
+  skillRegistry?: SkillRegistryStore;
+  /** Tools registry store (Phase 2.0b). Defaults to a fresh InMemoryToolRegistry. */
+  toolRegistry?: ToolRegistryStore;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -70,11 +78,15 @@ export class RuntimeServer {
   private readonly sseClients = new Set<ServerResponse>();
   private readonly componentRegistry: ComponentRegistryStore;
   private readonly themeRegistry: ThemeRegistryStore;
+  private readonly skillRegistry: SkillRegistryStore;
+  private readonly toolRegistry: ToolRegistryStore;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
     this.componentRegistry = options.componentRegistry ?? new InMemoryComponentRegistry();
     this.themeRegistry = options.themeRegistry ?? new InMemoryThemeRegistry();
+    this.skillRegistry = options.skillRegistry ?? new InMemorySkillRegistry();
+    this.toolRegistry = options.toolRegistry ?? new InMemoryToolRegistry();
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -169,9 +181,55 @@ export class RuntimeServer {
           componentCount: Object.keys(this.componentRegistry.get().components).length,
           themeName: this.themeRegistry.get().name,
           themeVersion: this.themeRegistry.get().version,
+          skillRegistryVersion: this.skillRegistry.get().version,
+          skillCount: Object.keys(this.skillRegistry.get().skills).length,
+          toolRegistryVersion: this.toolRegistry.get().version,
+          toolCount: Object.keys(this.toolRegistry.get().tools).length,
         }),
       );
       return;
+    }
+
+    // Skills + Tools registries (Phase 2.0b). Same shape as components: GET / PUT / POST / DELETE.
+    if (url === '/registry/skills' || url === '/registry/tools') {
+      const isSkills = url === '/registry/skills';
+      if (req.method === 'GET') {
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(isSkills ? this.skillRegistry.get() : this.toolRegistry.get()));
+        return;
+      }
+      if (req.method === 'PUT') {
+        const body = await readJsonBody(req);
+        const items = Array.isArray(body)
+          ? body
+          : ((body as Record<string, unknown> | null)?.[isSkills ? 'skills' : 'tools'] ?? []);
+        const updated = isSkills
+          ? this.skillRegistry.replace(items as never)
+          : this.toolRegistry.replace(items as never);
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(updated));
+        return;
+      }
+      if (req.method === 'POST') {
+        const body = (await readJsonBody(req)) as { name?: string };
+        if (!body?.name) {
+          res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `POST body must have a name field (${isSkills ? 'skill' : 'tool'})` }));
+          return;
+        }
+        const updated = isSkills
+          ? this.skillRegistry.upsert(body as never)
+          : this.toolRegistry.upsert(body as never);
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(updated));
+        return;
+      }
+      if (req.method === 'DELETE') {
+        const updated = isSkills ? this.skillRegistry.clear() : this.toolRegistry.clear();
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(updated));
+        return;
+      }
     }
 
     // Theme registry endpoints. PUT supports ?format=dtcg (default) | style-dictionary | css-variables.

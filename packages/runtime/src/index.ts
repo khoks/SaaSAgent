@@ -22,8 +22,12 @@ import { AnthropicProvider } from './model/index.js';
 import {
   InMemoryComponentRegistry,
   InMemoryThemeRegistry,
+  InMemorySkillRegistry,
+  InMemoryToolRegistry,
   type ComponentRegistryStore,
   type ThemeRegistryStore,
+  type SkillRegistryStore,
+  type ToolRegistryStore,
 } from './registry/index.js';
 import { RuntimeServer } from './transport/index.js';
 
@@ -33,9 +37,15 @@ export { RuntimeServer } from './transport/index.js';
 export {
   InMemoryComponentRegistry,
   InMemoryThemeRegistry,
+  InMemorySkillRegistry,
+  InMemoryToolRegistry,
   flattenDTCG,
+  importStyleDictionary,
+  importCssVariables,
   type ComponentRegistryStore,
   type ThemeRegistryStore,
+  type SkillRegistryStore,
+  type ToolRegistryStore,
 } from './registry/index.js';
 export {
   AnthropicProvider,
@@ -71,6 +81,10 @@ export class Runtime {
   readonly componentRegistry: ComponentRegistryStore = new InMemoryComponentRegistry();
   /** Public theme registry for the same reason. */
   readonly themeRegistry: ThemeRegistryStore = new InMemoryThemeRegistry();
+  /** Public skills registry (Phase 2.0b). */
+  readonly skillRegistry: SkillRegistryStore = new InMemorySkillRegistry();
+  /** Public tools registry (Phase 2.0b). */
+  readonly toolRegistry: ToolRegistryStore = new InMemoryToolRegistry();
 
   constructor(public readonly config: RuntimeConfig = {}) {}
 
@@ -82,6 +96,8 @@ export class Runtime {
       composer,
       componentRegistry: this.componentRegistry,
       themeRegistry: this.themeRegistry,
+      skillRegistry: this.skillRegistry,
+      toolRegistry: this.toolRegistry,
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(
