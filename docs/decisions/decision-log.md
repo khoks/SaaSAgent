@@ -637,6 +637,77 @@
   - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
 - **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).
 
+## ADR-039 — Symmetric runtime federation: every RuntimeServer exposes /federate enabling peer-to-peer agent mesh
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.4.x implementation. ADR-021 framed sub-agents as federated external runtimes; the implementation decision was how to make any runtime addressable as a sub-agent. The simplest expression is a universal `/federate` POST endpoint on every RuntimeServer instance.
+- **Options considered:**
+  - A. Hub-and-spoke: only the primary platform runtime can accept federation calls; sub-agents are leaves.
+  - B. **Symmetric: every RuntimeServer instance exposes POST /federate, making any deployed runtime capable of being a sub-agent of any other runtime.**
+  - C. Separate "sub-agent server" class vs. "primary runtime" class — different codepaths.
+- **Decision:** B. One `/federate` endpoint on RuntimeServer; no distinction between "orchestrator" and "sub-agent" at the protocol level. Role is contextual: a runtime is a sub-agent when invoked via another runtime's Sub-Agent executor.
+- **Consequences:**
+  - **Agent mesh topology is emergent** — hub-and-spoke (platform → domain sub-agents) is a special case; peer delegation (any runtime → any runtime) is naturally supported.
+  - **Two-runtime demo proven live**: parent runtime on port 8080 calls child on port 8081 via federation; child runs its own planner + tools, streams response back.
+  - Parent registers child via Sub-Agent registry; planner invokes child via `subagent__<name>` tool; child receives `FederationRequest`, runs plan, returns `FederationResponse`.
+  - **No extra interface to maintain** — every `RuntimeServer` is both a planner and a potential sub-agent by construction.
+  - Implies each runtime needs its own auth (bearer token, scoped per-deployment) to prevent unauthorized delegation.
+- **Novelty:** medium — the mesh-topology implication is non-obvious. Captured in [novel-ideas/ideas.md](../novel-ideas/ideas.md).
+- **Source:** Phase 2.4.x implementation 2026-05-06: "Both runtimes healthy. … Two independent runtimes, each with its own planner+composer, federated."
+
+## ADR-040 — Re-ask timing as implicit negative eval signal
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.5.x. Active eval feedback (thumbs up/down) requires explicit user action. ADR-016/023 specify a unified active+deduced feedback substrate. During Phase 2.5.x shell work, needed a deduced signal that works with zero UI overhead.
+- **Options considered:**
+  - A. Active-only: require explicit thumbs.
+  - B. Dwell-time heuristic: if user spends N seconds reading, infer positive.
+  - C. **Re-ask timing: if user sends another message within N seconds of last layout broadcast, infer the prior response was unsatisfactory — record `negative/user-implicit`.**
+  - D. Abandonment: if user closes panel within N seconds, record negative.
+- **Decision:** C at MVP. Options B and D added at v1.
+- **Consequences:**
+  - RuntimeServer tracks `lastBroadcastAt` per WS session. On next user message, computes delta; if `delta < implicitReaskWindowMs` (default 10 000 ms, configurable), fires `eval-feedback { kind: 'negative', source: 'user-implicit' }` for the prior layout.
+  - **Zero UI overhead** — no thumbs widget needed; deduced from timing.
+  - Signal feeds `EvalProvider` (same path as explicit feedback) → `ChurnRiskCalculator` → closed-loop churn model.
+  - **Live-verified in Phase 2.5.x smoke**: thumbs-up = `positive/user-explicit`, re-ask 940 ms after broadcast = `negative/user-implicit`, churn calculator reads both.
+  - Signal may misfire on copy-paste / follow-up question patterns; acceptable false-positive rate for MVP; tunable via the window param.
+- **Novelty:** medium — simple heuristic but appears uncommon as a packaged primitive. See [novel-ideas/ideas.md](../novel-ideas/ideas.md).
+- **Source:** Phase 2.5.x implementation 2026-05-06: "Both signals captured: thumbs-up = positive/user-explicit, re-ask = negative/user-implicit (940ms after broadcast)."
+
+## ADR-041 — WeightedFeatureChurnCalculator: TypeScript parameterized linear model as pre-ML stepping stone to LightGBM
+- **Date:** 2026-05-06
+- **Status:** accepted (supersedes ADR-031's immediate-LightGBM assumption for the current build phase)
+- **Context:** ADR-031 specifies LightGBM as the bundled churn model. LightGBM requires Python + training data + a model-training pipeline + binary serialisation — none of which were available in the TypeScript-only build environment at Phase 2.6.x.
+- **Options considered:**
+  - A. Defer churn model entirely until Python SDK + training data ready.
+  - B. **Ship a parameterized linear model with sigmoid in TypeScript to close the VoC → churn feedback loop end-to-end now; replace with LightGBM later.**
+  - C. Embed Python subprocess just for the churn scorer.
+- **Decision:** B. `WeightedFeatureChurnCalculator`: `score = sigmoid(w1 * negative_rate + w2 * re_ask_rate + w3 * short_session_rate)`; configurable weights + threshold; outputs `{ score, level: 'low' | 'medium' | 'high', factors[] }`.
+- **Consequences:**
+  - **Full closed loop proven in pure TypeScript** — no Python or ML infra needed for MVP demo.
+  - `ChurnRiskCalculator` interface is the seam: `WeightedFeatureChurnCalculator` implements it now; LightGBM adapter slots in when available (per ADR-031 adapter contract).
+  - Weights are configurable so hosts can tune without a retrain step.
+  - **Live-verified in Phase 2.6 smoke**: 3 sessions, 3 risk levels (low / medium / high), factors human-readable.
+  - When Python SDK ships, LightGBM replaces this as the default without interface changes.
+- **Source:** Phase 2.6.x implementation 2026-05-06: "Phase 2.6.x — WeightedFeatureChurnCalculator. Parameterized linear model with sigmoid → step toward real ML."
+
+## ADR-042 — Bearer auth + token-bucket rate limiting at transport layer (env-var-driven, opt-in)
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.7 hardening. The RuntimeServer was fully open (no auth, no rate limiting). Needed a production-ready auth + rate-limiting layer before docker-compose packaging.
+- **Options considered:**
+  - A. API-key auth (shared secret in DB) — requires DB at auth time; heavy for MVP.
+  - B. **Bearer token auth via `SAAS_AGENT_AUTH_TOKEN` env var; token-bucket rate limiting at `RateLimiter` level.** Opt-in: absent env var = open mode (dev/test).
+  - C. JWT with signing key + rotation — correct for prod enterprise but overkill for MVP transport hardening.
+- **Decision:** B. `parseBearer(req)` checks `Authorization: Bearer <token>` header for HTTP/SSE; `?token=<value>` query param for WebSocket (WS upgrade requests cannot carry custom headers in all browsers). Token-bucket `RateLimiter` keyed by client IP (`X-Forwarded-For` → `remoteAddress`); configurable requests/window/burst.
+- **Consequences:**
+  - **Auth on / rate-limit on** when `SAAS_AGENT_AUTH_TOKEN` env var is set; open mode otherwise.
+  - **WS query-param fallback** required because browsers' native WebSocket API does not support custom headers on the upgrade handshake — URL parsed via `new URL(req.url, 'http://localhost')` to extract `?token=` without failing on plain `/ws` paths.
+  - **Docker-compose.yml** wires env vars (`SAAS_AGENT_AUTH_TOKEN`, `SAAS_AGENT_RATE_LIMIT_RPM`, `SAAS_AGENT_PORT`) through to both services; demo-host and runtime containers isolated on a `saasagent-net` bridge network.
+  - **Test coverage**: 60/60 transport tests (56 existing + 4 new auth/rate-limit cases).
+  - **Dockerfile + Dockerfile.demo-host** + `.docker/runtime-entrypoint.mjs` added — entrypoint reads env vars, builds `RuntimeConfig`, starts server.
+- **Source:** Phase 2.7 implementation 2026-05-06: "60/60 transport tests pass (was 56 + 4 new auth/rate-limit). Now docker-compose."
+
 ## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
 - **Date:** 2026-05-08
 - **Status:** accepted (closes Q6.3)

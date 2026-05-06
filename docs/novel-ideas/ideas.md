@@ -160,6 +160,30 @@
 - **Patentability hint:** possible — system claim around tiered summarization stores indexed by temporal window with agent-driven tier selection at query time.
 - **Open questions:** Summarization cadence and trigger per tier? Privacy boundaries? Cross-tier consistency on backfill?
 
+### [2026-05-06] Symmetric runtime federation: any deployed runtime is simultaneously an orchestrator and a potential sub-agent
+- **Originator:** joint (emergent during Phase 2.4.x implementation)
+- **Source:** Phase 2.4.x implementation 2026-05-06: "Two independent runtimes, each with its own planner+composer, federated. … child log: [sonnet-planner] tool__fetch-weather → ok."
+- **Description:** By adding a universal POST `/federate` endpoint to every `RuntimeServer` instance (ADR-039), every deployed runtime is simultaneously capable of acting as an orchestrator (calling other runtimes' sub-agents) and as a sub-agent (receiving federation calls from any upstream orchestrator). The architecture is peer-to-peer by construction — hub-and-spoke (platform → domain sub-agents) is a degenerate special case. Any topology emerges dynamically: linear chains (A → B → C), fan-out (A → B, C, D in parallel), hierarchical trees, and loops (with guard conditions). No special "orchestrator class" or "sub-agent class" is needed at the runtime level. Role is purely contextual: who invokes whom.
+- **Prior-art assessment:**
+  - **LangGraph / AutoGen / CrewAI** have in-process orchestrators that spawn worker agents — role is static (orchestrator vs. worker), not peer.
+  - **Service mesh** (Istio, Linkerd) achieves peer-to-peer routing at the network layer but has no concept of agent semantics (planning, memory, capability registry).
+  - Packaging the peer-federation capability as an emergent property of a single universal `/federate` endpoint — with planner-aware capability metadata, registry-based discovery, and typed protocol — is uncommon as a designed-in architectural property.
+- **Novelty signal:** medium-high
+- **Patentability hint:** possible — method claim covering: (1) universal sub-agent endpoint on each runtime, (2) planner-capable runtimes that can both orchestrate and be orchestrated, (3) dynamic topology from per-instance registration + discovery, (4) typed FederationRequest/Response protocol enabling cross-runtime memory and causality tracking.
+- **Open questions:** Loop detection (prevent A → B → A cycles without guard conditions)? Cross-runtime memory synchronisation? Auth scoping across meshes (mTLS per ADR-029, cert propagation for sub-agent chains)?
+
+### [2026-05-06] Re-ask timing as a low-friction implicit negative eval signal
+- **Originator:** joint (implementation insight during Phase 2.5.x)
+- **Source:** Phase 2.5.x implementation 2026-05-06: "Both signals captured: thumbs-up = positive/user-explicit, re-ask = negative/user-implicit (940ms after broadcast). Verify the churn calculator reads them."
+- **Description:** A user who sends another message within N seconds of receiving the agent's composed response is implicitly signalling dissatisfaction. The runtime tracks `lastBroadcastAt` per session; on the next incoming user message, computes the delta. If `delta < implicitReaskWindowMs` (default 10 s, configurable), the runtime emits a `negative/user-implicit` eval signal against the prior layout — zero UI overhead. The signal feeds the same `EvalProvider` path as explicit thumbs-down, driving both eval scoring AND the churn risk calculator simultaneously, closing the feedback loop without requiring any user action.
+- **Prior-art assessment:**
+  - Chatbot analytics track aggregate re-ask rate as a CSAT metric — post-hoc, not real-time per-interaction.
+  - Conversational eval platforms collect explicit human labels; implicit timing signals not typically elevated to first-class eval citizens.
+  - Routing implicit timing signals to the same eval + churn-risk substrates as explicit feedback, in real time, as a built-in runtime behavior, appears uncommon as a packaged primitive.
+- **Novelty signal:** medium
+- **Patentability hint:** possible — method claim covering: (1) per-session last-broadcast timestamp tracking, (2) delta computation on next user message, (3) implicit negative signal emission below threshold, (4) routing to unified eval + personalization substrate alongside explicit signals.
+- **Open questions:** False-positive rate on genuine follow-up questions? Combination with abandonment signal? Configurable exclusion patterns for "continuation" messages?
+
 ### [2026-04-26 / refined 2026-04-28] Feature/Service docs as agent-readable super-skill documents (no compilation)
 - **Originator:** Rahul (refined 2026-04-28 in Q3.1 answer; format choice in ADR-011, no-compilation choice in ADR-013)
 - **Source:** "app developers and domain developers within the enterprise can come and configure their own workflows in its system in the form of featured documents or service documents." + Q3.1 2026-04-28: "Do we really want the md format to be compiled to JSON? shouldn't the Agent platform just read it as a super skill doc and just execute it using its intelligence?"

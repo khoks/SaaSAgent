@@ -153,6 +153,12 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
+### Closed during Phase 2 build (2026-05-06)
+- ✅ Symmetric runtime federation — every RuntimeServer exposes `/federate`; any runtime can orchestrate or be orchestrated [ADR-039]
+- ✅ Implicit re-ask timing as negative eval signal (deduced feedback, zero UI overhead) [ADR-040]
+- ✅ WeightedFeatureChurnCalculator (parameterized linear model stepping stone to LightGBM, closes VoC loop in pure TS) [ADR-041]
+- ✅ Bearer auth + token-bucket rate limiting at transport layer, env-var-driven [ADR-042]
+
 ### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.

@@ -48,6 +48,21 @@ Each entry:
 **Category:** capability
 **Notes:** Host design-system registration is manual at MVP. Future: auto-extract from Storybook (CSF), Figma design tokens, component metadata files, MDX docs. Reduces onboarding friction substantially.
 
+### [2026-05-06] Replace WeightedFeatureChurnCalculator with real LightGBM model
+**Source:** Phase 2.6.x ships a TypeScript parameterized linear model to close the churn loop end-to-end (ADR-041). "When Python SDK ships, LightGBM replaces this as the default without interface changes."
+**Category:** capability / research
+**Notes:** Prerequisite: Python SDK (ADR-027 scopes TS + Python). Training data pipeline: consume `EvalSignal` stream from ClickHouse. Model seam: `ChurnRiskCalculator` interface. Adapter contract from ADR-031 (LightGBM bundled + pluggable). SHAP explainability built in. Cold-start via synthetic generic-prior (ADR-031). Replace `WeightedFeatureChurnCalculator` on this path; interface unchanged.
+
+### [2026-05-06] Python SDK for sub-agent development (packages/sdk-py)
+**Source:** ADR-027 specifies TypeScript + Python at MVP for the Sub-Agent SDK. Phase 2.7 shipped the TS runtime and TS SDK. Python SDK is the next language deliverable.
+**Category:** capability
+**Notes:** Lives at `packages/sdk-py`. Tooling: uv or poetry (per ADR-037). Must implement same registration, federation protocol, health-check, retries, observability hooks as TS SDK. gRPC bidirectional streaming for runtime (ADR-028). mTLS cert wiring. Priority: needed before the real LightGBM churn model can be developed as a Python sub-agent.
+
+### [2026-05-06] Voice/WebRTC channel — Phase 5
+**Source:** ADR-038: "WebRTC reserved for voice (Phase 5) when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel."
+**Category:** capability
+**Notes:** Third transport channel alongside SSE (output) + WS (instructions). WebRTC for real-time bidirectional audio: microphone capture → ASR → planner, TTS → speaker. Requires: audio codec selection, VAD (voice activity detection), ASR provider adapter, TTS provider adapter, mobile WebView bridge update (native audio APIs via shim). Reserved until Phases 1-4 are stable.
+
 ### [2026-04-26] Cached composition templates per recurring intent
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
