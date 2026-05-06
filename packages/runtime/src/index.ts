@@ -140,6 +140,15 @@ export interface RuntimeConfig {
    * when ANTHROPIC_API_KEY is present once Phase 2.1b lands.
    */
   planner?: 'auto' | 'stub' | 'sonnet';
+  /**
+   * Bearer token required on all REST + WS requests (Phase 2.7). When unset the
+   * runtime is unauthenticated. /health + OPTIONS are always allowed.
+   */
+  authToken?: string;
+  /** Per-IP REST rate limit in requests-per-minute (Phase 2.7). 0 disables. */
+  rateLimitRestPerMinute?: number;
+  /** Per-WS-connection message rate limit in messages-per-minute (Phase 2.7). 0 disables. */
+  rateLimitWsPerMinute?: number;
   /** Postgres connection string. */
   postgresUrl?: string;
   /** Qdrant URL. */
@@ -238,6 +247,13 @@ export class Runtime {
       memoryProvider: this.memoryProvider,
       evalProvider: this.evalProvider,
       churnCalculator: this.churnCalculator,
+      ...(this.config.authToken ? { authToken: this.config.authToken } : {}),
+      ...(this.config.rateLimitRestPerMinute !== undefined
+        ? { rateLimitRestPerMinute: this.config.rateLimitRestPerMinute }
+        : {}),
+      ...(this.config.rateLimitWsPerMinute !== undefined
+        ? { rateLimitWsPerMinute: this.config.rateLimitWsPerMinute }
+        : {}),
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(

@@ -126,6 +126,28 @@ export interface RuntimeServerOptions {
    * interface (rule-based becomes cold-start fallback).
    */
   churnCalculator?: ChurnRiskCalculator;
+  /**
+   * Bearer token required on REST + WS requests (Phase 2.7).
+   * When set, all requests must include `Authorization: Bearer <token>`
+   * (or ?token=<token> on the WS upgrade URL since browsers can't set
+   * arbitrary headers on `new WebSocket(...)`). Always-allowed: GET /health
+   * (liveness probe) + OPTIONS (CORS preflight).
+   * When unset, the runtime is unauthenticated — fine for localhost dev,
+   * never for production.
+   */
+  authToken?: string;
+  /**
+   * Per-IP REST rate limit in requests-per-minute (Phase 2.7). 0 disables.
+   * When enabled, exhausted IPs get 429 with Retry-After header.
+   * /health is exempt so liveness probes can't be locked out.
+   */
+  rateLimitRestPerMinute?: number;
+  /**
+   * Per-connection WS message rate limit in messages-per-minute (Phase 2.7).
+   * 0 disables. Connections that exceed get a server-side close with
+   * code 1008 (policy violation).
+   */
+  rateLimitWsPerMinute?: number;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -161,6 +183,9 @@ export class RuntimeServer {
   private readonly evalProvider: EvalProvider;
   private readonly churnCalculator: ChurnRiskCalculator;
   private readonly implicitReaskWindowMs: number;
+  private readonly authToken: string | null;
+  private readonly rateLimiter: RateLimiter | null;
+  private readonly wsRateLimitPerMinute: number;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
@@ -180,6 +205,12 @@ export class RuntimeServer {
     this.churnCalculator =
       options.churnCalculator ?? new RuleBasedChurnCalculator({ evalProvider: this.evalProvider });
     this.implicitReaskWindowMs = options.implicitReaskWindowMs ?? 8000;
+    this.authToken = options.authToken ?? null;
+    this.rateLimiter =
+      options.rateLimitRestPerMinute && options.rateLimitRestPerMinute > 0
+        ? new RateLimiter(options.rateLimitRestPerMinute)
+        : null;
+    this.wsRateLimitPerMinute = options.rateLimitWsPerMinute ?? 0;
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -262,6 +293,36 @@ export class RuntimeServer {
       res.writeHead(204, CORS_HEADERS);
       res.end();
       return;
+    }
+
+    // Phase 2.7: rate limit by client IP. /health is exempt so external probes
+    // can't be locked out.
+    if (this.rateLimiter && url !== '/health') {
+      const ip = clientIp(req);
+      const allowed = this.rateLimiter.tryConsume(ip);
+      if (!allowed) {
+        res.writeHead(429, {
+          ...CORS_HEADERS,
+          'Content-Type': 'application/json',
+          'Retry-After': '60',
+        });
+        res.end(JSON.stringify({ error: 'rate-limited', retryAfter: 60 }));
+        return;
+      }
+    }
+
+    // Phase 2.7: bearer-token auth gate. /health is exempt so liveness probes
+    // and load balancers don't need credentials.
+    if (this.authToken !== null && url !== '/health') {
+      if (!isAuthorized(req, this.authToken)) {
+        res.writeHead(401, {
+          ...CORS_HEADERS,
+          'Content-Type': 'application/json',
+          'WWW-Authenticate': 'Bearer realm="saasagent"',
+        });
+        res.end(JSON.stringify({ error: 'unauthorized', detail: 'missing or invalid bearer token' }));
+        return;
+      }
     }
 
     if (url === '/health') {
@@ -828,13 +889,29 @@ export class RuntimeServer {
   }
 
   private handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
-    if (req.url === '/ws') {
-      this.wss.handleUpgrade(req, socket, head, (ws) => {
-        this.wss.emit('connection', ws, req);
-      });
-    } else {
+    const parsedUrl = new URL(req.url ?? '/', 'http://localhost');
+    if (parsedUrl.pathname !== '/ws') {
       socket.destroy();
+      return;
     }
+    // Phase 2.7: bearer-token auth on the WS upgrade. Browsers can't set
+    // arbitrary headers on `new WebSocket(...)`, so accept the token via a
+    // ?token= query param too. Hosts deploying real auth should prefer cookies
+    // (auto-attached on the upgrade) — that requires same-origin which is a
+    // host concern.
+    if (this.authToken !== null) {
+      const tokenFromHeader = parseBearer(req.headers.authorization);
+      const tokenFromQuery = parsedUrl.searchParams.get('token');
+      const provided = tokenFromHeader ?? tokenFromQuery ?? '';
+      if (provided !== this.authToken) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Bearer realm="saasagent"\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+    }
+    this.wss.handleUpgrade(req, socket, head, (ws) => {
+      this.wss.emit('connection', ws, req);
+    });
   }
 
   private handleWsConnection(ws: WebSocket): void {
@@ -848,7 +925,19 @@ export class RuntimeServer {
     // if a user-message arrives shortly after, that's a re-ask, infer negative.
     let lastBroadcastCycleId: string | null = null;
     let lastBroadcastAt = 0;
+    // Phase 2.7: per-connection WS message rate limiter.
+    const wsLimiter =
+      this.wsRateLimitPerMinute > 0 ? new RateLimiter(this.wsRateLimitPerMinute) : null;
     ws.on('message', (raw: Buffer) => {
+      if (wsLimiter && !wsLimiter.tryConsume('ws-conn')) {
+        // 1008 = policy violation. Close the connection and bail.
+        try {
+          ws.close(1008, 'rate-limited');
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       let envelope: InstructionEnvelope;
       try {
         envelope = JSON.parse(raw.toString('utf-8')) as InstructionEnvelope;
@@ -980,6 +1069,81 @@ function toComposedInvocation(inv: ToolInvocation): ComposedToolInvocation {
     error,
     durationMs: inv.result.durationMs,
   };
+}
+
+/**
+ * Phase 2.7: simple per-key token bucket. capacity = rate-per-minute,
+ * refills continuously. tryConsume(key) returns false when the bucket is empty.
+ *
+ * Single-process, in-memory — for distributed deployments hosts should swap
+ * in a Redis-backed limiter. The interface stays the same.
+ */
+class RateLimiter {
+  private readonly buckets = new Map<string, { tokens: number; lastRefillMs: number }>();
+  private readonly capacity: number;
+  /** Tokens added per millisecond. capacity/60_000 because capacity is rpm. */
+  private readonly refillRate: number;
+
+  constructor(perMinute: number) {
+    this.capacity = perMinute;
+    this.refillRate = perMinute / 60_000;
+  }
+
+  tryConsume(key: string): boolean {
+    const now = Date.now();
+    const bucket = this.buckets.get(key) ?? { tokens: this.capacity, lastRefillMs: now };
+    const elapsed = now - bucket.lastRefillMs;
+    bucket.tokens = Math.min(this.capacity, bucket.tokens + elapsed * this.refillRate);
+    bucket.lastRefillMs = now;
+    if (bucket.tokens < 1) {
+      this.buckets.set(key, bucket);
+      return false;
+    }
+    bucket.tokens -= 1;
+    this.buckets.set(key, bucket);
+    return true;
+  }
+
+  /** Inspection helper for tests. */
+  remaining(key: string): number {
+    return this.buckets.get(key)?.tokens ?? this.capacity;
+  }
+}
+
+/** Extract the client IP for rate-limiting purposes. Honors X-Forwarded-For when set. */
+function clientIp(req: IncomingMessage): string {
+  const xff = req.headers['x-forwarded-for'];
+  if (typeof xff === 'string' && xff.length > 0) {
+    return xff.split(',')[0]!.trim();
+  }
+  if (Array.isArray(xff) && xff.length > 0) {
+    return xff[0]!;
+  }
+  return req.socket.remoteAddress ?? 'unknown';
+}
+
+/** Parse `Authorization: Bearer <token>` header. Returns null if absent or malformed. */
+function parseBearer(header: string | string[] | undefined): string | null {
+  const raw = Array.isArray(header) ? header[0] : header;
+  if (typeof raw !== 'string') return null;
+  const match = /^Bearer\s+(\S+)\s*$/i.exec(raw);
+  return match ? match[1]! : null;
+}
+
+/** Phase 2.7: bearer-token check. Constant-time compare to avoid timing leaks. */
+function isAuthorized(req: IncomingMessage, expectedToken: string): boolean {
+  const provided = parseBearer(req.headers.authorization);
+  if (!provided) return false;
+  return constantTimeEq(provided, expectedToken);
+}
+
+function constantTimeEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 /** Map executor error codes to HTTP statuses for the REST executor endpoints. */

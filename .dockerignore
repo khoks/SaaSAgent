@@ -1,0 +1,17 @@
+# Node + monorepo cruft
+node_modules
+**/node_modules
+**/dist
+**/.turbo
+**/.vite
+**/coverage
+
+# Dev / IDE
+.vscode
+.idea
+.git
+.github
+*.log
+.DS_Store
+.claude
+docs

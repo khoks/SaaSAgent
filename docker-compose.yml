@@ -1,0 +1,91 @@
+# Phase 2.7 — local-development compose stack for SaaSAgent.
+#
+# Brings up:
+#   • runtime    — the Node runtime with HaikuComposer + SonnetPlanner.
+#                  Reads memory from Postgres, exposes ports 8080.
+#   • postgres   — PostgreSQL 16 for durable conversation memory.
+#                  Schema is auto-created on first connect by PostgresMemoryProvider.
+#   • runtime-child — a SECOND runtime instance on port 8081, used for the
+#                  symmetric-federation demo (Phase 2.4.x). Configure as a
+#                  sub-agent of the parent via PUT /registry/subagents.
+#   • demo-host  — Vite dev server for the embeddable shell demo on 5173.
+#
+# Production deployments would use a managed Postgres + a real auth token
+# secret + TLS termination upstream. This file is for local prove-it-works.
+#
+# Usage:
+#   1. Set ANTHROPIC_API_KEY in .env (or your shell)
+#   2. docker compose up
+#   3. Open http://localhost:5173
+#   4. Optional: docker compose run -e SAAS_AGENT_AUTH_TOKEN=secret runtime
+#      to exercise the bearer-token gate.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: saasagent
+      POSTGRES_PASSWORD: saasagent
+      POSTGRES_DB: saasagent
+    ports:
+      - "5432:5432"
+    volumes:
+      - saasagent-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saasagent -d saasagent"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DATABASE_URL: postgres://saasagent:saasagent@postgres:5432/saasagent
+      SAAS_AGENT_PORT: "8080"
+      SAAS_AGENT_AUTH_TOKEN: ${SAAS_AGENT_AUTH_TOKEN:-}
+      SAAS_AGENT_RATE_LIMIT_REST: ${SAAS_AGENT_RATE_LIMIT_REST:-0}
+      SAAS_AGENT_RATE_LIMIT_WS: ${SAAS_AGENT_RATE_LIMIT_WS:-0}
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  runtime-child:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SAAS_AGENT_PORT: "8081"
+      # Child uses an in-process key-value memory by default — register
+      # tools/skills against it via REST after startup.
+      SAAS_AGENT_AUTH_TOKEN: ${SAAS_AGENT_AUTH_TOKEN:-}
+    ports:
+      - "8081:8081"
+
+  demo-host:
+    build:
+      context: .
+      dockerfile: Dockerfile.demo-host
+    restart: unless-stopped
+    depends_on:
+      - runtime
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_RUNTIME_URL: http://localhost:8080
+
+volumes:
+  saasagent-pg-data:

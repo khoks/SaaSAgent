@@ -1,0 +1,28 @@
+# Phase 2.7 — demo-host Dockerfile.
+# Vite dev server in a container so the docker-compose stack is self-contained.
+
+FROM node:20-alpine
+WORKDIR /app
+
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json ./
+COPY packages/protocol/package.json packages/protocol/
+COPY packages/runtime/package.json packages/runtime/
+COPY packages/web-shell/package.json packages/web-shell/
+COPY packages/sdk-ts/package.json packages/sdk-ts/
+COPY packages/cli/package.json packages/cli/
+COPY apps/demo-host/package.json apps/demo-host/
+
+RUN pnpm install --frozen-lockfile
+
+COPY packages packages
+COPY apps apps
+COPY tsconfig.base.json ./
+
+# predev builds protocol + web-shell. Vite dev runs on 5173.
+RUN pnpm --filter @saasagent/protocol --filter @saasagent/web-shell build
+
+EXPOSE 5173
+WORKDIR /app/apps/demo-host
+CMD ["pnpm", "exec", "vite", "--host", "0.0.0.0", "--port", "5173"]

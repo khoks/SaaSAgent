@@ -1354,6 +1354,147 @@ describe('RuntimeServer /eval endpoints + eval-feedback WS intercept', () => {
     }
   });
 
+  it('Phase 2.7 — REST endpoints reject requests without Bearer token when authToken is set', async () => {
+    const evalProv = new KeyValueEvalProvider();
+    const auth = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      evalProvider: evalProv,
+      authToken: 'secret-123',
+    });
+    await auth.start();
+    try {
+      // /health is allowed without auth (liveness probes).
+      const health = await fetch(`http://127.0.0.1:${auth.port}/health`);
+      expect(health.status).toBe(200);
+
+      // Unauthenticated POST → 401.
+      const noAuth = await fetch(`http://127.0.0.1:${auth.port}/eval`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          composeCycleId: 'x',
+          signal: 'positive',
+          source: 'user-explicit',
+        }),
+      });
+      expect(noAuth.status).toBe(401);
+      expect(noAuth.headers.get('www-authenticate')).toMatch(/Bearer/);
+
+      // Wrong token → 401.
+      const wrongAuth = await fetch(`http://127.0.0.1:${auth.port}/eval`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer wrong-token',
+        },
+        body: JSON.stringify({
+          composeCycleId: 'x',
+          signal: 'positive',
+          source: 'user-explicit',
+        }),
+      });
+      expect(wrongAuth.status).toBe(401);
+
+      // Right token → 200.
+      const ok = await fetch(`http://127.0.0.1:${auth.port}/eval`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: 'Bearer secret-123',
+        },
+        body: JSON.stringify({
+          composeCycleId: 'x',
+          signal: 'positive',
+          source: 'user-explicit',
+        }),
+      });
+      expect(ok.status).toBe(200);
+    } finally {
+      await auth.stop();
+    }
+  });
+
+  it('Phase 2.7 — WS upgrade rejects without bearer; ?token= query param works', async () => {
+    const auth = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      authToken: 'tok-ws',
+    });
+    await auth.start();
+    try {
+      // Without a token, the upgrade is closed with 401.
+      const failed = new WebSocket(`ws://127.0.0.1:${auth.port}/ws`);
+      const failedResult = await new Promise<string>((resolve) => {
+        failed.once('error', () => resolve('error'));
+        failed.once('open', () => resolve('open'));
+        setTimeout(() => resolve('timeout'), 1000);
+      });
+      expect(failedResult).toBe('error');
+
+      // With ?token= query — upgrade succeeds.
+      const ok = new WebSocket(`ws://127.0.0.1:${auth.port}/ws?token=tok-ws`);
+      const okResult = await new Promise<string>((resolve) => {
+        ok.once('error', () => resolve('error'));
+        ok.once('open', () => resolve('open'));
+        setTimeout(() => resolve('timeout'), 1500);
+      });
+      expect(okResult).toBe('open');
+      ok.close();
+    } finally {
+      await auth.stop();
+    }
+  });
+
+  it('Phase 2.7 — REST rate limiter returns 429 + Retry-After when bucket exhausts', async () => {
+    const limited = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      rateLimitRestPerMinute: 3,
+    });
+    await limited.start();
+    try {
+      // Burn the bucket — 3 successful calls, then 4th 429s.
+      const statuses: number[] = [];
+      for (let i = 0; i < 5; i++) {
+        const res = await fetch(`http://127.0.0.1:${limited.port}/eval`);
+        statuses.push(res.status);
+      }
+      // First 3 are 200, remaining are 429.
+      expect(statuses.slice(0, 3).every((s) => s === 200)).toBe(true);
+      expect(statuses.slice(3).every((s) => s === 429)).toBe(true);
+
+      // Verify the 429 carries a Retry-After header.
+      const res = await fetch(`http://127.0.0.1:${limited.port}/eval`);
+      expect(res.status).toBe(429);
+      expect(res.headers.get('retry-after')).toBe('60');
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe('rate-limited');
+    } finally {
+      await limited.stop();
+    }
+  });
+
+  it('Phase 2.7 — /health is exempt from rate limiting', async () => {
+    const limited = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      rateLimitRestPerMinute: 1,
+    });
+    await limited.start();
+    try {
+      // Burn the limit on a non-health endpoint, then verify /health still works.
+      await fetch(`http://127.0.0.1:${limited.port}/eval`); // consumes 1
+      await fetch(`http://127.0.0.1:${limited.port}/eval`); // 429
+      const health1 = await fetch(`http://127.0.0.1:${limited.port}/health`);
+      const health2 = await fetch(`http://127.0.0.1:${limited.port}/health`);
+      const health3 = await fetch(`http://127.0.0.1:${limited.port}/health`);
+      expect([health1.status, health2.status, health3.status]).toEqual([200, 200, 200]);
+    } finally {
+      await limited.stop();
+    }
+  });
+
   it('does NOT record an implicit signal when implicitReaskWindowMs=0', async () => {
     const evalProv = new KeyValueEvalProvider();
     const noImpl = new RuntimeServer({
