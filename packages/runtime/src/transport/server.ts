@@ -21,6 +21,7 @@ import type {
   AtomicComponent,
   ComposedLayout,
   ComposeContext,
+  ComposedToolInvocation,
   ErrorEnvelope,
   InstructionEnvelope,
   UIComposer,
@@ -45,7 +46,7 @@ import {
   type ExecutionErrorCode,
   type ExecutionResult,
 } from '../executor/index.js';
-import { type Planner, StubPlanner } from '../planner/index.js';
+import { type Planner, StubPlanner, type ToolInvocation } from '../planner/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 
@@ -498,6 +499,9 @@ export class RuntimeServer {
               intent: planResult.intent,
               ...(planResult.narration ? { narrative: planResult.narration } : {}),
             },
+            ...(planResult.invocations.length > 0
+              ? { toolResults: planResult.invocations.map(toComposedInvocation) }
+              : {}),
           };
           const layout = await this.options.composer.compose(planResult.intent, composeCtx);
           this.broadcastLayout(layout);
@@ -509,6 +513,39 @@ export class RuntimeServer {
         });
     });
   }
+}
+
+/**
+ * Convert a planner ToolInvocation (which carries an ExecutionResult with a
+ * non-serializable Error.cause) to the wire-safe ComposedToolInvocation the
+ * composer (and any future serializer) consumes.
+ */
+function toComposedInvocation(inv: ToolInvocation): ComposedToolInvocation {
+  if (inv.result.ok) {
+    return {
+      name: inv.name,
+      kind: inv.kind,
+      input: inv.input,
+      ok: true,
+      output: inv.result.output,
+      durationMs: inv.result.durationMs,
+    };
+  }
+  const error: ComposedToolInvocation['error'] = {
+    code: inv.result.error.code,
+    message: inv.result.error.message,
+  };
+  if (inv.result.error.status !== undefined) {
+    error.status = inv.result.error.status;
+  }
+  return {
+    name: inv.name,
+    kind: inv.kind,
+    input: inv.input,
+    ok: false,
+    error,
+    durationMs: inv.result.durationMs,
+  };
 }
 
 /** Map executor error codes to HTTP statuses for the REST executor endpoints. */

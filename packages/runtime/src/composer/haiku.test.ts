@@ -100,4 +100,97 @@ describe('HaikuComposer', () => {
       expect(sys[sys.length - 1]!.cache).toBe(true);
     }
   });
+
+  /**
+   * Phase 2.1c: planner toolResults flow through the user prompt + cache is bypassed.
+   */
+  it('formats successful toolResults into the user prompt as data-to-render', async () => {
+    const provider = new MockProvider([validLayout]);
+    const composer = new HaikuComposer({ provider });
+    const ctxWithTools: ComposeContext = {
+      ...ctx,
+      toolResults: [
+        {
+          name: 'get-product',
+          kind: 'tool',
+          input: { id: 'tv-55' },
+          ok: true,
+          output: { name: 'Sony Bravia 55', price: 749 },
+          durationMs: 423,
+        },
+      ],
+    };
+    await composer.compose('show me tv-55', ctxWithTools);
+    const userMsg = provider.requests[0]!.messages[0]!.content;
+    expect(typeof userMsg).toBe('string');
+    if (typeof userMsg === 'string') {
+      expect(userMsg).toContain('Data fetched by the planner');
+      expect(userMsg).toContain('tool__get-product');
+      expect(userMsg).toContain('Sony Bravia 55');
+      expect(userMsg).toContain('749');
+    }
+  });
+
+  it('formats failed toolResults into a separate "Tool errors" section with code + status', async () => {
+    const provider = new MockProvider([validLayout]);
+    const composer = new HaikuComposer({ provider });
+    const ctxWithErrors: ComposeContext = {
+      ...ctx,
+      toolResults: [
+        {
+          name: 'broken',
+          kind: 'tool',
+          input: { id: 'x' },
+          ok: false,
+          error: { code: 'http-status', message: 'returned HTTP 500', status: 500 },
+          durationMs: 12,
+        },
+      ],
+    };
+    await composer.compose('try anyway', ctxWithErrors);
+    const userMsg = provider.requests[0]!.messages[0]!.content;
+    if (typeof userMsg === 'string') {
+      expect(userMsg).toContain('Tool errors');
+      expect(userMsg).toContain('http-status');
+      expect(userMsg).toContain('HTTP 500');
+    }
+  });
+
+  it('skips cache read AND write when toolResults are present', async () => {
+    const provider = new MockProvider([validLayout, validLayout, validLayout]);
+    const cache = new CompositionCache();
+    const composer = new HaikuComposer({ provider, cache });
+    const ctxWithTools: ComposeContext = {
+      ...ctx,
+      toolResults: [
+        {
+          name: 'get-product',
+          kind: 'tool',
+          input: { id: 'tv-55' },
+          ok: true,
+          output: { price: 749 },
+          durationMs: 50,
+        },
+      ],
+    };
+    // First call with tools — should NOT cache the result.
+    await composer.compose('show tv-55', ctxWithTools);
+    // Second call with tools, same intent — should NOT use the cache (re-call provider).
+    await composer.compose('show tv-55', ctxWithTools);
+    expect(provider.requests).toHaveLength(2);
+    // Now a call with NO tools, same intent — should also miss cache (because
+    // the prior tool-driven call didn't populate it).
+    await composer.compose('show tv-55', ctx);
+    expect(provider.requests).toHaveLength(3);
+  });
+
+  it('still caches when toolResults is empty/undefined (back-compat)', async () => {
+    const provider = new MockProvider([validLayout]);
+    const cache = new CompositionCache();
+    const composer = new HaikuComposer({ provider, cache });
+    const ctxNoTools = { ...ctx, toolResults: [] }; // explicitly empty
+    await composer.compose('show me a TV', ctxNoTools);
+    await composer.compose('show me a TV', ctxNoTools); // cache hit
+    expect(provider.requests).toHaveLength(1);
+  });
 });

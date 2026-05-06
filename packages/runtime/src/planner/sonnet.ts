@@ -199,6 +199,10 @@ export class SonnetPlanner implements Planner {
       input,
       result,
     };
+    // eslint-disable-next-line no-console
+    console.log(
+      `[sonnet-planner] ${parsed.kind}__${parsed.name}(${safeJSONStringify(input).slice(0, 120)}) → ${result.ok ? 'ok' : `error:${result.error.code}`} (${result.durationMs}ms)`,
+    );
     const content = result.ok
       ? safeJSONStringify(result.output)
       : safeJSONStringify({ error: result.error.message, code: result.error.code });

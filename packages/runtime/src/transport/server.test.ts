@@ -13,6 +13,7 @@ import { ProviderError } from '../model/types.js';
 import { StubComposer } from '../composer/stub.js';
 import { InMemorySkillRegistry, InMemoryToolRegistry } from '../registry/index.js';
 import { SkillExecutor, ToolExecutor } from '../executor/index.js';
+import type { Planner } from '../planner/index.js';
 import { RuntimeServer } from './server.js';
 
 /**
@@ -88,6 +89,90 @@ describe('RuntimeServer integration', () => {
 
     ws.close();
     sse.close();
+  });
+
+  /**
+   * Phase 2.1c integration: a Planner that returns invocations should result
+   * in those being passed through to the Composer as ComposeContext.toolResults.
+   * Uses a custom recording composer + a fake planner so we can assert the
+   * full WS → Planner → Composer hand-off without needing a real LLM.
+   */
+  it('forwards planner invocations to ComposeContext.toolResults', async () => {
+    const captures: Array<{ intent: string; toolResultsCount: number; toolResultName?: string }> = [];
+    const recordingComposer: UIComposer = {
+      compose: async (intent, ctx) => {
+        captures.push({
+          intent,
+          toolResultsCount: ctx.toolResults?.length ?? 0,
+          ...(ctx.toolResults?.[0]?.name ? { toolResultName: ctx.toolResults[0]!.name } : {}),
+        });
+        return {
+          composeCycleId: `rec-${captures.length}`,
+          composedAt: new Date().toISOString(),
+          root: { id: 'r', component: 'Card', props: {} },
+          metadata: { intent, sources: ['recording-composer'], modelUsed: { composer: 'rec' }, fromCache: false },
+        };
+      },
+    };
+    const fakePlanner: Planner = {
+      name: 'fake',
+      plan: async (req) => ({
+        intent: 'find tv-55',
+        invocations: [
+          {
+            name: 'get-product',
+            kind: 'tool',
+            input: { id: 'tv-55' },
+            result: {
+              ok: true,
+              output: { name: 'Sony Bravia 55', price: 749 },
+              durationMs: 100,
+            },
+          },
+        ],
+        narration: `Found tv-55 for $749 (cycle: ${req.envelope.composeCycleId}).`,
+      }),
+    };
+
+    const fakeServer = new RuntimeServer({
+      port: 0,
+      composer: recordingComposer,
+      planner: fakePlanner,
+    });
+    await fakeServer.start();
+    try {
+      const sse = new EventSource(`http://127.0.0.1:${fakeServer.port}/sse`);
+      const layouts: ComposedLayout[] = [];
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      const ws = new WebSocket(`ws://127.0.0.1:${fakeServer.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+      ws.send(
+        JSON.stringify({
+          composeCycleId: layouts[0]!.composeCycleId,
+          sourceNodeId: 'user-input',
+          emittedAt: new Date().toISOString(),
+          type: 'user-message',
+          sequence: 0,
+          payload: { text: 'find me tv-55' },
+        }),
+      );
+
+      await waitFor(() => captures.length >= 2, 1500);
+      // captures[0] is the welcome compose (no envelope, no tool results).
+      // captures[1] is the planner-driven compose — must carry toolResults.
+      expect(captures[1]!.intent).toBe('find tv-55');
+      expect(captures[1]!.toolResultsCount).toBe(1);
+      expect(captures[1]!.toolResultName).toBe('get-product');
+
+      ws.close();
+      sse.close();
+    } finally {
+      await fakeServer.stop();
+    }
   });
 
   /**

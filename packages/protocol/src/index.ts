@@ -53,6 +53,7 @@ export type {
 export type {
   UIComposer,
   ComposeContext,
+  ComposedToolInvocation,
   ConversationContext,
   ConversationTurn,
   MemoryRecall,

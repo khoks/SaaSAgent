@@ -28,6 +28,35 @@ export interface ComposeContext {
   mobileContext?: MobileContext;
   /** Previous composed layout in this turn, if this is a re-render after instruction emit. */
   previousLayout?: ComposedLayout;
+  /**
+   * Skill / Tool invocations the planner performed before this compose call
+   * (Phase 2.1c). The composer should render against the actual fetched data
+   * when present — e.g. format `output` into a Card / List rather than asking
+   * the user to wait. Empty / undefined for passthrough plans (no tool use).
+   */
+  toolResults?: ReadonlyArray<ComposedToolInvocation>;
+}
+
+/**
+ * Wire-safe summary of a planner-side Skill/Tool invocation. The planner's
+ * internal ToolInvocation carries an Error-instance `cause`; this trimmed shape
+ * is what the composer (and any future serializer) sees.
+ */
+export interface ComposedToolInvocation {
+  /** Capability name (without skill__/tool__ prefix). */
+  name: string;
+  /** Which executor handled the call. */
+  kind: 'skill' | 'tool';
+  /** Input args passed to the executor. */
+  input: unknown;
+  /** True if the executor returned ok. */
+  ok: boolean;
+  /** Output value when ok=true. */
+  output?: unknown;
+  /** Error summary when ok=false. */
+  error?: { code: string; message: string; status?: number };
+  /** Wall-clock duration of the executor call in milliseconds. */
+  durationMs: number;
 }
 
 export interface ConversationContext {

@@ -58,14 +58,21 @@ export class HaikuComposer implements UIComposer {
     // component vocabulary or the theme naturally invalidates cached layouts.
     const cacheKey = `${context.components.version}::${context.theme.version}::${canonicalIntent(intent)}`;
 
-    const cached = this.cache.get(cacheKey);
-    if (cached !== undefined) {
-      return {
-        ...cached,
-        composeCycleId: makeCycleId('cache'),
-        composedAt: new Date().toISOString(),
-        metadata: { ...(cached.metadata ?? {}), fromCache: true },
-      };
+    // Phase 2.1c: skip cache when the planner invoked tools. Same intent text
+    // can produce different UIs depending on what the tools returned (different
+    // products, different prices), and re-rendering against fresh data is the
+    // safer default than serving a stale layout that points to last-week prices.
+    const hasToolResults = (context.toolResults?.length ?? 0) > 0;
+    if (!hasToolResults) {
+      const cached = this.cache.get(cacheKey);
+      if (cached !== undefined) {
+        return {
+          ...cached,
+          composeCycleId: makeCycleId('cache'),
+          composedAt: new Date().toISOString(),
+          metadata: { ...(cached.metadata ?? {}), fromCache: true },
+        };
+      }
     }
 
     // System prompt is rebuilt per-compose since the registry can change at
@@ -84,7 +91,9 @@ export class HaikuComposer implements UIComposer {
     const primaryParse = parseLayoutNode(primary.text);
     if (primaryParse.ok) {
       const layout = wrapLayout(primaryParse.node, intent, this.composerModel, false);
-      this.cache.set(cacheKey, layout);
+      // Same rationale as the read path: don't write tool-driven layouts to
+      // the cache — they're inherently bound to data that may change.
+      if (!hasToolResults) this.cache.set(cacheKey, layout);
       return layout;
     }
 
@@ -109,7 +118,7 @@ export class HaikuComposer implements UIComposer {
     const fallbackParse = parseLayoutNode(fallback.text);
     if (fallbackParse.ok) {
       const layout = wrapLayout(fallbackParse.node, intent, this.fallbackModel, false);
-      this.cache.set(cacheKey, layout);
+      if (!hasToolResults) this.cache.set(cacheKey, layout);
       return layout;
     }
 
@@ -131,6 +140,28 @@ function buildUserPrompt(intent: string, context: ComposeContext): string {
       lines.push(`  ${turn.speaker}: ${turn.text}`);
     }
   }
+  // Phase 2.1c: when the planner ran tools, render the actual fetched data
+  // instead of placeholder text. The composer should fold these values into
+  // the layout (Card titles, List items, Heading content, etc).
+  if (context.toolResults?.length) {
+    const ok = context.toolResults.filter((t) => t.ok);
+    const errs = context.toolResults.filter((t) => !t.ok);
+    if (ok.length > 0) {
+      lines.push('', 'Data fetched by the planner — use these values when composing the UI:');
+      for (const t of ok) {
+        lines.push(`  - ${t.kind}__${t.name}(${safeJSON(t.input)}) → ${safeJSON(t.output)}`);
+      }
+    }
+    if (errs.length > 0) {
+      lines.push('', 'Tool errors — surface only if relevant to the user:');
+      for (const t of errs) {
+        const msg = t.error
+          ? `${t.error.code}${t.error.status ? ` (HTTP ${t.error.status})` : ''}: ${t.error.message}`
+          : 'unknown error';
+        lines.push(`  - ${t.kind}__${t.name}: ${msg}`);
+      }
+    }
+  }
   if (context.featureHints?.length) {
     lines.push('', 'Feature hints:', ...context.featureHints.map((h) => `  - ${h}`));
   }
@@ -142,6 +173,15 @@ function buildUserPrompt(intent: string, context: ComposeContext): string {
   }
   lines.push('', 'Emit a single JSON layout-tree object now.');
   return lines.join('\n');
+}
+
+function safeJSON(v: unknown): string {
+  try {
+    const s = JSON.stringify(v);
+    return s.length > 500 ? s.slice(0, 499) + '…' : s;
+  } catch {
+    return String(v);
+  }
 }
 
 function wrapLayout(
