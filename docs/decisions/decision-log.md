@@ -722,3 +722,81 @@
   - `ErrorEnvelope` on planner failure is consistent with the Phase 1.3.1 composer-error pattern — shell renders an inline error banner, clears on next success.
   - `toolResults` in `ComposeContext` closes the data-flow gap: without this, the planner runs but the composer doesn't see what it retrieved.
 - **Source:** Conversation 2026-05-06 (proposed Phase 2.1 architecture; Rahul: "yes start phase 2").
+
+## ADR-043 — Symmetric /federate endpoint: every runtime is a first-class federation node (can act as both orchestrator and sub-agent)
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.4.x — ADR-021 defines sub-agents as federated independent runtimes. The question for implementation: does federation flow only from platform → sub-agent, or can any runtime accept delegation from another runtime (making the topology reconfigurable)?
+- **Options considered:**
+  - A. **One-directional**: only the central SaaSAgent platform initiates federation calls to registered sub-agents.
+  - B. **Symmetric**: every runtime exposes a `/federate` HTTP endpoint; any runtime can be both an orchestrator (calling another's `/federate`) and a target sub-agent (receiving calls on its own `/federate`). Topology is determined purely by what's registered in each runtime's Sub-Agent registry.
+- **Decision:** B. Symmetric. The `/federate` endpoint is implemented in `RuntimeServer` as a standard endpoint available on every runtime instance, alongside the regular SSE + WS channels and executor endpoints.
+- **Consequences:**
+  - A runtime can act as a full orchestrator in one context and as a specialized sub-agent in another — e.g., a travel-booking runtime delegates to a flight-search runtime, which itself delegates to a seat-map runtime.
+  - The federation graph is fully dynamic: any runtime registered in another runtime's Sub-Agent registry is addressable as a sub-agent, without any central topology definition.
+  - Verified live: two-runtime chain (parent runtime on :8080 + child runtime on :8081), parent's planner calls `subagent__weather-specialist`, child's planner calls `tool__fetch-weather`, both return results up the chain.
+  - Operational consequence: circular delegation is possible (A → B → A). Detected via request-depth headers or TTL; circuit-breaker semantics documented in the federation protocol.
+- **Source:** Conversation 2026-05-06 (Phase 2.4.x: "two-runtime federation works end-to-end … both runtimes up and running … parent → child → child's tool").
+
+## ADR-044 — eval-feedback WS envelopes bypass the planner and route directly to EvalProvider
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.5 — the FeedbackBar widget emits `eval-feedback` WS envelopes (explicit thumbs-up/thumbs-down). These contain a `sessionId`, `composeCycleId`, `kind` (positive/negative), and `source` (user-explicit). They should NOT trigger a re-plan (the user is rating the prior turn, not issuing a new intent). Two routing models considered:
+  - A. **Filter pre-planner**: check envelope type before sending to planner; route eval-feedback directly to EvalProvider.
+  - B. **Teach the planner to handle eval-feedback**: add `eval-feedback` as a special intent the planner understands and short-circuits.
+- **Decision:** A. In `handleWsConnection`, `eval-feedback` envelopes are intercepted before the planner is invoked, forwarded to `evalProvider.record()`, and acknowledged with an `ack` envelope. The planner never sees them.
+- **Consequences:**
+  - Eval-feedback recording has zero LLM cost — no planner invocation, no Anthropic API call.
+  - Clean separation: the eval pipeline (EvalProvider + ChurnCalculator) is a side-channel off the main WS message loop, not a planner concern.
+  - REST `/eval` endpoints provide the same record + query path for server-side signals (programmatic, non-WS).
+  - The `EvalProvider` interface is implemented by `KeyValueEvalProvider` at MVP (in-memory, queryable by sessionId and kind); ClickHouse-backed implementation deferred to v1 when telemetry volume warrants it.
+- **Source:** Conversation 2026-05-06 (Phase 2.5: "intercept eval-feedback envelopes in handleWsConnection (skip planner)").
+
+## ADR-045 — Implicit re-ask within 8 s of layout broadcast = deduced negative eval signal on the prior layout
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.5.x — the unified active+deduced feedback substrate (novel idea; ADR-008) requires deduced signals from user behavior. The simplest and most reliable behavioral signal: a user who sends a follow-up message very soon after receiving a composed layout was probably unsatisfied with that layout (they had to rephrase or escalate). How to formalize the timing threshold?
+- **Options considered:**
+  - A. No implicit signal — only explicit thumbs-up/thumbs-down.
+  - B. Implicit on re-ask at any interval (too broad — most follow-up questions are natural conversation flow, not dissatisfaction).
+  - C. **Implicit on re-ask within a short window** — 8 seconds after last layout broadcast is treated as dissatisfaction with that layout; a `negative/user-implicit` EvalSignal is auto-recorded on the prior `composeCycleId`.
+- **Decision:** C. 8-second default threshold. Per-WS connection state tracks `lastBroadcastAt` + `lastComposeCycleId`; any `user-message` envelope arriving within 8 s triggers auto-recording of a `negative/user-implicit` signal before the new intent is planned.
+- **Consequences:**
+  - Zero additional UI required — the signal is inferred from timing, not from the user doing anything extra.
+  - Verified live: thumbs-up = `positive/user-explicit` (304ms after send); re-ask at 940 ms after broadcast = `negative/user-implicit` — both captured and visible in `/eval/sessions/<id>`.
+  - False-positive risk: a user who quickly wants to refine a good answer (not dissatisfied) may be misclassified. Mitigated by: (a) 8s is short enough that natural refinements typically take longer; (b) signals are weighted in the churn model, not treated as ground truth; (c) the threshold is host-configurable.
+  - Feeds `WeightedFeatureChurnCalculator` as a `reask_rate` feature.
+- **Source:** Conversation 2026-05-06 (Phase 2.5.x: "implicit signal — re-ask within N seconds infers a negative/user-implicit on the prior layout … 8s window").
+
+## ADR-046 — ChurnCalculator as pluggable interface; WeightedFeatureChurnCalculator (sigmoid linear model) as MVP stepping stone to LightGBM
+- **Date:** 2026-05-06
+- **Status:** accepted (partial supersede of ADR-031)
+- **Context:** ADR-031 commits to LightGBM as the bundled default churn model. During Phase 2.6–2.6.x build, a plug-in interface was defined and two bundled implementations shipped: `RuleBasedChurnCalculator` (Phase 2.6 — threshold rules, no model weights) and `WeightedFeatureChurnCalculator` (Phase 2.6.x — parameterized linear model + sigmoid). Why two before LightGBM?
+- **Options considered:**
+  - A. Skip stepping stones; implement LightGBM directly.
+  - B. **Rule-based first, then weighted linear, then LightGBM** — each adds expressiveness; each can be tested in isolation; the pluggable interface lets them be swapped without touching callers.
+- **Decision:** B. The `ChurnCalculator` interface (`calculate(signals) → { risk, factors }`), `RuleBasedChurnCalculator`, and `WeightedFeatureChurnCalculator` are the MVP bundled implementations. LightGBM remains the v1 target (ADR-031). `WeightedFeatureChurnCalculator` uses sigmoid(∑ wᵢ · featureᵢ) — structurally equivalent to logistic regression, with hand-tuned default weights (feature weights parameterized and overridable per enterprise). Drop-in replacement with a real trained model when training data exists.
+- **Consequences:**
+  - All three implementations expose the same `ChurnCalculator` interface — callers (the `/churn` endpoint, future planner feature-suppression) are decoupled from model architecture.
+  - `WeightedFeatureChurnCalculator` features extracted from `EvalSignal` stream: `explicit_negative_rate`, `explicit_positive_rate`, `reask_rate`, `session_length_turns`, `feature_refusal_count`. Each weight is configurable.
+  - SHAP explainability (ADR-031) deferred to LightGBM; `WeightedFeatureChurnCalculator` provides human-readable factor strings instead (e.g., "high re-ask rate").
+  - Verified live: 3 sessions classified low / medium / high with human-readable factors; correct directionality.
+- **Source:** Conversation 2026-05-06 (Phase 2.6: "RuleBasedChurnCalculator" / Phase 2.6.x: "WeightedFeatureChurnCalculator — parameterized linear model with sigmoid output. Same architecture as logistic regression; hand-tuned default weights now, drop-in real model when training data exists").
+
+## ADR-047 — Runtime hardening: bearer token auth (REST + WS query param) + token-bucket rate limiting (per-IP REST, per-connection WS)
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2.7 — before any real deployment, the runtime needs a basic auth gate and rate limit to prevent abuse. The runtime is self-hosted inside the enterprise intranet (ADR-006, ADR-029), so the threat model is: internal misconfiguration + accidental public exposure, NOT adversarial external attack.
+- **Options considered:**
+  - A. No auth (dev-only acceptable; never ship without auth).
+  - B. **Bearer token + token-bucket** — lightweight, industry-standard, no external dependency.
+  - C. OAuth2 / JWT with rotation (full enterprise SSO — right for the final product but too heavy to add mid-Phase-2).
+  - D. mTLS everywhere (right for sub-agent runtime channels per ADR-029; too heavy for REST/WS at this layer).
+- **Decision:** B for the MVP hardening layer. OAuth2 / mTLS at the host's perimeter and at the sub-agent federation layer respectively (per existing ADRs); bearer token is the internal "platform API key" pattern.
+- **Consequences:**
+  - **REST auth:** `Authorization: Bearer <token>` header required on all non-health endpoints when `SAAS_AGENT_AUTH_TOKEN` is set in `RuntimeConfig`. `/health` is always public (k8s probes).
+  - **WS auth:** token passed as `?token=<token>` query param on the initial WS upgrade (browser WS doesn't support custom headers).
+  - **Rate limiting:** token-bucket algorithm. Two independent buckets: (a) per-IP for REST requests (default: 100 req/s burst, 60 req/s sustained); (b) per-WS-connection for WS messages (default: 10 messages/s). Both configurable via `RuntimeConfig`.
+  - `docker-compose.yml` ships with all five polyglot stores (PG + Qdrant + ClickHouse + Neo4j + Redpanda) + runtime + child-runtime + demo-host configured. Env vars for bearer token and rate limits injected via `.env`.
+  - Host's enterprise SSO / OAuth2 handles the outermost auth layer; bearer token is the intra-platform API key between the enterprise's services and the SaaSAgent runtime.
+- **Source:** Conversation 2026-05-06 (Phase 2.7: "bearer auth + rate limiting + docker-compose … 384 tests pass").

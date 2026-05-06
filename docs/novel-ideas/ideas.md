@@ -169,6 +169,20 @@
 - **Patentability hint:** possible — method claim around: a registry of host-authored workflow docs in NL+structured-hint form, consumed directly by an LLM planner as context, with deviation policy gated by runtime preconditions and registry-validated typed-hints.
 - **Open questions:** Deviation gating heuristics? Versioning of docs across registry releases? Caching strategy for prompt-cache-hit on stable docs?
 
+### [2026-05-06] Symmetric runtime federation: dynamic delegation graphs without a fixed topology
+- **Originator:** Claude (implemented; Rahul reviewed and accepted Phase 2.4.x)
+- **Source:** Phase 2.4.x 2026-05-06: "Two-runtime federation works end-to-end. Parent log: subagent__weather-specialist → ok (8164ms). Child log: tool__fetch-weather → ok (340ms). Two independent runtimes, each with its own planner+composer, federated."
+- **Description:** By exposing a `/federate` HTTP endpoint on every runtime instance, any SaaSAgent runtime can simultaneously act as: (a) an orchestrator that delegates to other runtimes via its Sub-Agent registry, and (b) a target sub-agent that accepts delegation from other runtimes on its own `/federate` endpoint. The topology is not predefined — it emerges from what each runtime has registered in its Sub-Agent registry. A travel-booking runtime can delegate to a flight-search runtime, which itself delegates to a seat-map runtime, forming arbitrary multi-hop chains. Runtimes can be added to the graph at runtime by registering into an existing runtime's Sub-Agent registry, with no central topology config change required. Each hop executes its own full planner + composer + memory + tools stack.
+- **Prior-art assessment:**
+  - **LangGraph** supports multi-agent graphs but topologies are defined at construction time, not dynamically discoverable.
+  - **AutoGen / CrewAI** have fixed agent-role hierarchies; federation is in-process, not across network boundaries.
+  - **OpenAI Swarm** has a similar handoff concept but handoffs are one-directional within a session, not a durable registry-based federation.
+  - **MCP** adds tool discovery across process boundaries but does not frame the sub-system as a full orchestrator-capable runtime that can also serve as a sub-agent.
+  - The combination of: (a) symmetric federation endpoint on every node, (b) topology driven entirely by Sub-Agent registry contents, (c) full planner+composer+memory+tools at each hop, (d) reconfigurable at runtime — appears uncommon as a packaged design.
+- **Novelty signal:** medium-high — the symmetric framing (every node is a peer, not just client or server) is the distinctive choice. Most federation patterns are hub-and-spoke.
+- **Patentability hint:** possible — system claim covering: (1) a runtime that simultaneously maintains a Sub-Agent registry (as orchestrator) and exposes a federation endpoint (as sub-agent target), (2) multi-hop delegation chains with full planner execution at each hop, (3) dynamic topology via registry-driven capability discovery. Recommend bundling with the federated sub-agent architecture claim in the same patent family.
+- **Open questions:** Cycle detection (A → B → A)? Depth-limit propagation across hops? Distributed tracing with correlated request IDs across the chain? Auth at each hop (bearer token today; mTLS at v1)?
+
 ### [2026-05-06] Registered capabilities as planner tool definitions — zero-configuration capability discovery
 - **Originator:** Claude (joint with Rahul's architecture framing; accepted in ADR-042)
 - **Source:** Phase 2.1 design 2026-05-06: "Planner uses Anthropic native tool_use API rather than custom JSON schema. Each registered Skill + Tool becomes a tool definition; planner runs a multi-round tool-use loop until model stops." Rahul: "yes start phase 2."
