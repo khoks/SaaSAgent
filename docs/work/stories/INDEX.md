@@ -14,3 +14,5 @@
 | STORY-008 | [Skills and Tools registries (Phase 2.0b)](STORY-008-skills-tools-registries.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
 | STORY-009 | [Skill and Tool executors with REST endpoints (Phase 2.0c)](STORY-009-skill-tool-executors.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
 | STORY-010 | [Planner integration (Phase 2.1)](STORY-010-planner-integration.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-011 | [Features registry as planner super-skill context (Phase 2.2)](STORY-011-features-registry.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-012 | [KeyValueMemoryProvider + per-WS sessionId (Phase 2.3)](STORY-012-kv-memory-provider.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |

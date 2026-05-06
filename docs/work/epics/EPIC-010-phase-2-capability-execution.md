@@ -2,7 +2,7 @@
 
 - **Status:** done
 - **Created:** 2026-05-05
-- **Last updated:** 2026-05-05
+- **Last updated:** 2026-05-05 (addendum: 2.2 + 2.3 done)
 - **Completed:** 2026-05-05
 - **Parent initiative:** [INIT-003 — Build MVP runtime + embeddable shell](../initiatives/INIT-003-build-mvp.md)
 
@@ -23,3 +23,5 @@ Phase 2 is the MVP-of-MVP gate. Without a planner and capability execution, the 
 - [STORY-008 — Skills and Tools registries (Phase 2.0b)](../stories/STORY-008-skills-tools-registries.md) — done
 - [STORY-009 — Skill and Tool executors with REST endpoints (Phase 2.0c)](../stories/STORY-009-skill-tool-executors.md) — done
 - [STORY-010 — Planner integration (Phase 2.1)](../stories/STORY-010-planner-integration.md) — done
+- [STORY-011 — Features registry as planner super-skill context (Phase 2.2)](../stories/STORY-011-features-registry.md) — done
+- [STORY-012 — KeyValueMemoryProvider + per-WS sessionId (Phase 2.3)](../stories/STORY-012-kv-memory-provider.md) — done
