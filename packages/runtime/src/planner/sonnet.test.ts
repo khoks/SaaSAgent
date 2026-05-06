@@ -4,15 +4,17 @@ import type {
   FeatureDescriptor,
   InstructionEnvelope,
   SkillDescriptor,
+  SubAgentDescriptor,
   ToolDescriptor,
 } from '@saasagent/protocol';
 
-import { SkillExecutor, ToolExecutor } from '../executor/index.js';
+import { SkillExecutor, SubAgentExecutor, ToolExecutor } from '../executor/index.js';
 import { NullMemoryProvider } from '../memory/index.js';
 import { MockProvider, type GenerateResponse } from '../model/index.js';
 import {
   InMemoryFeatureRegistry,
   InMemorySkillRegistry,
+  InMemorySubAgentRegistry,
   InMemoryToolRegistry,
 } from '../registry/index.js';
 
@@ -47,7 +49,9 @@ function setup(opts: {
   skills?: ReadonlyArray<SkillDescriptor>;
   tools?: ReadonlyArray<ToolDescriptor>;
   features?: ReadonlyArray<FeatureDescriptor>;
+  subAgents?: ReadonlyArray<SubAgentDescriptor>;
   fetch?: typeof globalThis.fetch;
+  subAgentFetch?: typeof globalThis.fetch;
   maxRounds?: number;
 }): Setup {
   const provider = new MockProvider(opts.responses);
@@ -57,15 +61,23 @@ function setup(opts: {
   if (opts.tools?.length) toolRegistry.replace(opts.tools);
   const featureRegistry = new InMemoryFeatureRegistry();
   if (opts.features?.length) featureRegistry.replace(opts.features);
+  const subAgentRegistry = new InMemorySubAgentRegistry();
+  if (opts.subAgents?.length) subAgentRegistry.replace(opts.subAgents);
   const skillExecutor = new SkillExecutor({ registry: skillRegistry });
   const toolExecutor = new ToolExecutor({ registry: toolRegistry, fetch: opts.fetch });
+  const subAgentExecutor = new SubAgentExecutor({
+    registry: subAgentRegistry,
+    fetch: opts.subAgentFetch ?? opts.fetch,
+  });
   const memory = new NullMemoryProvider();
   const planner = new SonnetPlanner({
     provider,
     skillExecutor,
     toolExecutor,
+    subAgentExecutor,
     skillRegistry,
     toolRegistry,
+    subAgentRegistry,
     featureRegistry,
     memoryProvider: memory,
     ...(opts.maxRounds !== undefined ? { maxRounds: opts.maxRounds } : {}),
@@ -423,6 +435,100 @@ describe('SonnetPlanner', () => {
     if (typeof userMsg === 'string') {
       expect(userMsg).not.toContain('Domain features available');
     }
+  });
+
+  // Phase 2.4: sub-agent dispatch.
+  it('dispatches subagent__ tool calls to the SubAgentExecutor (intent passthrough)', async () => {
+    const travel: SubAgentDescriptor = {
+      name: 'travel',
+      version: '1.0.0',
+      description: 'Travel specialist',
+      whenToUse: 'when the user wants to book travel',
+      transport: 'http',
+      endpoint: 'https://travel.host.com/federate',
+    };
+    const subFetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ narration: `Booked via ${url} for intent "${body.intent}"`, output: { ticketId: 'X-1' } }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    }) as typeof globalThis.fetch;
+
+    const { planner, provider } = setup({
+      responses: [
+        {
+          stopReason: 'tool_use',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tu_1',
+              name: 'subagent__travel',
+              input: { intent: 'book SFO to NRT', payload: { from: 'SFO', to: 'NRT' } },
+            },
+          ],
+        },
+        { text: 'Booking confirmed.', stopReason: 'end_turn' },
+      ],
+      subAgents: [travel],
+      subAgentFetch: subFetch,
+    });
+
+    const r = await planner.plan({
+      envelope: envelope({ payload: { text: 'I need a flight to Tokyo' } }),
+      context: baseContext,
+    });
+    expect(r.invocations).toHaveLength(1);
+    expect(r.invocations[0]!.kind).toBe('subagent');
+    expect(r.invocations[0]!.name).toBe('travel');
+    expect(r.invocations[0]!.result.ok).toBe(true);
+    if (r.invocations[0]!.result.ok) {
+      expect((r.invocations[0]!.result.output as { narration: string }).narration).toContain(
+        'book SFO to NRT',
+      );
+    }
+    // Round 2's tool_result content should serialize the FederationResponse JSON.
+    const round2 = provider.requests[1]!;
+    const toolResult = (round2.messages[2]!.content as Array<{ content: string }>)[0]!;
+    expect(toolResult.content).toContain('"ticketId":"X-1"');
+  });
+
+  it('returns an is_error tool_result when the planner has no SubAgentExecutor and the model calls a subagent__', async () => {
+    const provider = new MockProvider([
+      {
+        stopReason: 'tool_use',
+        content: [
+          { type: 'tool_use', id: 'tu_1', name: 'subagent__travel', input: { intent: 'x' } },
+        ],
+      },
+      { text: 'OK', stopReason: 'end_turn' },
+    ]);
+    // Planner without subAgentExecutor: omit the constructor option.
+    const skillRegistry = new InMemorySkillRegistry();
+    const toolRegistry = new InMemoryToolRegistry();
+    const skillExecutor = new SkillExecutor({ registry: skillRegistry });
+    const toolExecutor = new ToolExecutor({ registry: toolRegistry });
+    const memory = new NullMemoryProvider();
+    const planner = new SonnetPlanner({
+      provider,
+      skillExecutor,
+      toolExecutor,
+      skillRegistry,
+      toolRegistry,
+      memoryProvider: memory,
+    });
+    const r = await planner.plan({
+      envelope: envelope({ payload: { text: 'go' } }),
+      context: baseContext,
+    });
+    expect(r.invocations).toEqual([]);
+    const round2 = provider.requests[1]!;
+    const toolResult = (round2.messages[2]!.content as Array<{ is_error?: boolean; content?: string }>)[0]!;
+    expect(toolResult.is_error).toBe(true);
+    expect(toolResult.content).toMatch(/Sub-agent dispatch unavailable/);
   });
 
   it('buildPlannerUserMessage formats features alphabetically with summary + content', () => {

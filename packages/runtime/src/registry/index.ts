@@ -22,3 +22,7 @@ export {
   type FeatureRegistryStore,
 } from './features.js';
 export { importFeatureMarkdown, type FeatureMarkdownImportError } from './feature-md-importer.js';
+export {
+  InMemorySubAgentRegistry,
+  type SubAgentRegistryStore,
+} from './subagents.js';

@@ -26,7 +26,7 @@ import type {
   MemoryRecall,
 } from '@saasagent/protocol';
 
-import type { SkillExecutor, ToolExecutor } from '../executor/index.js';
+import type { SkillExecutor, SubAgentExecutor, ToolExecutor } from '../executor/index.js';
 import type { MemoryProvider } from '../memory/index.js';
 import type {
   GenerateRequest,
@@ -36,6 +36,7 @@ import type {
 } from '../model/index.js';
 import type { FeatureRegistryStore } from '../registry/features.js';
 import type { SkillRegistryStore } from '../registry/skills.js';
+import type { SubAgentRegistryStore } from '../registry/subagents.js';
 import type { ToolRegistryStore } from '../registry/tools.js';
 
 import { descriptorsToTools, parseToolName } from './tool-mapper.js';
@@ -71,8 +72,12 @@ export interface SonnetPlannerOptions {
   provider: ModelProvider;
   skillExecutor: SkillExecutor;
   toolExecutor: ToolExecutor;
+  /** Phase 2.4: federated sub-agent executor (HTTP federation). Optional — runtimes without sub-agents pass nothing. */
+  subAgentExecutor?: SubAgentExecutor;
   skillRegistry: SkillRegistryStore;
   toolRegistry: ToolRegistryStore;
+  /** Phase 2.4: sub-agents registry. Required when subAgentExecutor is set. */
+  subAgentRegistry?: SubAgentRegistryStore;
   /** Phase 2.2: Features registry — domain `.feature.md` docs the planner reads as super-skill context. */
   featureRegistry?: FeatureRegistryStore;
   memoryProvider: MemoryProvider;
@@ -103,8 +108,9 @@ export class SonnetPlanner implements Planner {
     // Snapshot the registries so the model sees a stable set within this plan.
     const skillsSnapshot = this.options.skillRegistry.get();
     const toolsSnapshot = this.options.toolRegistry.get();
+    const subAgentsSnapshot = this.options.subAgentRegistry?.get();
     const featuresSnapshot = this.options.featureRegistry?.get();
-    const toolDefs = descriptorsToTools(skillsSnapshot, toolsSnapshot);
+    const toolDefs = descriptorsToTools(skillsSnapshot, toolsSnapshot, subAgentsSnapshot);
 
     const messages: ModelMessage[] = [
       {
@@ -195,15 +201,42 @@ export class SonnetPlanner implements Planner {
         toolResult: {
           type: 'tool_result',
           tool_use_id: toolUseId,
-          content: `Unknown tool "${qualifiedName}" — must be prefixed skill__ or tool__.`,
+          content: `Unknown tool "${qualifiedName}" — must be prefixed skill__, tool__, or subagent__.`,
           is_error: true,
         },
       };
     }
-    const result =
-      parsed.kind === 'skill'
-        ? await this.options.skillExecutor.execute(parsed.name, input)
-        : await this.options.toolExecutor.execute(parsed.name, input);
+    let result;
+    if (parsed.kind === 'skill') {
+      result = await this.options.skillExecutor.execute(parsed.name, input);
+    } else if (parsed.kind === 'tool') {
+      result = await this.options.toolExecutor.execute(parsed.name, input);
+    } else {
+      // sub-agent — must be configured
+      if (!this.options.subAgentExecutor) {
+        return {
+          toolResult: {
+            type: 'tool_result',
+            tool_use_id: toolUseId,
+            content: `Sub-agent dispatch unavailable: planner has no SubAgentExecutor configured.`,
+            is_error: true,
+          },
+        };
+      }
+      // Sub-agent input contract: { intent, payload? }. Coerce gently — if the
+      // model didn't include an `intent` field, fall back to a JSON-encoded
+      // version of the entire input so the sub-agent gets *something* useful.
+      const obj = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
+      const intent =
+        typeof obj['intent'] === 'string' && obj['intent'].length > 0
+          ? (obj['intent'] as string)
+          : safeJSONStringify(input);
+      const payload = obj['payload'] as Record<string, unknown> | undefined;
+      result = await this.options.subAgentExecutor.execute(parsed.name, {
+        intent,
+        ...(payload ? { payload } : {}),
+      });
+    }
     const invocation: ToolInvocation = {
       name: parsed.name,
       kind: parsed.kind,

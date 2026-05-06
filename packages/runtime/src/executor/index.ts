@@ -11,6 +11,11 @@
 
 export { SkillExecutor, type SkillExecutorOptions, type SkillHandler } from './skill.js';
 export { ToolExecutor, type ToolExecutorOptions, substituteUrl } from './tool.js';
+export {
+  SubAgentExecutor,
+  type SubAgentExecutorOptions,
+  type SubAgentInvokeRequest,
+} from './subagent.js';
 export type {
   ExecutionContext,
   ExecutionResult,

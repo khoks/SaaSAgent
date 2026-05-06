@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import type { SkillDescriptor, ToolDescriptor } from '@saasagent/protocol';
+import type { SkillDescriptor, SubAgentDescriptor, ToolDescriptor } from '@saasagent/protocol';
 import {
   descriptorsToTools,
   parseToolName,
   qualifyToolName,
   SKILL_PREFIX,
+  SUBAGENT_PREFIX,
   TOOL_PREFIX,
 } from './tool-mapper.js';
 
@@ -118,5 +119,39 @@ describe('descriptorsToTools', () => {
     );
     expect(out[0]!.name.startsWith(SKILL_PREFIX)).toBe(true);
     expect(out[1]!.name.startsWith(TOOL_PREFIX)).toBe(true);
+  });
+
+  // Phase 2.4: sub-agents as the third tier.
+  it('emits sub-agents after tools with subagent__ prefix and intent/payload schema', () => {
+    const travel: SubAgentDescriptor = {
+      name: 'travel',
+      version: '1.0.0',
+      description: 'Travel specialist',
+      whenToUse: 'when the user wants to book travel',
+      transport: 'http',
+      endpoint: 'https://travel.host.com/federate',
+    };
+    const out = descriptorsToTools(
+      { version: '1.0.0', skills: { 'price-compare': priceCompare } },
+      { version: '1.0.0', tools: { 'get-product': getProduct } },
+      { version: '1.0.0', subAgents: { travel } },
+    );
+    expect(out.map((t) => t.name)).toEqual([
+      'skill__price-compare',
+      'tool__get-product',
+      'subagent__travel',
+    ]);
+    const subAgentTool = out[2]!;
+    expect(subAgentTool.input_schema).toMatchObject({
+      type: 'object',
+      properties: { intent: { type: 'string' } },
+      required: ['intent'],
+    });
+  });
+
+  it('parseToolName recognizes subagent__', () => {
+    const q = qualifyToolName('subagent', 'travel');
+    expect(q).toBe(`${SUBAGENT_PREFIX}travel`);
+    expect(parseToolName(q)).toEqual({ kind: 'subagent', name: 'travel' });
   });
 });

@@ -34,11 +34,13 @@ import {
   type SkillRegistryStore,
   type ToolRegistryStore,
   type FeatureRegistryStore,
+  type SubAgentRegistryStore,
   InMemoryComponentRegistry,
   InMemoryThemeRegistry,
   InMemorySkillRegistry,
   InMemoryToolRegistry,
   InMemoryFeatureRegistry,
+  InMemorySubAgentRegistry,
   importStyleDictionary,
   importCssVariables,
   importFeatureMarkdown,
@@ -46,6 +48,7 @@ import {
 import {
   SkillExecutor,
   ToolExecutor,
+  SubAgentExecutor,
   type ExecutionErrorCode,
   type ExecutionResult,
 } from '../executor/index.js';
@@ -69,6 +72,8 @@ export interface RuntimeServerOptions {
   toolRegistry?: ToolRegistryStore;
   /** Features registry store (Phase 2.2). Defaults to a fresh InMemoryFeatureRegistry. */
   featureRegistry?: FeatureRegistryStore;
+  /** Sub-Agents registry store (Phase 2.4). Defaults to a fresh InMemorySubAgentRegistry. */
+  subAgentRegistry?: SubAgentRegistryStore;
   /**
    * SkillExecutor (Phase 2.0c). If omitted, the server constructs a default
    * SkillExecutor bound to its skillRegistry. Pass an explicit instance to
@@ -77,6 +82,8 @@ export interface RuntimeServerOptions {
   skillExecutor?: SkillExecutor;
   /** ToolExecutor (Phase 2.0c). If omitted, the server constructs a default bound to its toolRegistry. */
   toolExecutor?: ToolExecutor;
+  /** SubAgentExecutor (Phase 2.4). If omitted, the server constructs a default bound to its subAgentRegistry. */
+  subAgentExecutor?: SubAgentExecutor;
   /**
    * Planner (Phase 2.1). Sits between the WS boundary and the composer; extracts
    * intent from envelopes and may invoke skills/tools before composing. Defaults
@@ -118,8 +125,10 @@ export class RuntimeServer {
   private readonly skillRegistry: SkillRegistryStore;
   private readonly toolRegistry: ToolRegistryStore;
   private readonly featureRegistry: FeatureRegistryStore;
+  private readonly subAgentRegistry: SubAgentRegistryStore;
   private readonly skillExecutor: SkillExecutor;
   private readonly toolExecutor: ToolExecutor;
+  private readonly subAgentExecutor: SubAgentExecutor;
   private readonly planner: Planner;
   private readonly memoryProvider: MemoryProvider;
   private actualPort: number = 0;
@@ -130,8 +139,11 @@ export class RuntimeServer {
     this.skillRegistry = options.skillRegistry ?? new InMemorySkillRegistry();
     this.toolRegistry = options.toolRegistry ?? new InMemoryToolRegistry();
     this.featureRegistry = options.featureRegistry ?? new InMemoryFeatureRegistry();
+    this.subAgentRegistry = options.subAgentRegistry ?? new InMemorySubAgentRegistry();
     this.skillExecutor = options.skillExecutor ?? new SkillExecutor({ registry: this.skillRegistry });
     this.toolExecutor = options.toolExecutor ?? new ToolExecutor({ registry: this.toolRegistry });
+    this.subAgentExecutor =
+      options.subAgentExecutor ?? new SubAgentExecutor({ registry: this.subAgentRegistry });
     this.planner = options.planner ?? new StubPlanner();
     this.memoryProvider = options.memoryProvider ?? new KeyValueMemoryProvider();
     this.httpServer = createServer((req, res) => {
@@ -234,6 +246,8 @@ export class RuntimeServer {
           toolCount: Object.keys(this.toolRegistry.get().tools).length,
           featureRegistryVersion: this.featureRegistry.get().version,
           featureCount: Object.keys(this.featureRegistry.get().features).length,
+          subAgentRegistryVersion: this.subAgentRegistry.get().version,
+          subAgentCount: Object.keys(this.subAgentRegistry.get().subAgents).length,
           memoryProvider: this.memoryProvider.name,
         }),
       );
@@ -347,22 +361,32 @@ export class RuntimeServer {
       }
     }
 
-    // Skills + Tools registries (Phase 2.0b). Same shape as components: GET / PUT / POST / DELETE.
-    if (url === '/registry/skills' || url === '/registry/tools') {
-      const isSkills = url === '/registry/skills';
+    // Skills + Tools + Sub-Agents registries (Phase 2.0b + 2.4). Same shape as components: GET / PUT / POST / DELETE.
+    if (
+      url === '/registry/skills' ||
+      url === '/registry/tools' ||
+      url === '/registry/subagents'
+    ) {
+      const which: 'skills' | 'tools' | 'subagents' =
+        url === '/registry/skills' ? 'skills' : url === '/registry/tools' ? 'tools' : 'subagents';
+      const reg =
+        which === 'skills'
+          ? this.skillRegistry
+          : which === 'tools'
+            ? this.toolRegistry
+            : this.subAgentRegistry;
+      const collectionKey = which === 'subagents' ? 'subAgents' : which;
       if (req.method === 'GET') {
         res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(isSkills ? this.skillRegistry.get() : this.toolRegistry.get()));
+        res.end(JSON.stringify(reg.get()));
         return;
       }
       if (req.method === 'PUT') {
         const body = await readJsonBody(req);
         const items = Array.isArray(body)
           ? body
-          : ((body as Record<string, unknown> | null)?.[isSkills ? 'skills' : 'tools'] ?? []);
-        const updated = isSkills
-          ? this.skillRegistry.replace(items as never)
-          : this.toolRegistry.replace(items as never);
+          : ((body as Record<string, unknown> | null)?.[collectionKey] ?? []);
+        const updated = (reg as { replace: (items: unknown) => unknown }).replace(items);
         res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
         res.end(JSON.stringify(updated));
         return;
@@ -371,40 +395,38 @@ export class RuntimeServer {
         const body = (await readJsonBody(req)) as { name?: string };
         if (!body?.name) {
           res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `POST body must have a name field (${isSkills ? 'skill' : 'tool'})` }));
+          res.end(
+            JSON.stringify({
+              error: `POST body must have a name field (${which === 'subagents' ? 'sub-agent' : which.slice(0, -1)})`,
+            }),
+          );
           return;
         }
-        const updated = isSkills
-          ? this.skillRegistry.upsert(body as never)
-          : this.toolRegistry.upsert(body as never);
+        const updated = (reg as { upsert: (item: unknown) => unknown }).upsert(body);
         res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
         res.end(JSON.stringify(updated));
         return;
       }
       if (req.method === 'DELETE') {
-        const updated = isSkills ? this.skillRegistry.clear() : this.toolRegistry.clear();
+        const updated = (reg as { clear: () => unknown }).clear();
         res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
         res.end(JSON.stringify(updated));
         return;
       }
     }
 
-    // Executor endpoints (Phase 2.0c) — POST /executor/skill/<name> | POST /executor/tool/<name>.
+    // Executor endpoints — POST /executor/skill/<name> | /executor/tool/<name> | /executor/subagent/<name>.
     // Body is the input args (JSON object). Response is the wire-form ExecutionResult.
-    // HTTP status maps to the error code so a basic curl/HTTP client can branch without parsing JSON
-    // (planner in Phase 2.1 will use the JSON body directly).
-    if (url.startsWith('/executor/skill/') || url.startsWith('/executor/tool/')) {
-      const isSkill = url.startsWith('/executor/skill/');
+    // HTTP status maps to the error code so a basic curl/HTTP client can branch without parsing JSON.
+    const execMatch = /^\/executor\/(skill|tool|subagent)\//.exec(url);
+    if (execMatch) {
+      const kind = execMatch[1] as 'skill' | 'tool' | 'subagent';
       const parsed = new URL(url, 'http://localhost');
-      const prefix = isSkill ? '/executor/skill/' : '/executor/tool/';
+      const prefix = `/executor/${kind}/`;
       const name = decodeURIComponent(parsed.pathname.slice(prefix.length));
       if (!name) {
         res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            error: `name required: POST /executor/${isSkill ? 'skill' : 'tool'}/<name>`,
-          }),
-        );
+        res.end(JSON.stringify({ error: `name required: POST /executor/${kind}/<name>` }));
         return;
       }
       if (req.method !== 'POST') {
@@ -414,11 +436,21 @@ export class RuntimeServer {
       }
       const body = await readJsonBody(req);
       const input = body ?? {};
-      const result: ExecutionResult = isSkill
-        ? await this.skillExecutor.execute(name, input)
-        : await this.toolExecutor.execute(name, input);
+      let result: ExecutionResult;
+      if (kind === 'skill') {
+        result = await this.skillExecutor.execute(name, input);
+      } else if (kind === 'tool') {
+        result = await this.toolExecutor.execute(name, input);
+      } else {
+        // sub-agent — input is a FederationRequest shape (typically { intent, payload? })
+        const subInput = input as { intent?: string; payload?: Record<string, unknown> };
+        const intent = typeof subInput.intent === 'string' ? subInput.intent : JSON.stringify(input);
+        result = await this.subAgentExecutor.execute(name, {
+          intent,
+          ...(subInput.payload ? { payload: subInput.payload } : {}),
+        });
+      }
       const status = result.ok ? 200 : executorErrorToHttpStatus(result.error.code);
-      // Strip non-serializable `cause` from the wire response (Error instances etc).
       const wire = result.ok
         ? result
         : { ok: false, durationMs: result.durationMs, error: { code: result.error.code, message: result.error.message, ...(result.error.status !== undefined ? { status: result.error.status } : {}) } };

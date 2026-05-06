@@ -55,6 +55,14 @@ export type {
   FeatureRegistry,
 } from './feature.js';
 export type {
+  SubAgentTransport,
+  SubAgentAuthKind,
+  SubAgentDescriptor,
+  SubAgentRegistry,
+  FederationRequest,
+  FederationResponse,
+} from './subagent.js';
+export type {
   UIComposer,
   ComposeContext,
   ComposedToolInvocation,

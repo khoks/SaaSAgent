@@ -11,8 +11,12 @@ import type {
 
 import { ProviderError } from '../model/types.js';
 import { StubComposer } from '../composer/stub.js';
-import { InMemorySkillRegistry, InMemoryToolRegistry } from '../registry/index.js';
-import { SkillExecutor, ToolExecutor } from '../executor/index.js';
+import {
+  InMemorySkillRegistry,
+  InMemorySubAgentRegistry,
+  InMemoryToolRegistry,
+} from '../registry/index.js';
+import { SkillExecutor, SubAgentExecutor, ToolExecutor } from '../executor/index.js';
 import { KeyValueMemoryProvider, NullMemoryProvider } from '../memory/index.js';
 import type { Planner } from '../planner/index.js';
 import { RuntimeServer } from './server.js';
@@ -800,5 +804,181 @@ describe('RuntimeServer /memory + sessionId threading', () => {
     } finally {
       await server.stop();
     }
+  });
+});
+
+/**
+ * Phase 2.4: /registry/subagents + /executor/subagent/* + /health subagent counts.
+ */
+describe('RuntimeServer sub-agent endpoints', () => {
+  let server: RuntimeServer;
+  let stubFetchImpl: (url: string, init?: RequestInit) => Promise<Response> | Response;
+
+  beforeEach(async () => {
+    const subAgentRegistry = new InMemorySubAgentRegistry();
+    stubFetchImpl = () =>
+      new Response(JSON.stringify({ output: { default: true } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    const subAgentExecutor = new SubAgentExecutor({
+      registry: subAgentRegistry,
+      fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
+        const url =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.href
+              : (input as Request).url;
+        return Promise.resolve(stubFetchImpl(url, init));
+      }) as typeof globalThis.fetch,
+    });
+    server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      subAgentRegistry,
+      subAgentExecutor,
+    });
+    await server.start();
+  });
+  afterEach(async () => {
+    await server.stop();
+  });
+
+  it('GET /registry/subagents returns the empty registry initially', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/registry/subagents`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { version: string; subAgents: Record<string, unknown> };
+    expect(body).toEqual({ version: '0.0.0', subAgents: {} });
+  });
+
+  it('PUT /registry/subagents replaces the registry and bumps version', async () => {
+    const subs = [
+      {
+        name: 'travel',
+        version: '1.0.0',
+        description: 'Travel specialist',
+        whenToUse: 'when booking travel',
+        transport: 'http',
+        endpoint: 'https://travel.host.com/federate',
+      },
+    ];
+    const res = await fetch(`http://127.0.0.1:${server.port}/registry/subagents`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(subs),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { version: string; subAgents: Record<string, unknown> };
+    expect(body.version).toBe('1.0.0');
+    expect(Object.keys(body.subAgents)).toEqual(['travel']);
+  });
+
+  it('POST /registry/subagents upserts a single SubAgentDescriptor', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/registry/subagents`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'billing',
+        version: '1.0.0',
+        description: 'Billing specialist',
+        whenToUse: 'for refunds',
+        transport: 'http',
+        endpoint: 'https://billing.host.com/federate',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { subAgents: Record<string, { name: string }> };
+    expect(body.subAgents['billing']?.name).toBe('billing');
+  });
+
+  it('DELETE /registry/subagents clears the registry', async () => {
+    await fetch(`http://127.0.0.1:${server.port}/registry/subagents`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify([
+        {
+          name: 'a',
+          version: '1.0.0',
+          description: 'd',
+          whenToUse: 'w',
+          transport: 'http',
+          endpoint: 'https://a/federate',
+        },
+      ]),
+    });
+    const del = await fetch(`http://127.0.0.1:${server.port}/registry/subagents`, {
+      method: 'DELETE',
+    });
+    expect(del.status).toBe(200);
+    const body = (await del.json()) as { subAgents: Record<string, unknown> };
+    expect(body.subAgents).toEqual({});
+  });
+
+  it('POST /executor/subagent/<name> dispatches via SubAgentExecutor (stub fetch)', async () => {
+    // Register the descriptor first.
+    await fetch(`http://127.0.0.1:${server.port}/registry/subagents`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'travel',
+        version: '1.0.0',
+        description: 'Travel specialist',
+        whenToUse: 'when booking travel',
+        transport: 'http',
+        endpoint: 'https://travel.host.com/federate',
+      }),
+    });
+    let receivedBody = '';
+    stubFetchImpl = (_url, init) => {
+      receivedBody = String(init?.body ?? '');
+      return new Response(JSON.stringify({ narration: 'Booked.', output: { id: 'X' } }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    const res = await fetch(`http://127.0.0.1:${server.port}/executor/subagent/travel`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ intent: 'book SFO to NRT', payload: { from: 'SFO', to: 'NRT' } }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: true; output: { narration: string } };
+    expect(body.ok).toBe(true);
+    expect(body.output.narration).toBe('Booked.');
+    expect(JSON.parse(receivedBody).intent).toBe('book SFO to NRT');
+  });
+
+  it('POST /executor/subagent/<unknown> returns 404', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/executor/subagent/nope`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ intent: 'x' }),
+    });
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { code: string } };
+    expect(body.error.code).toBe('unknown-tool');
+  });
+
+  it('/health includes subAgentRegistryVersion + subAgentCount', async () => {
+    await fetch(`http://127.0.0.1:${server.port}/registry/subagents`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'travel',
+        version: '1.0.0',
+        description: 'd',
+        whenToUse: 'w',
+        transport: 'http',
+        endpoint: 'https://travel/federate',
+      }),
+    });
+    const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+    const body = (await res.json()) as {
+      subAgentRegistryVersion: string;
+      subAgentCount: number;
+    };
+    expect(body.subAgentRegistryVersion).toBe('1.0.0');
+    expect(body.subAgentCount).toBe(1);
   });
 });

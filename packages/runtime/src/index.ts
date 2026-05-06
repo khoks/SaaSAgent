@@ -18,7 +18,7 @@ import { realpathSync } from 'node:fs';
 import { PROTOCOL_VERSION, type UIComposer } from '@saasagent/protocol';
 
 import { HaikuComposer, StubComposer } from './composer/index.js';
-import { SkillExecutor, ToolExecutor } from './executor/index.js';
+import { SkillExecutor, SubAgentExecutor, ToolExecutor } from './executor/index.js';
 import { KeyValueMemoryProvider, type MemoryProvider } from './memory/index.js';
 import { AnthropicProvider } from './model/index.js';
 import { type Planner, SonnetPlanner, StubPlanner } from './planner/index.js';
@@ -28,11 +28,13 @@ import {
   InMemorySkillRegistry,
   InMemoryToolRegistry,
   InMemoryFeatureRegistry,
+  InMemorySubAgentRegistry,
   type ComponentRegistryStore,
   type ThemeRegistryStore,
   type SkillRegistryStore,
   type ToolRegistryStore,
   type FeatureRegistryStore,
+  type SubAgentRegistryStore,
 } from './registry/index.js';
 import { RuntimeServer } from './transport/index.js';
 
@@ -45,6 +47,7 @@ export {
   InMemorySkillRegistry,
   InMemoryToolRegistry,
   InMemoryFeatureRegistry,
+  InMemorySubAgentRegistry,
   flattenDTCG,
   importStyleDictionary,
   importCssVariables,
@@ -54,14 +57,18 @@ export {
   type SkillRegistryStore,
   type ToolRegistryStore,
   type FeatureRegistryStore,
+  type SubAgentRegistryStore,
 } from './registry/index.js';
 export {
   SkillExecutor,
   ToolExecutor,
+  SubAgentExecutor,
   substituteUrl,
   type SkillHandler,
   type SkillExecutorOptions,
   type ToolExecutorOptions,
+  type SubAgentExecutorOptions,
+  type SubAgentInvokeRequest,
   type ExecutionContext,
   type ExecutionResult,
   type ExecutionError,
@@ -137,12 +144,24 @@ export class Runtime {
    */
   readonly featureRegistry: FeatureRegistryStore = new InMemoryFeatureRegistry();
   /**
+   * Public sub-agents registry (Phase 2.4). Federated runtimes the parent
+   * planner delegates to over a JSON federation contract.
+   */
+  readonly subAgentRegistry: SubAgentRegistryStore = new InMemorySubAgentRegistry();
+  /**
    * SkillExecutor (Phase 2.0c). Public so host code can `runtime.skillExecutor.registerHandler('foo', fn)`
    * after construction. Bound to the same skillRegistry instance used by REST + the planner.
    */
   readonly skillExecutor: SkillExecutor = new SkillExecutor({ registry: this.skillRegistry });
   /** ToolExecutor (Phase 2.0c) — uses globalThis.fetch + process.env unless replaced. */
   readonly toolExecutor: ToolExecutor = new ToolExecutor({ registry: this.toolRegistry });
+  /**
+   * SubAgentExecutor (Phase 2.4). Posts JSON FederationRequests to registered
+   * sub-agents over HTTP; SonnetPlanner dispatches subagent__ tool calls here.
+   */
+  readonly subAgentExecutor: SubAgentExecutor = new SubAgentExecutor({
+    registry: this.subAgentRegistry,
+  });
   /**
    * MemoryProvider (Phase 2.3 default: KeyValueMemoryProvider — in-process
    * Map keyed by sessionId). Same instance is shared with the SonnetPlanner
@@ -172,8 +191,10 @@ export class Runtime {
       skillRegistry: this.skillRegistry,
       toolRegistry: this.toolRegistry,
       featureRegistry: this.featureRegistry,
+      subAgentRegistry: this.subAgentRegistry,
       skillExecutor: this.skillExecutor,
       toolExecutor: this.toolExecutor,
+      subAgentExecutor: this.subAgentExecutor,
       planner: this.planner,
       memoryProvider: this.memoryProvider,
       onInstruction: (env) => {
@@ -248,8 +269,10 @@ export class Runtime {
       provider: new AnthropicProvider({ apiKey: apiKey ?? undefined }),
       skillExecutor: this.skillExecutor,
       toolExecutor: this.toolExecutor,
+      subAgentExecutor: this.subAgentExecutor,
       skillRegistry: this.skillRegistry,
       toolRegistry: this.toolRegistry,
+      subAgentRegistry: this.subAgentRegistry,
       featureRegistry: this.featureRegistry,
       memoryProvider: this.memoryProvider,
     });

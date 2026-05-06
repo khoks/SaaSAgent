@@ -43,10 +43,10 @@ export interface ComposeContext {
  * is what the composer (and any future serializer) sees.
  */
 export interface ComposedToolInvocation {
-  /** Capability name (without skill__/tool__ prefix). */
+  /** Capability name (without skill__/tool__/subagent__ prefix). */
   name: string;
-  /** Which executor handled the call. */
-  kind: 'skill' | 'tool';
+  /** Which executor handled the call (Phase 2.4 added 'subagent'). */
+  kind: 'skill' | 'tool' | 'subagent';
   /** Input args passed to the executor. */
   input: unknown;
   /** True if the executor returned ok. */

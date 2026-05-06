@@ -41,10 +41,10 @@ export interface PlanRequest {
 }
 
 export interface ToolInvocation {
-  /** Skill or Tool name. */
+  /** Skill, Tool, or Sub-Agent name. */
   name: string;
-  /** Which executor was called. */
-  kind: 'skill' | 'tool';
+  /** Which executor was called (Phase 2.4 added 'subagent'). */
+  kind: 'skill' | 'tool' | 'subagent';
   /** Input args passed to the executor. */
   input: unknown;
   /** Result from the executor (may be ok or error). */
