@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import type {
   ConversationContext,
+  FeatureDescriptor,
   InstructionEnvelope,
   SkillDescriptor,
   ToolDescriptor,
@@ -9,7 +10,11 @@ import type {
 import { SkillExecutor, ToolExecutor } from '../executor/index.js';
 import { NullMemoryProvider } from '../memory/index.js';
 import { MockProvider, type GenerateResponse } from '../model/index.js';
-import { InMemorySkillRegistry, InMemoryToolRegistry } from '../registry/index.js';
+import {
+  InMemoryFeatureRegistry,
+  InMemorySkillRegistry,
+  InMemoryToolRegistry,
+} from '../registry/index.js';
 
 import { SonnetPlanner, __test } from './sonnet.js';
 
@@ -41,6 +46,7 @@ function setup(opts: {
   responses: GenerateResponse[] | Array<Partial<GenerateResponse>>;
   skills?: ReadonlyArray<SkillDescriptor>;
   tools?: ReadonlyArray<ToolDescriptor>;
+  features?: ReadonlyArray<FeatureDescriptor>;
   fetch?: typeof globalThis.fetch;
   maxRounds?: number;
 }): Setup {
@@ -49,6 +55,8 @@ function setup(opts: {
   if (opts.skills?.length) skillRegistry.replace(opts.skills);
   const toolRegistry = new InMemoryToolRegistry();
   if (opts.tools?.length) toolRegistry.replace(opts.tools);
+  const featureRegistry = new InMemoryFeatureRegistry();
+  if (opts.features?.length) featureRegistry.replace(opts.features);
   const skillExecutor = new SkillExecutor({ registry: skillRegistry });
   const toolExecutor = new ToolExecutor({ registry: toolRegistry, fetch: opts.fetch });
   const memory = new NullMemoryProvider();
@@ -58,6 +66,7 @@ function setup(opts: {
     toolExecutor,
     skillRegistry,
     toolRegistry,
+    featureRegistry,
     memoryProvider: memory,
     ...(opts.maxRounds !== undefined ? { maxRounds: opts.maxRounds } : {}),
   });
@@ -348,5 +357,87 @@ describe('SonnetPlanner', () => {
     expect(msg).toContain('user: "hi"');
     expect(msg).toContain('agent: "how can I help?"');
     expect(msg).toContain('(qdrant) previously interested in 4K TVs');
+  });
+
+  /**
+   * Phase 2.2: features in the user message.
+   */
+  it('embeds registered features into the planner user message', async () => {
+    const featureA: FeatureDescriptor = {
+      name: 'product-search',
+      version: '1.0.0',
+      summary: 'Search the catalog by category, price, brand',
+      whenRelevant: 'Use when the user wants to discover products.',
+      content: '# Product Search\n\nFilters: category, price-range, brand.',
+    };
+    const featureB: FeatureDescriptor = {
+      name: 'checkout',
+      version: '1.0.0',
+      summary: 'Cart-to-purchase flow including payment',
+      whenRelevant: 'Use when the user is ready to purchase.',
+      content: '# Checkout\n\nSupports credit card, PayPal, Apple Pay.',
+    };
+    const { planner, provider } = setup({
+      responses: [{ text: 'ok', stopReason: 'end_turn' }],
+      features: [featureA, featureB],
+    });
+    await planner.plan({
+      envelope: envelope({ payload: { text: 'how do I buy a TV?' } }),
+      context: baseContext,
+    });
+    const userMsg = provider.requests[0]!.messages[0]!.content;
+    expect(typeof userMsg).toBe('string');
+    if (typeof userMsg === 'string') {
+      expect(userMsg).toContain('Domain features available in this host');
+      // Sorted alphabetically: checkout before product-search
+      const checkoutIdx = userMsg.indexOf('Feature: checkout');
+      const productSearchIdx = userMsg.indexOf('Feature: product-search');
+      expect(checkoutIdx).toBeGreaterThan(0);
+      expect(productSearchIdx).toBeGreaterThan(checkoutIdx);
+      expect(userMsg).toContain('Filters: category, price-range, brand');
+      expect(userMsg).toContain('Supports credit card, PayPal, Apple Pay');
+    }
+  });
+
+  it('omits the features section when registry is empty', async () => {
+    const { planner, provider } = setup({ responses: [{ text: 'ok', stopReason: 'end_turn' }] });
+    await planner.plan({ envelope: envelope({ payload: { text: 'go' } }), context: baseContext });
+    const userMsg = provider.requests[0]!.messages[0]!.content;
+    if (typeof userMsg === 'string') {
+      expect(userMsg).not.toContain('Domain features available');
+    }
+  });
+
+  it('buildPlannerUserMessage formats features alphabetically with summary + content', () => {
+    const msg = __test.buildPlannerUserMessage(
+      'hi',
+      { intent: 'hi' },
+      [],
+      {
+        version: '1.0.0',
+        features: {
+          z: {
+            name: 'z',
+            version: '1.0.0',
+            summary: 'z summary',
+            whenRelevant: 'z when',
+            content: 'z body',
+          },
+          a: {
+            name: 'a',
+            version: '1.0.0',
+            summary: 'a summary',
+            whenRelevant: 'a when',
+            content: 'a body',
+          },
+        },
+      },
+    );
+    const aIdx = msg.indexOf('Feature: a');
+    const zIdx = msg.indexOf('Feature: z');
+    expect(aIdx).toBeGreaterThan(0);
+    expect(zIdx).toBeGreaterThan(aIdx);
+    expect(msg).toContain('Summary: a summary');
+    expect(msg).toContain('When relevant: a when');
   });
 });

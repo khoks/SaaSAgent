@@ -51,6 +51,10 @@ export type {
   ToolRegistry,
 } from './tool.js';
 export type {
+  FeatureDescriptor,
+  FeatureRegistry,
+} from './feature.js';
+export type {
   UIComposer,
   ComposeContext,
   ComposedToolInvocation,

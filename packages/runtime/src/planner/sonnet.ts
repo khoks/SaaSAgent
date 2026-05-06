@@ -21,6 +21,7 @@
 
 import type {
   ConversationContext,
+  FeatureRegistry,
   InstructionEnvelope,
   MemoryRecall,
 } from '@saasagent/protocol';
@@ -33,6 +34,7 @@ import type {
   ModelMessage,
   ModelProvider,
 } from '../model/index.js';
+import type { FeatureRegistryStore } from '../registry/features.js';
 import type { SkillRegistryStore } from '../registry/skills.js';
 import type { ToolRegistryStore } from '../registry/tools.js';
 
@@ -71,6 +73,8 @@ export interface SonnetPlannerOptions {
   toolExecutor: ToolExecutor;
   skillRegistry: SkillRegistryStore;
   toolRegistry: ToolRegistryStore;
+  /** Phase 2.2: Features registry — domain `.feature.md` docs the planner reads as super-skill context. */
+  featureRegistry?: FeatureRegistryStore;
   memoryProvider: MemoryProvider;
   /** Sonnet model id. Default 'claude-sonnet-4-6'. */
   model?: string;
@@ -99,12 +103,13 @@ export class SonnetPlanner implements Planner {
     // Snapshot the registries so the model sees a stable set within this plan.
     const skillsSnapshot = this.options.skillRegistry.get();
     const toolsSnapshot = this.options.toolRegistry.get();
+    const featuresSnapshot = this.options.featureRegistry?.get();
     const toolDefs = descriptorsToTools(skillsSnapshot, toolsSnapshot);
 
     const messages: ModelMessage[] = [
       {
         role: 'user',
-        content: buildPlannerUserMessage(initialIntent, req.context, recall),
+        content: buildPlannerUserMessage(initialIntent, req.context, recall, featuresSnapshot),
       },
     ];
 
@@ -231,6 +236,7 @@ function buildPlannerUserMessage(
   intent: string,
   ctx: ConversationContext,
   recall: ReadonlyArray<MemoryRecall>,
+  features?: FeatureRegistry,
 ): string {
   const parts: string[] = [`User said: "${intent}"`];
 
@@ -247,6 +253,27 @@ function buildPlannerUserMessage(
     parts.push('', 'Memory recall:');
     for (const m of memoryAll) {
       parts.push(`- (${m.store}) ${truncate(m.summary, 200)}`);
+    }
+  }
+
+  // Phase 2.2: features are domain documents the planner reads to ground its
+  // decisions. Each feature contributes a header line (summary + when-relevant)
+  // followed by its full content. They land in the user message (not the system
+  // prompt) so they evolve with the host's registry without invalidating
+  // planner-prompt cache entries that target tools+skills only.
+  if (features && Object.keys(features.features).length > 0) {
+    parts.push('', 'Domain features available in this host (read these to ground your decisions):');
+    const sorted = Object.values(features.features).sort((a, b) => a.name.localeCompare(b.name));
+    for (const f of sorted) {
+      parts.push('');
+      parts.push(`### Feature: ${f.name} (v${f.version})`);
+      parts.push(`Summary: ${f.summary}`);
+      parts.push(`When relevant: ${f.whenRelevant}`);
+      if (f.content.trim().length > 0) {
+        parts.push('---');
+        parts.push(f.content.trim());
+        parts.push('---');
+      }
     }
   }
 

@@ -27,10 +27,12 @@ import {
   InMemoryThemeRegistry,
   InMemorySkillRegistry,
   InMemoryToolRegistry,
+  InMemoryFeatureRegistry,
   type ComponentRegistryStore,
   type ThemeRegistryStore,
   type SkillRegistryStore,
   type ToolRegistryStore,
+  type FeatureRegistryStore,
 } from './registry/index.js';
 import { RuntimeServer } from './transport/index.js';
 
@@ -42,13 +44,16 @@ export {
   InMemoryThemeRegistry,
   InMemorySkillRegistry,
   InMemoryToolRegistry,
+  InMemoryFeatureRegistry,
   flattenDTCG,
   importStyleDictionary,
   importCssVariables,
+  importFeatureMarkdown,
   type ComponentRegistryStore,
   type ThemeRegistryStore,
   type SkillRegistryStore,
   type ToolRegistryStore,
+  type FeatureRegistryStore,
 } from './registry/index.js';
 export {
   SkillExecutor,
@@ -125,6 +130,11 @@ export class Runtime {
   /** Public tools registry (Phase 2.0b). */
   readonly toolRegistry: ToolRegistryStore = new InMemoryToolRegistry();
   /**
+   * Public features registry (Phase 2.2). Long-form `.feature.md` documents the
+   * planner reads as super-skill context to understand the host's domain.
+   */
+  readonly featureRegistry: FeatureRegistryStore = new InMemoryFeatureRegistry();
+  /**
    * SkillExecutor (Phase 2.0c). Public so host code can `runtime.skillExecutor.registerHandler('foo', fn)`
    * after construction. Bound to the same skillRegistry instance used by REST + the planner.
    */
@@ -157,6 +167,7 @@ export class Runtime {
       themeRegistry: this.themeRegistry,
       skillRegistry: this.skillRegistry,
       toolRegistry: this.toolRegistry,
+      featureRegistry: this.featureRegistry,
       skillExecutor: this.skillExecutor,
       toolExecutor: this.toolExecutor,
       planner: this.planner,
@@ -234,6 +245,7 @@ export class Runtime {
       toolExecutor: this.toolExecutor,
       skillRegistry: this.skillRegistry,
       toolRegistry: this.toolRegistry,
+      featureRegistry: this.featureRegistry,
       memoryProvider: this.memoryProvider,
     });
   }

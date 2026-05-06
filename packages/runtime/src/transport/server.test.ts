@@ -515,10 +515,140 @@ describe('RuntimeServer executor REST endpoints', () => {
       skillCount: number;
       toolRegistryVersion: string;
       toolCount: number;
+      featureRegistryVersion: string;
+      featureCount: number;
     };
     expect(body.skillRegistryVersion).toBe('1.0.0');
     expect(body.skillCount).toBe(2);
     expect(body.toolRegistryVersion).toBe('1.0.0');
     expect(body.toolCount).toBe(1);
+    // featureRegistry not pre-populated in this beforeEach; defaults to 0.0.0/0.
+    expect(body.featureRegistryVersion).toBe('0.0.0');
+    expect(body.featureCount).toBe(0);
+  });
+});
+
+/**
+ * Phase 2.2: REST endpoints for the features registry.
+ */
+describe('RuntimeServer /registry/features endpoints', () => {
+  let server: RuntimeServer;
+
+  beforeEach(async () => {
+    server = new RuntimeServer({ port: 0, composer: new StubComposer() });
+    await server.start();
+  });
+  afterEach(async () => {
+    await server.stop();
+  });
+
+  it('GET returns the empty registry initially', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/registry/features`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { version: string; features: Record<string, unknown> };
+    expect(body).toEqual({ version: '0.0.0', features: {} });
+  });
+
+  it('PUT replaces the registry and bumps the version', async () => {
+    const features = [
+      {
+        name: 'product-search',
+        version: '1.0.0',
+        summary: 'Search the catalog',
+        whenRelevant: 'When the user wants to discover products',
+        content: '# Product Search',
+      },
+    ];
+    const res = await fetch(`http://127.0.0.1:${server.port}/registry/features`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(features),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { version: string; features: Record<string, unknown> };
+    expect(body.version).toBe('1.0.0');
+    expect(Object.keys(body.features)).toEqual(['product-search']);
+  });
+
+  it('PUT ?format=markdown imports a .feature.md document', async () => {
+    const md = `---
+name: checkout
+version: 1.0.0
+summary: Cart-to-purchase flow
+whenRelevant: When the user is ready to buy
+---
+
+# Checkout
+
+Supports credit card, PayPal, Apple Pay.`;
+    const res = await fetch(
+      `http://127.0.0.1:${server.port}/registry/features?format=markdown`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'text/markdown' },
+        body: md,
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      features: Record<string, { content: string; summary: string }>;
+    };
+    expect(body.features['checkout']?.summary).toBe('Cart-to-purchase flow');
+    expect(body.features['checkout']?.content).toContain('Supports credit card');
+  });
+
+  it('PUT ?format=markdown returns 400 for malformed front matter', async () => {
+    const res = await fetch(
+      `http://127.0.0.1:${server.port}/registry/features?format=markdown`,
+      {
+        method: 'PUT',
+        body: 'no front matter here, just markdown',
+      },
+    );
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toMatch(/front-matter/);
+  });
+
+  it('POST upserts a single FeatureDescriptor', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/registry/features`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        name: 'tier-upgrade',
+        version: '1.0.0',
+        summary: 'Upgrade user to a paid tier',
+        whenRelevant: 'When the user hits a free-tier limit',
+        content: '# Upgrade',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { features: Record<string, { name: string }> };
+    expect(body.features['tier-upgrade']?.name).toBe('tier-upgrade');
+  });
+
+  it('POST returns 400 when the body lacks a name', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/registry/features`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ summary: 'no name' }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE clears the registry', async () => {
+    await fetch(`http://127.0.0.1:${server.port}/registry/features`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify([
+        { name: 'a', version: '1.0.0', summary: 's', whenRelevant: 'w', content: 'c' },
+      ]),
+    });
+    const del = await fetch(`http://127.0.0.1:${server.port}/registry/features`, {
+      method: 'DELETE',
+    });
+    expect(del.status).toBe(200);
+    const body = (await del.json()) as { features: Record<string, unknown> };
+    expect(body.features).toEqual({});
   });
 });

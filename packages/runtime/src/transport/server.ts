@@ -33,12 +33,15 @@ import {
   type ThemeRegistryStore,
   type SkillRegistryStore,
   type ToolRegistryStore,
+  type FeatureRegistryStore,
   InMemoryComponentRegistry,
   InMemoryThemeRegistry,
   InMemorySkillRegistry,
   InMemoryToolRegistry,
+  InMemoryFeatureRegistry,
   importStyleDictionary,
   importCssVariables,
+  importFeatureMarkdown,
 } from '../registry/index.js';
 import {
   SkillExecutor,
@@ -63,6 +66,8 @@ export interface RuntimeServerOptions {
   skillRegistry?: SkillRegistryStore;
   /** Tools registry store (Phase 2.0b). Defaults to a fresh InMemoryToolRegistry. */
   toolRegistry?: ToolRegistryStore;
+  /** Features registry store (Phase 2.2). Defaults to a fresh InMemoryFeatureRegistry. */
+  featureRegistry?: FeatureRegistryStore;
   /**
    * SkillExecutor (Phase 2.0c). If omitted, the server constructs a default
    * SkillExecutor bound to its skillRegistry. Pass an explicit instance to
@@ -102,6 +107,7 @@ export class RuntimeServer {
   private readonly themeRegistry: ThemeRegistryStore;
   private readonly skillRegistry: SkillRegistryStore;
   private readonly toolRegistry: ToolRegistryStore;
+  private readonly featureRegistry: FeatureRegistryStore;
   private readonly skillExecutor: SkillExecutor;
   private readonly toolExecutor: ToolExecutor;
   private readonly planner: Planner;
@@ -112,6 +118,7 @@ export class RuntimeServer {
     this.themeRegistry = options.themeRegistry ?? new InMemoryThemeRegistry();
     this.skillRegistry = options.skillRegistry ?? new InMemorySkillRegistry();
     this.toolRegistry = options.toolRegistry ?? new InMemoryToolRegistry();
+    this.featureRegistry = options.featureRegistry ?? new InMemoryFeatureRegistry();
     this.skillExecutor = options.skillExecutor ?? new SkillExecutor({ registry: this.skillRegistry });
     this.toolExecutor = options.toolExecutor ?? new ToolExecutor({ registry: this.toolRegistry });
     this.planner = options.planner ?? new StubPlanner();
@@ -213,9 +220,71 @@ export class RuntimeServer {
           skillCount: Object.keys(this.skillRegistry.get().skills).length,
           toolRegistryVersion: this.toolRegistry.get().version,
           toolCount: Object.keys(this.toolRegistry.get().tools).length,
+          featureRegistryVersion: this.featureRegistry.get().version,
+          featureCount: Object.keys(this.featureRegistry.get().features).length,
         }),
       );
       return;
+    }
+
+    // Features registry endpoints (Phase 2.2).
+    // PUT supports ?format=markdown for raw .feature.md upload (single feature),
+    // otherwise expects a JSON array of FeatureDescriptor or { features: [...] }.
+    if (url.startsWith('/registry/features')) {
+      const parsed = new URL(url, 'http://localhost');
+      if (parsed.pathname === '/registry/features') {
+        if (req.method === 'GET') {
+          res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(this.featureRegistry.get()));
+          return;
+        }
+        if (req.method === 'PUT') {
+          const format = parsed.searchParams.get('format');
+          if (format === 'markdown') {
+            const md = await readTextBody(req);
+            try {
+              const feature = importFeatureMarkdown(md);
+              const updated = this.featureRegistry.upsert(feature);
+              res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(updated));
+            } catch (err) {
+              res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  error: err instanceof Error ? err.message : String(err),
+                }),
+              );
+            }
+            return;
+          }
+          const body = await readJsonBody(req);
+          const items = Array.isArray(body)
+            ? body
+            : ((body as { features?: unknown })?.features ?? []);
+          const updated = this.featureRegistry.replace(items as never);
+          res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(updated));
+          return;
+        }
+        if (req.method === 'POST') {
+          const body = (await readJsonBody(req)) as { name?: string };
+          if (!body?.name) {
+            res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'POST body must be a FeatureDescriptor with a name field' }));
+            return;
+          }
+          const updated = this.featureRegistry.upsert(body as never);
+          res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(updated));
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const updated = this.featureRegistry.clear();
+          res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(updated));
+          return;
+        }
+      }
     }
 
     // Skills + Tools registries (Phase 2.0b). Same shape as components: GET / PUT / POST / DELETE.

@@ -17,3 +17,8 @@ export {
   InMemoryToolRegistry,
   type ToolRegistryStore,
 } from './tools.js';
+export {
+  InMemoryFeatureRegistry,
+  type FeatureRegistryStore,
+} from './features.js';
+export { importFeatureMarkdown, type FeatureMarkdownImportError } from './feature-md-importer.js';
