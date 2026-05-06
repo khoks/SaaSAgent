@@ -58,6 +58,7 @@ import {
 import { type Planner, StubPlanner, type ToolInvocation } from '../planner/index.js';
 import { KeyValueMemoryProvider, type MemoryProvider } from '../memory/index.js';
 import { KeyValueEvalProvider, type EvalProvider } from '../eval/index.js';
+import { type ChurnRiskCalculator, RuleBasedChurnCalculator } from '../churn/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 
@@ -110,6 +111,13 @@ export interface RuntimeServerOptions {
    * for durable analytics per ADR-032.
    */
   evalProvider?: EvalProvider;
+  /**
+   * ChurnRiskCalculator (Phase 2.6). Derives per-session churn-risk score from
+   * the EvalProvider's signals. Default: RuleBasedChurnCalculator bound to
+   * this server's evalProvider. Future: MLChurnCalculator behind the same
+   * interface (rule-based becomes cold-start fallback).
+   */
+  churnCalculator?: ChurnRiskCalculator;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -143,6 +151,7 @@ export class RuntimeServer {
   private readonly planner: Planner;
   private readonly memoryProvider: MemoryProvider;
   private readonly evalProvider: EvalProvider;
+  private readonly churnCalculator: ChurnRiskCalculator;
   private actualPort: number = 0;
 
   constructor(private readonly options: RuntimeServerOptions) {
@@ -159,6 +168,8 @@ export class RuntimeServer {
     this.planner = options.planner ?? new StubPlanner();
     this.memoryProvider = options.memoryProvider ?? new KeyValueMemoryProvider();
     this.evalProvider = options.evalProvider ?? new KeyValueEvalProvider();
+    this.churnCalculator =
+      options.churnCalculator ?? new RuleBasedChurnCalculator({ evalProvider: this.evalProvider });
     this.httpServer = createServer((req, res) => {
       this.handleRequest(req, res).catch((err: unknown) => {
         // eslint-disable-next-line no-console
@@ -264,9 +275,42 @@ export class RuntimeServer {
           memoryProvider: this.memoryProvider.name,
           evalProvider: this.evalProvider.name,
           evalSignalCount: this.evalProvider.count(),
+          churnCalculator: this.churnCalculator.name,
         }),
       );
       return;
+    }
+
+    // Churn risk endpoints (Phase 2.6).
+    // GET /churn/sessions/<id>  → ChurnRiskScore | { score: null, reason }
+    // GET /churn                → { scores: ChurnRiskScore[] } sorted by score DESC
+    if (url === '/churn' && req.method === 'GET') {
+      const scores = await this.churnCalculator.computeAll();
+      res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ scores, model: this.churnCalculator.name }));
+      return;
+    }
+    if (url.startsWith('/churn/sessions/')) {
+      const parsed = new URL(url, 'http://localhost');
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      if (segments.length === 3 && req.method === 'GET') {
+        const sessionId = decodeURIComponent(segments[2]!);
+        const score = await this.churnCalculator.computeForSession(sessionId);
+        if (!score) {
+          res.writeHead(404, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              sessionId,
+              score: null,
+              reason: 'no eval signals for this session',
+            }),
+          );
+          return;
+        }
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(score));
+        return;
+      }
     }
 
     // Eval REST endpoints (Phase 2.5).

@@ -21,6 +21,7 @@ import { HaikuComposer, StubComposer } from './composer/index.js';
 import { SkillExecutor, SubAgentExecutor, ToolExecutor } from './executor/index.js';
 import { KeyValueMemoryProvider, type MemoryProvider } from './memory/index.js';
 import { KeyValueEvalProvider, type EvalProvider } from './eval/index.js';
+import { type ChurnRiskCalculator, RuleBasedChurnCalculator } from './churn/index.js';
 import { AnthropicProvider } from './model/index.js';
 import { type Planner, SonnetPlanner, StubPlanner } from './planner/index.js';
 import {
@@ -96,6 +97,11 @@ export {
   type EvalProvider,
   type EvalFilter,
 } from './eval/index.js';
+export {
+  RuleBasedChurnCalculator,
+  type RuleBasedChurnCalculatorOptions,
+  type ChurnRiskCalculator,
+} from './churn/index.js';
 export {
   StubPlanner,
   SonnetPlanner,
@@ -185,6 +191,14 @@ export class Runtime {
    */
   readonly evalProvider: EvalProvider = new KeyValueEvalProvider();
   /**
+   * ChurnRiskCalculator (Phase 2.6). Derives per-session churn-risk score
+   * from the evalProvider's signals. Default rule-based v0; future
+   * MLChurnCalculator slots in behind the same interface per ADR-032.
+   */
+  readonly churnCalculator: ChurnRiskCalculator = new RuleBasedChurnCalculator({
+    evalProvider: this.evalProvider,
+  });
+  /**
    * Planner (Phase 2.1). Built lazily in start() based on config.planner so we
    * can pick StubPlanner vs SonnetPlanner depending on environment. Public so
    * host code / tests can introspect after start().
@@ -212,6 +226,7 @@ export class Runtime {
       planner: this.planner,
       memoryProvider: this.memoryProvider,
       evalProvider: this.evalProvider,
+      churnCalculator: this.churnCalculator,
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(

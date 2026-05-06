@@ -68,6 +68,10 @@ export type {
   EvalSignal,
 } from './eval.js';
 export type {
+  ChurnRiskLevel,
+  ChurnRiskScore,
+} from './churn.js';
+export type {
   UIComposer,
   ComposeContext,
   ComposedToolInvocation,

@@ -1286,3 +1286,129 @@ describe('RuntimeServer /eval endpoints + eval-feedback WS intercept', () => {
     expect(body.evalSignalCount).toBe(1);
   });
 });
+
+/**
+ * Phase 2.6: /churn endpoints driven by RuleBasedChurnCalculator over an
+ * in-process EvalProvider. Same instance shared between the calculator's
+ * dependency and the runtime's REST inspection so behavior is consistent.
+ */
+describe('RuntimeServer /churn endpoints', () => {
+  let evalProvider: KeyValueEvalProvider;
+  let server: RuntimeServer;
+
+  beforeEach(async () => {
+    evalProvider = new KeyValueEvalProvider();
+    server = new RuntimeServer({ port: 0, composer: new StubComposer(), evalProvider });
+    await server.start();
+  });
+  afterEach(async () => {
+    await server.stop();
+  });
+
+  it('GET /churn/sessions/<id> returns 404 when no signals exist for the session', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/churn/sessions/empty`);
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { score: null; reason: string };
+    expect(body.score).toBeNull();
+    expect(body.reason).toMatch(/no eval signals/);
+  });
+
+  it('GET /churn/sessions/<id> computes and returns ChurnRiskScore', async () => {
+    await evalProvider.record({
+      composeCycleId: 'a',
+      sessionId: 's-bad',
+      signal: 'negative',
+      source: 'user-explicit',
+      at: '2026-01-01T00:00:00Z',
+    });
+    await evalProvider.record({
+      composeCycleId: 'b',
+      sessionId: 's-bad',
+      signal: 'negative',
+      source: 'user-explicit',
+      at: '2026-01-01T00:01:00Z',
+    });
+    await evalProvider.record({
+      composeCycleId: 'c',
+      sessionId: 's-bad',
+      signal: 'negative',
+      source: 'user-explicit',
+      at: '2026-01-01T00:02:00Z',
+    });
+    const res = await fetch(`http://127.0.0.1:${server.port}/churn/sessions/s-bad`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      sessionId: string;
+      score: number;
+      riskLevel: string;
+      signalsAnalyzed: number;
+      factors: string[];
+      model: string;
+    };
+    expect(body.sessionId).toBe('s-bad');
+    expect(body.signalsAnalyzed).toBe(3);
+    expect(body.riskLevel).toBe('high');
+    expect(body.score).toBeGreaterThanOrEqual(0.6);
+    expect(body.factors.length).toBeGreaterThan(0);
+    expect(body.model).toBe('rule-based-v0');
+  });
+
+  it('GET /churn returns scores for every session sorted by score DESC', async () => {
+    // Session A — low risk (positive + completion)
+    await evalProvider.record({
+      composeCycleId: 'a1',
+      sessionId: 'good',
+      signal: 'positive',
+      source: 'user-explicit',
+      at: '2026-01-01T00:00:00Z',
+    });
+    await evalProvider.record({
+      composeCycleId: 'a2',
+      sessionId: 'good',
+      signal: 'completion',
+      source: 'user-explicit',
+      at: '2026-01-01T00:01:00Z',
+    });
+    // Session B — high risk
+    await evalProvider.record({
+      composeCycleId: 'b1',
+      sessionId: 'bad',
+      signal: 'negative',
+      source: 'user-explicit',
+      at: '2026-01-01T00:00:00Z',
+    });
+    await evalProvider.record({
+      composeCycleId: 'b2',
+      sessionId: 'bad',
+      signal: 'negative',
+      source: 'user-explicit',
+      at: '2026-01-01T00:01:00Z',
+    });
+    await evalProvider.record({
+      composeCycleId: 'b3',
+      sessionId: 'bad',
+      signal: 'negative',
+      source: 'user-explicit',
+      at: '2026-01-01T00:02:00Z',
+    });
+    const res = await fetch(`http://127.0.0.1:${server.port}/churn`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      scores: Array<{ sessionId: string; riskLevel: string; score: number }>;
+      model: string;
+    };
+    expect(body.scores).toHaveLength(2);
+    expect(body.scores[0]!.sessionId).toBe('bad');
+    expect(body.scores[0]!.riskLevel).toBe('high');
+    expect(body.scores[1]!.sessionId).toBe('good');
+    expect(body.scores[1]!.riskLevel).toBe('low');
+    expect(body.scores[0]!.score).toBeGreaterThan(body.scores[1]!.score);
+    expect(body.model).toBe('rule-based-v0');
+  });
+
+  it('/health includes churnCalculator name', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+    const body = (await res.json()) as { churnCalculator: string };
+    expect(body.churnCalculator).toBe('rule-based-v0');
+  });
+});
