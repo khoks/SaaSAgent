@@ -2,8 +2,8 @@
 
 - **Status:** done
 - **Created:** 2026-04-28
-- **Last updated:** 2026-05-04
-- **Completed:** 2026-05-04
+- **Last updated:** 2026-05-05
+- **Completed:** 2026-05-05
 - **Parent epic:** [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 
 ## User story
@@ -15,3 +15,6 @@ The embeddable shell (ADR-004) was scoped for web. Mobile embedding was surfaced
 ## Done when
 - Decision recorded in `docs/decisions/decision-log.md` as a new ADR.
 - INIT-001 Q3.5 marked resolved.
+
+## Resolution
+ADR-017 recorded: WebView bridge with mobile-context-aware composition at MVP; native iOS/Android SDKs deferred to v1.5. Closed batch 3 session 2026-04-28.

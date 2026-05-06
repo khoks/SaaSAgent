@@ -1,6 +1,6 @@
 # STORY-010 — Planner integration (Phase 2.1)
 
-- **Status:** backlog
+- **Status:** groomed
 - **Created:** 2026-05-05
 - **Last updated:** 2026-05-05
 - **Parent epic:** [EPIC-010 — Phase 2 Capability execution layer](../epics/EPIC-010-phase-2-capability-execution.md)
