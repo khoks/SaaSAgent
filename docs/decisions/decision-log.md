@@ -654,6 +654,25 @@
   - **Implication for "wow" target (ADR-034):** the "never limited" and "builds muscle memory" criteria require both surfaces; buttons alone are clumsy for novel or multi-step requests.
 - **Source:** Phase 2.0a self-review, 2026-05-05: "the welcome layout has zero buttons (composer correctly judged 'no concrete intent → no interactive elements'), which means the user has no way to drive the conversation forward. The whole loop is button-only — there's no text input. This is the critical UX gap."
 
+## ADR-040 — SonnetPlanner: multi-round tool-use loop with `tool__` / `skill__` namespace routing; toolResults pipe into HaikuComposer
+- **Date:** 2026-05-05
+- **Status:** accepted
+- **Context:** Phase 2.1 implements the Planner tier. The planner must translate a user intent into a plan — potentially calling Skills (in-process) and Tools (HTTP APIs) before composing the final layout. The planner output (tool call results) must then feed into the HaikuComposer so it can generate context-aware UI (e.g., render the actual product data returned by a tool call, not a generic placeholder).
+- **Options considered:**
+  - A. Single-turn planner call — no tool use; planner just interprets intent and emits a plan string to the composer.
+  - B. **Multi-round tool-use loop** — planner sends a tool-use request to the LLM; LLM may call one or more tools; results are fed back for the next round; loop continues until the LLM emits a text `stop` (plan complete) or a max-round limit is hit.
+  - C. Planner calls executor directly (no LLM tool-use) — hardcoded routing logic; misses the planner's ability to choose tools dynamically.
+- **Decision:** B. `SonnetPlanner` uses `claude-sonnet-4-6` with a multi-round tool-use loop. Concretely: (1) planner receives the `InstructionEnvelope` + conversation history; (2) submits to model with all registered Tools and Skills as `ToolDefinition` entries; (3) if the model calls a tool, the planner routes to `SkillExecutor` (for names prefixed `skill__`) or `ToolExecutor` (for names prefixed `tool__`); (4) results are appended as `tool_result` content blocks; (5) loop continues until the model stops calling tools; (6) the final assistant text is the plan. The planner returns accumulated `toolResults` to the runtime alongside the plan text.
+- **Consequences:**
+  - **Namespace convention (`tool__` / `skill__`)**: tool names visible to the LLM are prefixed with the tier identifier. This lets the tool-mapper unambiguously route without inspecting a separate registry — routing is deterministic from the name alone.
+  - **`prompt-template` skill kind** explicitly returns `unsupported-kind` from `SkillExecutor` — these are planner context (the LLM reads them) rather than executor calls.
+  - **`ComposeContext.toolResults`**: the planner passes tool call results to the HaikuComposer via a new `toolResults` field. When `toolResults` is non-empty, the composer skips its application-level composition cache (the result is data-specific, not intent-generic). This closes the "plan → compose from real data" loop.
+  - **`NullMemoryProvider` seam**: Phase 2.1 introduces the `MemoryProvider` interface and a `NullMemoryProvider` stub. Real memory access is wired in Phase 3+.
+  - **`StubPlanner`** (also introduced) deterministically routes `user-message` envelopes through `payload.text` extraction — used in tests and no-API-key environments.
+  - **Model extension**: `ModelProvider` extended for `tool_use` content blocks (backwards-compatible — string messages still work). `AnthropicProvider` handles `ToolDefinition[]`, `ToolUseBlock`, `ToolResultBlock`, and `thinking` blocks.
+  - **Live validation**: tested end-to-end with a registered `fetch-product-info` tool against httpbin.org. Runtime log confirmed: `user-message → tool__fetch-product-info({productId: "tv-55"}) → ok (373ms) → HaikuComposer rendered actual httpbin echo into Card layout`.
+- **Source:** Phase 2.1a/b/c build and browser validation, 2026-05-05: "user-message → tool__fetch-product-info({productId: 'tv-55'}) → ok (373ms) → composer rendered the actual httpbin echo (URL, method, headers, IP) into a Card."
+
 ## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
 - **Date:** 2026-05-08
 - **Status:** accepted (closes Q6.3)

@@ -156,6 +156,7 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 ### Closed in Phase build (2026-05-05)
 - ✅ Real-time transport — SSE (planner output) + WebSocket (bidirectional instruction emit); WebRTC reserved for voice [ADR-038]
 - ✅ Text input bar as required primary affordance — always-visible alongside composed interactive elements [ADR-039]
+- ✅ SonnetPlanner multi-round tool-use loop — `tool__` / `skill__` namespace routing; `ComposeContext.toolResults` handoff to HaikuComposer [ADR-040]
 
 ### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
@@ -184,6 +185,43 @@ Planner calls executor.execute(name, input) — same interface for both tiers
 ```
 
 REST endpoints: `POST /executor/skill/<name>` + `POST /executor/tool/<name>`. HTTP status mapping is exhaustiveness-checked: 404 (not found) / 400 (bad input) / 502 (tool HTTP error) / 504 (timeout).
+
+## Phase 2.1 planning layer (SonnetPlanner)
+
+The SonnetPlanner connects the executor tier to the composer tier, closing the user intent → tool call → UI render loop. Implemented in Phase 2.1a/b/c.
+
+```
+InstructionEnvelope (user-message | action | acknowledge)
+        │
+        ▼
+   SonnetPlanner (claude-sonnet-4-6)
+   ┌─────────────────────────────────────────────────────────────────┐
+   │  Input: InstructionEnvelope + conversation history               │
+   │  Tools provided: all registered Skills (skill__*) +             │
+   │                  all registered Tools (tool__*)                  │
+   │                                                                  │
+   │  Loop until model stops calling tools (max-round limit):         │
+   │    1. Submit to model with ToolDefinitions                       │
+   │    2. If model calls tool__foo → ToolExecutor.execute('foo',…)  │
+   │    3. If model calls skill__bar → SkillExecutor.execute('bar',…)│
+   │    4. Append ExecutionResult as tool_result content block        │
+   │                                                                  │
+   │  Output: planText + accumulated toolResults[]                    │
+   └─────────────────────────────────────────────────────────────────┘
+        │ toolResults (data from real API / skill calls)
+        ▼
+   HaikuComposer (claude-haiku-4-5)
+   • ComposeContext.toolResults → injected into user-turn prompt
+   • Cache SKIPPED when toolResults present (data-specific layout)
+   • Composes layout from registered atomic primitives + theme tokens
+        │
+        ▼
+   SSE → WC shell renderer → user sees data-rich composed UI
+```
+
+**Routing convention:** the LLM sees tool names prefixed with `tool__` (HTTP tools) or `skill__` (in-process skills). The tool-mapper strips the prefix and routes to the correct executor — deterministic from the name, no secondary registry lookup needed.
+
+**Memory seam:** `NullMemoryProvider` stub is wired in Phase 2.1. Real cross-session memory access is Phase 3.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

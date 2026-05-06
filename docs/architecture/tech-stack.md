@@ -6,7 +6,7 @@
 
 | Layer | Candidate options | Decision | ADR |
 |---|---|---|---|
-| Agent runtime language | TypeScript, Python, Rust, Go | TBD (TS leaning, given WC shell + Claude Agent SDK ergonomics) | — |
+| Agent runtime language | TypeScript, Python, Rust, Go | **TypeScript (Node.js)** — confirmed by Phase 0 build: `packages/runtime`, `packages/protocol`, `packages/sdk-ts`, `packages/web-shell`, `packages/cli`, `apps/demo-host`; Python SDK sibling in `packages/sdk-py` | [ADR-037](../decisions/decision-log.md) |
 | Foundation model provider | Anthropic (default), provider abstraction | **Anthropic** at v0, behind a thin internal interface | [ADR-007](../decisions/decision-log.md) |
 | Agent framework | Claude Agent SDK, LangGraph, bespoke | **Claude Agent SDK** at substrate; bespoke orchestrator/planner/thinker/composer on top | [ADR-007](../decisions/decision-log.md) |
 | Planner model | Sonnet, Opus, Haiku | **`claude-sonnet-4-6`** (default planner; Sonnet 4.5 was original spec, refined to current version) | derivative of [ADR-012](../decisions/decision-log.md) |
@@ -61,3 +61,5 @@
 | Tool execution (HTTP tier) | HTTP client with URL templates | **ToolExecutor**: `{param}` / `{nested.key}` URL substitution; auth (`none` / `bearer-env` / `host-supplied`); AbortController timeout; JSON+text response handling; uniform `ExecutionResult` | derivative of [ADR-021](../decisions/decision-log.md) |
 | Conversational input affordance | Button-only (composition-driven) / text input / hybrid | **Always-visible text input bar** alongside composition-driven interactive elements; both funnel through `InstructionEnvelope` over WebSocket | [ADR-039](../decisions/decision-log.md) |
 | Monorepo packages (TS) | — | `packages/runtime` · `packages/sdk-ts` · `packages/web-shell` · `packages/cli` · `apps/demo-host` · `infra/docker-compose.yml` | [ADR-037](../decisions/decision-log.md) |
+| Planner implementation (Phase 2.1) | StubPlanner / SonnetPlanner | **SonnetPlanner** (`claude-sonnet-4-6`): multi-round tool-use loop; `tool__` namespace for HTTP tools, `skill__` namespace for in-process skills; `NullMemoryProvider` seam; `StubPlanner` for tests/no-key env | [ADR-040](../decisions/decision-log.md) |
+| Planner→Composer handoff | Plan text only / plan text + tool results | **`ComposeContext.toolResults`** — planner passes accumulated tool call results to HaikuComposer; composer skips application-level cache when toolResults present (data-specific, not intent-generic) | [ADR-040](../decisions/decision-log.md) |
