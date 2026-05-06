@@ -656,3 +656,69 @@
   - **WebRTC reserved for voice (Phase 5)** when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel.
   - Native browser support for both is universal; no polyfills required.
 - **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).
+
+## ADR-039 — ModelProvider abstraction: AnthropicProvider at v0 behind thin interface; Bedrock/Vertex deferred until enterprise demand
+- **Date:** 2026-05-06
+- **Status:** accepted (refines and concretizes ADR-007)
+- **Context:** Phase 1.3 added the first real Anthropic API call (HaikuComposer). Rahul confirmed provider abstraction is the right design but the immediate need is just `ANTHROPIC_API_KEY` for dev. Need to decide whether to build the full provider-abstraction layer now or defer it.
+- **Options considered:**
+  - A. Hard-code Anthropic SDK calls throughout — fastest at Phase 1.3, painful to swap later.
+  - B. **`ModelProvider` interface + `AnthropicProvider` + `MockProvider` now; Bedrock/Vertex when first enterprise customer asks.**
+  - C. Full multi-provider abstraction immediately (Anthropic + Bedrock + Vertex + Azure configured at init).
+- **Decision:** B. `ModelProvider` interface designed and implemented in Phase 1.3 with `AnthropicProvider` (Anthropic SDK) and `MockProvider` (test doubles). The interface is the stable coupling point; adding a `BedrockProvider` or `VertexProvider` later is one new class implementation that plugs into the same interface. `ANTHROPIC_API_KEY` environment variable for development.
+- **Consequences:**
+  - Provider swap to Bedrock/Vertex/Azure is mechanical (implement one interface, no other changes).
+  - `MockProvider` enables offline development and CI without API credits.
+  - `HaikuComposer` auto-selects `AnthropicProvider` when `ANTHROPIC_API_KEY` is in the environment; falls back to `StubComposer` otherwise — so CI / offline dev boot the full loop.
+  - Dev credentials: gitignored `.env.local` for `ANTHROPIC_API_KEY`; Windows machine-env propagation caveat documented (Claude Code subprocesses inherit the env from the Claude Code process, not the live Windows machine env — workaround: `.claude/launch-runtime.mjs` wrapper reads machine env explicitly).
+  - **Open:** no `.env.local` file committed; dev must set the key before the runtime picks up `HaikuComposer`.
+- **Source:** Conversation 2026-05-06 (Rahul: "although we should be provider abstracted anyways, but for now, I can set it in environment var ANTHROPIC_API_KEY. Just did it."; Claude: "I'll keep the provider abstraction interface as a first-class layer in Phase 1.3 so swapping to Bedrock/Vertex later is mechanical.").
+
+## ADR-040 — DataSource `computed` expression DSL: keep loose at MVP; lock down when real use cases emerge
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** The `DataSource` type in `@saasagent/protocol` includes a `computed` variant whose `expression` field was deliberately vague ("could be JSONPath, JMESPath, or a tiny safe DSL"). Before wiring real transport in Phase 1.2, the question was: lock the expression language now for predictability, or leave it loose until real use cases define the need?
+- **Options considered:**
+  - A. Lock to **JSONPath** now — well-specified, broad tooling, no eval risk.
+  - B. Lock to **JMESPath** now — designed for JSON transformation, richer than JSONPath.
+  - C. Custom mini-DSL — maximum safety, high build cost.
+  - D. **Leave loose (opaque string)** until real use cases define the expression language need.
+- **Decision:** D. The `expression` field remains an opaque string at MVP. The runtime does not evaluate it; the planner or host adapter interprets it when `computed` data sources are resolved. Lock down only when the first production use case reveals which expression language is the right fit.
+- **Consequences:**
+  - No expression-evaluation subsystem needed at MVP — simplifies the runtime significantly.
+  - Schema remains forward-compatible with JSONPath, JMESPath, or a custom DSL — the format is not committed in the wire protocol.
+  - Downside: composed layouts with `computed` DataSources are non-functional until the expression runtime is added. Acceptable at MVP where all DataSources in the demo are `literal` or `host-api`.
+- **Source:** Conversation 2026-05-06 (Rahul: "1. keep the schemas loose" in response to Phase 1.2 design questions about `DataSource.computed`).
+
+## ADR-041 — Phase 2 sequence: text input affordance (2.0a) before Sonnet Planner (2.1)
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Phase 2 scope is: Planner (Sonnet) + three-tier capability invocation (Tools / Skills / Sub-Agents) + `.feature.md` consumption + memory recall. Before coding the planner, Claude ran a self-review of Phase 1.4 output — launching the live demo and examining the rendered shell. The review found a critical UX gap.
+- **Finding:** The HaikuComposer correctly judged that a welcome intent with no concrete action context warrants no interactive elements — so the welcome layout rendered with zero buttons. Since the shell had no text input field, **the user had no way to drive the conversation forward at all** — the entire loop was button-only. This gap would have made all of Phase 2.1 (planner wiring) untestable end-to-end in the browser.
+- **Decision:** Build the **text input affordance in the shell (Phase 2.0a) first**. Then Skills + Tools registries + REST (Phase 2.0b). Then SkillExecutor + ToolExecutor (Phase 2.0c). Then Sonnet Planner (Phase 2.1). The text input bar emits `{type: "user-message", payload: {text: "..."}}` `InstructionEnvelope`s over the WebSocket, which the runtime receives and routes.
+- **Consequences:**
+  - **UX gap closed:** users can always drive the conversation by typing, regardless of whether the current composed layout has interactive elements.
+  - **Planner prerequisite met:** Phase 2.1's `handleWsConnection` routing fix (extract `payload.text` from `user-message` envelopes as the real intent) is now exercisable in the browser, not just in unit tests.
+  - **Principle established:** self-review via live demo is a required gate before each Phase transition; gaps found via real rendering may reorder sub-phase sequence.
+- **Source:** Conversation 2026-05-06 (Claude self-review of Phase 1.4: "The welcome layout has zero buttons … which means the user has no way to drive the conversation forward. The whole loop is button-only — there's no text input. This is the critical UX gap"; Rahul: "continue").
+
+## ADR-042 — Phase 2.1 Sonnet Planner architecture: native Anthropic tool_use API; registered Skills + Tools become tool definitions; multi-round loop capped at 5
+- **Date:** 2026-05-06
+- **Status:** accepted (Phase 2.1 approved to begin; implementation pending)
+- **Context:** Phase 2.1 is the first "real" planner slice — inserting a planning step between the shell's `user-message` InstructionEnvelope and the HaikuComposer. The planner must route user intent, decide which Skills/Tools to invoke, execute them, and pass results to the composer. Several design choices were required.
+- **Options considered:**
+  - A. **Native Anthropic `tool_use` API** — each registered Skill + Tool becomes a tool definition; model is trained on this surface; error handling is simpler; multi-round loop is idiomatic.
+  - B. Custom JSON schema + prompt steering — more portable, less idiomatic, more brittle for multi-round chains.
+  - C. ReAct-style prompt-loop — proven but verbose; tool-use API is strictly cleaner for typed invocations.
+- **Decision:** A. Three sub-slices:
+  - **2.1a — `StubPlanner`:** a deterministic planner that fixes the routing bug (`handleWsConnection` currently passes `envelope.type` literally as the intent; `StubPlanner` extracts `payload.text` for `user-message` envelopes). Validates the WS→Planner→Composer flow with zero LLM dependency. Failsafe baseline.
+  - **2.1b — `SonnetPlanner`:** `claude-sonnet-4-6` via Anthropic SDK using native `tool_use`. Each registered Skill + Tool becomes a `Tool` definition (name, description, input JSON schema from registry). Planner runs a multi-round tool-use loop (up to 5 rounds, configurable) until the model issues no more tool calls. Failures (all rounds exhausted, API errors) emit `ErrorEnvelope` to the shell via SSE — same path as composer-error events.
+  - **2.1c — Extend `ComposeContext` with `toolResults: ExecutionResult[]`:** the planner passes results of invoked Skills/Tools to the HaikuComposer in `ComposeContext`; the composer's system prompt is updated to render fetched data into the composed layout.
+- **Consequences:**
+  - Native tool-use API gives the most reliable multi-round capability invocation on Sonnet 4.6 — the model is specifically trained to use this surface correctly.
+  - `StubPlanner` enables full end-to-end browser testing before Anthropic credits are needed.
+  - One-line swap in the `Runtime` constructor to switch `StubPlanner` → `SonnetPlanner`.
+  - 5-round cap prevents runaway invocation chains; cap is configurable per enterprise policy.
+  - `ErrorEnvelope` on planner failure is consistent with the Phase 1.3.1 composer-error pattern — shell renders an inline error banner, clears on next success.
+  - `toolResults` in `ComposeContext` closes the data-flow gap: without this, the planner runs but the composer doesn't see what it retrieved.
+- **Source:** Conversation 2026-05-06 (proposed Phase 2.1 architecture; Rahul: "yes start phase 2").

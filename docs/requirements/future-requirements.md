@@ -52,3 +52,18 @@ Each entry:
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
+
+### [2026-05-06] DataSource `computed` expression runtime — JSONPath / JMESPath / safe DSL
+**Source:** Phase 1.2 design discussion: "DataSource.computed takes an 'expression' string — deliberately vague at MVP; could be JSONPath, JMESPath, or a tiny safe DSL. Want me to lock it down at slice 1.2, or leave loose until we see real use cases?" Rahul: "keep the schemas loose."
+**Category:** capability
+**Notes:** The `computed` DataSource variant is defined in the protocol but its `expression` field is an opaque string at MVP — no evaluation engine exists yet. When real `.feature.md` use cases arrive that need computed data wiring (e.g., derived values from host-api responses), this expression runtime should be added. JSONPath is the leading candidate (well-specified, safe, broad tooling). Evaluate actual use cases first before committing — the schema is intentionally forward-compatible.
+
+### [2026-05-06] Planner multi-round tool-use cap — configurable per enterprise policy
+**Source:** Phase 2.1 design (ADR-042): "Multi-round tool-use loop, capped at 5 rounds (configurable). Sonnet can chain skill→tool→skill if it needs to." Rahul: "yes start phase 2."
+**Category:** capability
+**Notes:** The Phase 2.1 SonnetPlanner caps multi-round invocation at 5 rounds. Future: expose this as a configurable parameter per enterprise or per Feature/Service doc — some workflows (travel booking with 3+ API calls) may need higher limits; some security-sensitive deployments may want lower limits. Also: track tool-use round depth in ClickHouse eval telemetry to tune the default over time.
+
+### [2026-05-06] Go SDK for Sub-Agent development (v1, deferred from ADR-027)
+**Source:** ADR-027: "TypeScript + Python at MVP. Go added at v1 if enterprise demand emerges." Confirmed in conversation 2026-05-04.
+**Category:** integration
+**Notes:** Enterprise Go backend teams are a realistic sub-agent-authoring population (especially for ML infrastructure and data services). The Sub-Agent SDK contract (registration, federation protocol, health, retries, observability hooks) must be designed so a Go implementation is purely additive — same proto definitions, same registry schema, same federation protocol.

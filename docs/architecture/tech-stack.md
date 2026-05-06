@@ -6,7 +6,7 @@
 
 | Layer | Candidate options | Decision | ADR |
 |---|---|---|---|
-| Agent runtime language | TypeScript, Python, Rust, Go | TBD (TS leaning, given WC shell + Claude Agent SDK ergonomics) | — |
+| Agent runtime language | TypeScript, Python, Rust, Go | **TypeScript** (confirmed: pnpm + Turborepo monorepo, all platform packages in TS; Python SDK in `packages/sdk-py` as planned sibling) | [ADR-037](../decisions/decision-log.md) |
 | Foundation model provider | Anthropic (default), provider abstraction | **Anthropic** at v0, behind a thin internal interface | [ADR-007](../decisions/decision-log.md) |
 | Agent framework | Claude Agent SDK, LangGraph, bespoke | **Claude Agent SDK** at substrate; bespoke orchestrator/planner/thinker/composer on top | [ADR-007](../decisions/decision-log.md) |
 | Planner model | Sonnet, Opus, Haiku | **`claude-sonnet-4-6`** (default planner; Sonnet 4.5 was original spec, refined to current version) | derivative of [ADR-012](../decisions/decision-log.md) |
@@ -57,3 +57,8 @@
 | Monorepo tooling | pnpm WS / Yarn WS / Nx / Turborepo / Bun WS | **pnpm workspaces + Turborepo** (TS); Python SDK in `packages/sdk-py` with uv or poetry | [ADR-037](../decisions/decision-log.md) |
 | Build team | Rahul-only / Rahul+Claude / external hires | **Rahul + Claude only** (no external hires for MVP) | [ADR-036](../decisions/decision-log.md) |
 | CI/CD | GitHub Actions (default for our build) | GitHub Actions | — |
+| Provider abstraction | Hard-coded Anthropic / thin interface / full multi-provider | **`ModelProvider` interface + `AnthropicProvider` (Anthropic SDK) + `MockProvider` (test doubles); Bedrock/Vertex/Azure deferred until first enterprise customer asks** | [ADR-039](../decisions/decision-log.md) |
+| Planner architecture (Phase 2.1) | Custom JSON prompt-loop / ReAct / native tool_use | **Native Anthropic `tool_use` API — registered Skills + Tools become tool definitions; `StubPlanner` (2.1a) → `SonnetPlanner` with `claude-sonnet-4-6` (2.1b); multi-round loop capped at 5; failures emit `ErrorEnvelope`** | [ADR-042](../decisions/decision-log.md) |
+| SkillExecutor auth modes | none / api-key / bearer | **`none` / `bearer-env` (reads from env) / `host-supplied` (caller passes token)** | Phase 2.0c implementation |
+| ToolExecutor URL substitution | Path-only / query / full template | **`{paramName}` and `{nested.key}` template substitution in URL path + query string; AbortController timeout; DI-able `fetch` and `env` for testing** | Phase 2.0c implementation |
+| DataSource `computed` expression DSL | JSONPath / JMESPath / custom DSL / loose | **Opaque string at MVP — not evaluated by runtime; locked down when first real use case defines the need** | [ADR-040](../decisions/decision-log.md) |
