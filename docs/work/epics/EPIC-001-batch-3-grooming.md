@@ -2,7 +2,7 @@
 
 - **Status:** done
 - **Created:** 2026-04-28
-- **Last updated:** 2026-05-06
+- **Last updated:** 2026-05-07
 - **Parent initiative:** [INIT-001 — Groom platform vision and requirements](../initiatives/INIT-001-groom-vision-and-requirements.md)
 
 ## Outcome
