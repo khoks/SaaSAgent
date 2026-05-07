@@ -67,3 +67,43 @@ Each entry:
 **Source:** ADR-027: "TypeScript + Python at MVP. Go added at v1 if enterprise demand emerges." Confirmed in conversation 2026-05-04.
 **Category:** integration
 **Notes:** Enterprise Go backend teams are a realistic sub-agent-authoring population (especially for ML infrastructure and data services). The Sub-Agent SDK contract (registration, federation protocol, health, retries, observability hooks) must be designed so a Go implementation is purely additive — same proto definitions, same registry schema, same federation protocol.
+
+### [2026-05-06] Sub-Agent SDK full implementation — domain-team scaffolding CLI
+**Source:** Conversation 2026-05-06 gap audit: "`packages/sdk-ts` has 1 file with 2 stub tests. ADR-021 promised an SDK that lets domain teams scaffold a sub-agent runtime in one command. Not built."
+**Category:** capability
+**Notes:** The `packages/sdk-ts` package exists as a stub. Full implementation requires: (a) `npx @saasagent/sdk init <name>` to scaffold a new sub-agent runtime from boilerplate, (b) SDK wrappers for registering capability descriptors, (c) SDK helpers for federation protocol (self-registration on startup, heartbeat, graceful deregistration), (d) typed handler registration surface. This is the primary DX surface for domain-team-owned sub-agent development and is critical to proving the federated architecture at scale. Related: ADR-021, ADR-027, ADR-029.
+
+### [2026-05-06] Scaffolding CLI (`npx saasagent init`) — host integration bootstrapper
+**Source:** Conversation 2026-05-06 gap audit: "`packages/cli/src/index.ts` is empty. Should be `npx saasagent init` to bootstrap a host integration (registers components, themes, tools)."
+**Category:** capability
+**Notes:** The `packages/cli` package is empty. The CLI should give a new host enterprise a fast path to onboarding: `npx saasagent init` outputs a starter host-integration scaffold (WC embed snippet, sample component registry seed, theme DTCG template, `docker-compose.yml` with all 5 stores, `.env.example`). Without this, each new host must manually assemble the integration. Priority: v1 (required for design-partner onboarding).
+
+### [2026-05-06] Additional render modes — full-page, drawer, eject (beyond side-panel)
+**Source:** Conversation 2026-05-06 gap audit: "Only `side-panel` works. `full-page`, `drawer`, `eject` declared in `RenderMode` type but no rendering logic."
+**Category:** feature
+**Notes:** The `RenderMode` type in the protocol includes `full-page`, `drawer`, and `eject` (agent "ejects" from its panel and takes over the full viewport). At MVP only `side-panel` has rendering logic. `full-page` and `drawer` are needed for mobile-native workflows and progressive-disclosure patterns (the ADR-034 "wow" target may require full-page mode for multi-step flows). `eject` is the most novel and the one most aligned with ADR-034's "host UI becomes admin/legacy" positioning — related to ADR-004.
+
+### [2026-05-06] Mobile-context auto-population in WC shell
+**Source:** Conversation 2026-05-06 gap audit: "`MobileContext` typed in protocol (deviceClass / viewportWidth / inputMode / networkClass). Composer reads it. Nothing populates it — the shell never measures the device or fills it in."
+**Category:** capability
+**Notes:** `MobileContext` is fully typed in `@saasagent/protocol` and the HaikuComposer is wired to read it. But the WC shell never calls `navigator.userAgent`, `window.innerWidth`, or `navigator.connection` to populate the context object. Until this is implemented, the composer composes without device awareness — layouts are not adapted for mobile viewports or reduced-bandwidth modes. Related to ADR-017 (WebView bridge + mobile-context-aware composition).
+
+### [2026-05-06] Demo verticals with seeded data — e-commerce and travel showcase apps
+**Source:** Conversation 2026-05-06 gap audit: "`apps/` has only `demo-host` (a generic shell demo). The vision spec called out e-commerce + travel demo verticals end-to-end with seeded products / flights / etc. Not built."
+**Category:** feature
+**Notes:** The current `apps/demo-host` is a generic one-page demo. ADR-033 requires two full demo verticals: (1) **E-commerce** (Walmart/Best-Buy archetype): seeded product catalog, `ProductTile`, `ComparisonGrid`, `CartButton` primitives, `find-similar-product.feature.md` workflow, cart-abandonment proactive trigger; (2) **Travel** (Expedia/Booking archetype): seeded flight/hotel data, `FlightCard`, `ItineraryTimeline`, `DateRangePicker` primitives, `plan-multi-city-trip.feature.md` workflow. Without these, the MVP demo cannot prove vertical-agnosticism or hit the ADR-034 "wow" bar. Priority: required for design-partner conversations.
+
+### [2026-05-06] gRPC bidirectional streaming for sub-agent runtime invocation (ADR-028 fulfillment)
+**Source:** Conversation 2026-05-06 gap audit + ADR-028: "HTTP REST for admin + gRPC bidirectional streaming for runtime." Current implementation uses HTTP POST on `/federate`.
+**Category:** capability
+**Notes:** ADR-028 specifies gRPC bidirectional streaming for the planner ↔ sub-agent runtime channel (planner sends task; sub-agent streams progress + intermediate results back). The Phase 2.4.x `/federate` endpoint is HTTP POST (single request/response). gRPC gives: typed contracts (proto files enforce SDK contracts across TS + Python), bidirectional streaming for live sub-agent progress events, HTTP/2 multiplexing. HTTP POST `/federate` is an acceptable MVP shortcut; gRPC is the v1 upgrade path. Proto files should be designed now so the TS + Python SDKs share the schema.
+
+### [2026-05-06] Python Sub-Agent SDK (`packages/sdk-py`)
+**Source:** ADR-027: "TypeScript + Python at MVP." Conversation 2026-05-06 gap audit: Python SDK not built. `packages/sdk-py` referenced in tech-stack.md but does not exist yet.
+**Category:** integration
+**Notes:** Python is the primary language for ML infrastructure and data-service domain teams — the most likely sub-agent authors in large enterprises. Without a Python SDK, domain ML/data teams cannot author sub-agents without bridging to TypeScript. Required for ADR-027 compliance. Package layout: `packages/sdk-py/` with uv or poetry, mirroring the TS SDK's registration + federation + health surfaces. Same proto definitions as the TS SDK; code-gen from shared proto files.
+
+### [2026-05-06] LightGBM churn model training pipeline and integration (v1, ADR-031 target)
+**Source:** ADR-031: "LightGBM bundled default + pluggable adapter." ADR-046: "`WeightedFeatureChurnCalculator` (sigmoid linear model) as MVP stepping stone; LightGBM at v1." Conversation 2026-05-06.
+**Category:** capability
+**Notes:** The Phase 2.6.x `WeightedFeatureChurnCalculator` is a parameterized linear model with hand-tuned default weights. LightGBM is the v1 upgrade — requires: (a) a training pipeline that consumes accumulated EvalSignals from ClickHouse, (b) LightGBM model training + serialization, (c) SHAP explainability (ADR-031), (d) plugging the trained model into the `ChurnCalculator` interface as `LightGBMChurnCalculator`. Cold-start strategy: generic-prior model (ADR-031) until ~1k real churn events are available. The `ChurnCalculator` pluggable interface is already in place — this is a pure implementation addition.

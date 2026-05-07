@@ -28,4 +28,16 @@
 - How do we prevent a runaway proactive engine from blowing the cost budget?
 - Per-tenant cost caps + circuit breakers — design needed.
 
-> Empty until grooming begins. The `extract-insights` skill appends entries as conversations surface them.
+## Implemented optimizations (Phase 1.3, 2026-05-06)
+
+### Anthropic prompt caching on stable HaikuComposer system blocks
+- **What:** The `HaikuComposer` places `cache_control: {type: "ephemeral"}` on the stable prefix of its system message (`SystemBlock[]` — the layout schema, registry vocabulary, theme block). These blocks don't change between turns, so Anthropic caches the KV state for ~5 minutes; subsequent calls within the window skip re-computing the prompt prefix.
+- **Impact:** Reduces per-turn input token cost for composition calls (the stable prefix is typically 500–1500 tokens depending on registry size and theme block). The dynamic suffix (conversation context, `toolResults`, feature hints) is always fresh. Particularly valuable for high-frequency sessions where the same registry is queried repeatedly.
+- **Constraint:** Cache control is rendered in `tools → system → messages` order on the Anthropic API; the stable prefix must be placed first in the system array for the cache hit to be effective.
+- **Source:** Phase 1.3 implementation, conversation 2026-05-06.
+
+### CompositionCache — intent-keyed layout reuse before LLM call
+- **What:** `CompositionCache` is an in-memory map from `canonicalIntent → ComposedLayout`. Before invoking Haiku, the composer hashes the intent string to a canonical form and checks the cache. On a hit, it returns the cached layout (with a fresh `composeCycleId`) without making an Anthropic API call.
+- **Impact:** Zero LLM cost for recurring intents (e.g., repeated "show product comparison" requests in a session). Cache is per-runtime-instance and cleared on restart; no cross-session persistence in Phase 1.3.
+- **Trade-off:** Cached layouts are stale if the component registry or theme changes between calls. Cache is invalidated on any registry PUT. `toolResults` in `ComposeContext` always bypass the cache (fetched data is session-specific and must be composed fresh).
+- **Source:** Phase 1.3 implementation, conversation 2026-05-06 ("Canonical-intent cache lookup → return with fresh composeCycleId on hit").
