@@ -58,7 +58,37 @@ Each entry:
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
 
-### [2026-05-08] Voice I/O channel via WebRTC (Phase 5)
-**Source:** ADR-038 (conversation 2026-05-08): "WebRTC reserved for voice in Phase 5 when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel."
+### [2026-05-07] Native iOS/Android SDKs (v1.5)
+**Source:** ADR-017 consequences: "v1.5: native SDKs (iOS / Android) for hosts who need full native UX."
 **Category:** capability
-**Notes:** The real-time transport design (ADR-038) reserves WebRTC as a dedicated third channel for Phase 5 voice features. SSE (planner output) and WebSocket (typed instruction emit) are insufficient for the latency/codec requirements of voice. Phase 5 brings: microphone capture in the WC shell, server-side WebRTC peer-connection endpoint, TTS narration output stream, and integration with the existing composited UI surface. Requires voice-aware planner mode and narration-aware UI composer.
+**Notes:** MVP uses WebView bridge + thin native shim (ADR-017). At v1.5, ship first-party native SDKs (iOS Swift + Android Kotlin) for hosts that require full native rendering performance, deep system integration (biometrics, push, camera), or app-store guidelines that restrict WebView usage.
+
+### [2026-05-07] Go Sub-Agent SDK (v1)
+**Source:** ADR-027: "Go added at v1 if enterprise demand emerges."
+**Category:** capability / integration
+**Notes:** MVP SDK covers TypeScript + Python (the two most common domain-team languages). Go is next-highest for backend-heavy enterprises. Shares the same gRPC proto definitions and federation protocol — SDK is a language binding, not a new protocol.
+
+### [2026-05-07] Observability exporters for existing ops stacks (v1)
+**Source:** ADR-030: "optional exporters at v1 to host's existing observability (Grafana, Datadog, Honeycomb)."
+**Category:** integration
+**Notes:** MVP ships a bundled eval SPA for quality visibility. At v1 add push exporters so eval signal + agent telemetry flows into the host's existing dashboards (Grafana, Datadog, Honeycomb). Hosts who have standardized observability do not want a second dashboard for agent-specific data.
+
+### [2026-05-07] Voice interface via WebRTC (Phase 5)
+**Source:** ADR-038: "WebRTC reserved for voice (Phase 5) when microphone capture and TTS narration land."
+**Category:** capability
+**Notes:** Current transport stack is SSE (planner→shell) + WebSocket (bidirectional instruction). Voice requires a third channel with different latency / codec characteristics. Phase 5 adds microphone capture, server-side ASR, TTS narration, and WebRTC as the voice-data transport. Multi-modal completion of the I/O surface (text + DOM + voice).
+
+### [2026-05-07] Figma Tokens import for design-system registration
+**Source:** ADR-025: "Future: Figma Tokens import."
+**Category:** capability / integration
+**Notes:** MVP design-system registration supports W3C DTCG canonical schema, Style Dictionary importer, and CSS variable fallback (ADR-025). Figma Tokens (exported from Figma Variables / design token plugins) is the highest-friction missing path — most design teams author tokens in Figma, not in code. Adding a Figma Tokens importer closes the onboarding gap for design-led teams.
+
+### [2026-05-07] WASM sandbox for adapter-supplied skill code (v1)
+**Source:** ADR-021 consequences: "Skills isolation — WASM at v1 for adapter-supplied skill code."
+**Category:** capability / security
+**Notes:** MVP runs skill handlers in-process (with process-level isolation as the safety boundary). For skills authored by enterprise adapter teams — not the platform's own code — WASM sandboxing at v1 provides a stronger isolation guarantee without requiring a separate process per skill. Prevents runaway adapter skills from affecting platform stability.
+
+### [2026-05-07] Public OSS release after provisional patent filing
+**Source:** ADR-035: "Process: file provisional patents when each component reaches working-prototype state … Then make repo public + publish under Apache 2.0."
+**Category:** other
+**Notes:** The repo is private until provisional applications are filed for the patentability-strong novel entries (ADR-005 UI composition, ADR-016 closed-loop VoC + churn, ADR-021 federated sub-agents, ADR-023 auto-eval). Public OSS release + Apache 2.0 is a Phase 9 (release) gate, not Phase 0–8. Budget ~$2–5k per filing via patent counsel.
