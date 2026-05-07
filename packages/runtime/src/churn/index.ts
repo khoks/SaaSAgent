@@ -17,3 +17,9 @@ export {
   type ChurnWeights,
   type FeatureVector,
 } from './weighted-feature.js';
+export {
+  trainChurnWeights,
+  type LabeledSample,
+  type TrainOptions,
+  type TrainResult,
+} from './training.js';

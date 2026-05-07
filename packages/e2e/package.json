@@ -1,0 +1,21 @@
+{
+  "name": "@saasagent/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "End-to-end browser tests for the SaaSAgent demo apps (Playwright)",
+  "type": "module",
+  "scripts": {
+    "test": "echo 'e2e tests are gated behind test:browser (requires running runtime + browser install)'",
+    "test:browser": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "lint": "echo 'lint TODO'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf test-results playwright-report .playwright"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "typescript": "^5.6.3",
+    "@types/node": "^22.9.0"
+  }
+}

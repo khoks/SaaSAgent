@@ -156,6 +156,59 @@ export {
   SKILL_PREFIX,
   TOOL_PREFIX,
 } from './planner/index.js';
+export {
+  trainChurnWeights,
+  type LabeledSample,
+  type TrainOptions,
+  type TrainResult,
+} from './churn/index.js';
+export {
+  NoAuthProvider,
+  BearerTokenAuthProvider,
+  JWTAuthProvider,
+  parseBearer,
+  constantTimeEq,
+  type AuthProvider,
+  type AuthInput,
+  type AuthResult,
+  type AuthPrincipal,
+  type BearerTokenAuthProviderOptions,
+  type JWTAuthProviderOptions,
+  type JWTAlgorithm,
+} from './auth/index.js';
+export {
+  NoopTelemetry,
+  ConsoleTelemetry,
+  OpenTelemetryAdapter,
+  type Telemetry,
+  type LogLevel,
+  type LogContext,
+  type SpanAttrs,
+  type ConsoleTelemetryOptions,
+  type OpenTelemetryAdapterOptions,
+  type OtelTracer,
+  type OtelMeter,
+  type OtelLogger,
+} from './telemetry/index.js';
+export {
+  DEFAULT_TENANT,
+  tenantScopedSessionId,
+  parseScopedSessionId,
+  MultiTenantSkillRegistry,
+  MultiTenantToolRegistry,
+  MultiTenantFeatureRegistry,
+  MultiTenantSubAgentRegistry,
+} from './tenancy/index.js';
+export {
+  NoopMeteringProvider,
+  ConsoleMeteringProvider,
+  UsageMeteringProvider,
+  type MeteringProvider,
+  type MeteringEvent,
+  type MeteringEventKind,
+  type UsageMeteringProviderOptions,
+  type UsageRollup,
+} from './metering/index.js';
 
 export interface RuntimeConfig {
   /** HTTP server port (default 8080). */

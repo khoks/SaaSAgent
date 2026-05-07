@@ -1,0 +1,133 @@
+build(phase-6): Bucket C — auth + telemetry + multi-tenant + ML training + ADRs + E2E + metering
+
+Production-readiness pass. Closes the major remaining gaps from the original
+product vision against ADR-001 through ADR-010 + adds the ML training loop,
+end-to-end test harness, and usage metering hooks needed for the open-core
+hybrid pricing model (ADR-020).
+
+Bucket C.1 — Pluggable AuthProvider (ADR-010)
+
+  - AuthProvider interface (packages/runtime/src/auth/types.ts) with
+    AuthInput { authorization, queryToken, remoteAddress } -> AuthResult
+    { ok, principal | reason }. Principal carries id, tenantId, claims.
+  - NoAuthProvider — accept-everything default for tests / dev.
+  - BearerTokenAuthProvider — constant-time shared-secret check; matches
+    Phase 2.7 inline behavior but composable with multi-gate.
+  - JWTAuthProvider — HS256 + RS256 verification via node:crypto (no
+    jsonwebtoken dep). Validates exp/nbf with 30s clock skew, optional
+    aud/iss enforcement; extracts sub/tenant -> AuthPrincipal.
+  - 19 tests cover all three providers + every reject path (missing,
+    expired, audience-mismatch, issuer-mismatch, alg-mismatch, malformed,
+    bad-signature with different keys for both HS256 + RS256).
+
+Bucket C.2 — Telemetry abstraction
+
+  - Telemetry interface (log + metric + span) with three implementations:
+      NoopTelemetry        - drops everything.
+      ConsoleTelemetry     - human or JSON-line format, level-filtered.
+      OpenTelemetryAdapter - bridges to host-supplied { tracer, meter, logger }.
+  - Histogram-shaped metrics (names ending _ms / _bytes / _count) auto-route
+    to createHistogram; everything else to createCounter.
+  - span() wraps async operations with timing + error attribution; OK status
+    on success, ERROR + recordException on throw, span.end() always called.
+  - 13 tests cover format/level filtering, span timing on success + error,
+    OTel adapter relays + fallback-to-console, histogram/counter routing.
+
+Bucket C.3 — Multi-tenant isolation
+
+  - DEFAULT_TENANT + tenantScopedSessionId/parseScopedSessionId helpers.
+  - MultiTenantSkillRegistry / Tool / Feature / SubAgent — each owns a
+    Map<tenantId, InMemoryXRegistry> with .forTenant(tid), .listTenants(),
+    .removeTenant(tid), .totals(). Routes missing tenantId to DEFAULT_TENANT.
+  - The auth principal's tenantId (from JWT or BearerTokenAuthProvider's
+    principal config) is the discriminator — single seam from auth to
+    registry scoping.
+  - 12 tests verify isolation, default-tenant fallback, listing, removal,
+    aggregated totals.
+
+Bucket C.4 — ML churn training (logistic regression)
+
+  - trainChurnWeights(samples, opts) - pure-numeric SGD on logistic loss
+    with L2 regularization. No ML library dep.
+  - Options: epochs (200), learningRate (0.1), l2 (1e-3), initialWeights
+    (warm-start from DEFAULT_WEIGHTS), onEpoch callback (loss curve).
+  - Mulberry32 PRNG for deterministic shuffling — same seed -> identical
+    weights, useful for reproducible CI runs.
+  - Returns TrainResult { weights, finalLoss, history, samples,
+    trainAccuracy }; weights drop directly into a new
+    WeightedFeatureChurnCalculator instance.
+  - 8 tests cover separable-data convergence (>95% accuracy), correct
+    coefficient signs, monotonic loss descent, callback firing,
+    determinism, warm-start, no-data-error.
+
+Bucket C.5 — ADR docs
+
+  - 10 versioned markdown ADRs at docs/architecture/adr/:
+      001 — Self-hosted data plane
+      002 — Bidirectional typed-JSON protocol (SSE + WebSocket)
+      003 — Three-tier capability model (Skills, Tools, Sub-Agents)
+      004 — Render modes
+      005 — Haiku composer with Sonnet fallback
+      006 — Provider abstraction (ModelProvider)
+      007 — Polyglot memory (Postgres + Qdrant + ClickHouse + Kafka + Neo4j)
+      008 — Closed-loop eval signals + churn risk derivation
+      009 — DOM observation for ambient awareness
+      010 — Auth strategy: pluggable provider, Bearer + JWT defaults
+  - README index lists all ten with status. Each ADR follows the
+    Context / Decision / Consequences / Implementation template.
+
+Bucket C.6 — Playwright E2E harness
+
+  - New @saasagent/e2e package with playwright.config.ts pointing at
+    demo-ecommerce on :5174. webServer auto-spawn for local dev.
+  - 5 E2E tests in tests/demo-ecommerce.spec.ts:
+      catalog renders 6 products + agent shell mounts
+      Add to cart updates the visible cart UI
+      Add to cart dispatches saasagent:event semantic envelope
+      Multi-product totalItems + totalUSD propagate
+      cart-summary region carries data-saas-agent-observe attribute
+  - test script is a no-op (echo) so `pnpm -r test` doesn't fail without
+    browsers installed; `pnpm --filter @saasagent/e2e test:browser` runs
+    the real Playwright suite.
+
+Bucket C.7 — MeteringProvider for open-core pricing (ADR-020)
+
+  - MeteringProvider { record(event), flush?() } with three impls:
+      NoopMeteringProvider     - drop everything; default.
+      ConsoleMeteringProvider  - one JSON line per event (debug).
+      UsageMeteringProvider    - in-memory rollups by (kind, tenantId, tags)
+                                 with snapshot/reset + maxBuckets eviction.
+  - Canonical MeteringEventKind: plan_invocation, compose_invocation,
+    model_tokens, subagent_invocation, feature_used.
+  - record() is fire-and-forget (must NOT throw); flush() drains buffers
+    on graceful shutdown.
+  - 9 tests cover noop drop, console JSON lines, rollup grouping, quantity
+    summation, separate buckets per tag combo, first/last timestamps,
+    reset(), maxBuckets FIFO eviction, immutable snapshots.
+
+Runtime barrel (packages/runtime/src/index.ts)
+- Re-exports auth, telemetry, tenancy, training, metering primitives so
+  hosts wire up via clean imports from @saasagent/runtime.
+
+Tests: 529 across 9 packages (was 468 after Bucket B):
+  protocol      7    (unchanged)
+  sdk-ts        5    (unchanged)
+  cli          11    (unchanged)
+  runtime     443    (was 382; +61: 19 auth + 13 telemetry + 12 tenancy
+                       + 8 training + 9 metering)
+  web-shell    63    (unchanged)
+  demo-host     0
+  demo-ecomm    0
+  demo-travel   0
+  e2e           5    (5 Playwright tests, gated behind test:browser)
+
+Build green across all 10 packages (8 with vitest tests + 1 e2e + 3 demo apps).
+
+Outstanding from the original vision (now genuinely small):
+  - Production observability deployment patterns (we ship the abstraction;
+    the host wires their OTel SDK). Done at the substrate level.
+  - Open-core paid-feature gating (we ship metering hooks; pricing logic
+    is a host concern).
+  - Provisional patents (ADR-035, process not code).
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
