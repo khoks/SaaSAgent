@@ -153,11 +153,73 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
-### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
+### Closed in Batch 6 (2026-05-06 — implementation phase, Phase 2–5)
+- ✅ Real-time transport — SSE (planner→shell) + WebSocket (bidirectional interaction) [ADR-038]
+- ✅ Text input affordance — shell ships `InputBar` as first-class input surface [ADR-039]
+- ✅ Eval-feedback WS intercept — `eval-feedback` envelopes bypass planner, route directly to EvalProvider [ADR-040]
+- ✅ Implicit re-ask eval signal — user message within N seconds of last layout broadcast → `negative/user-implicit` [ADR-041]
+- ✅ Symmetric bidirectional federation — every runtime exposes `/federate` endpoint; any runtime can be sub-agent of another [ADR-042]
+- ✅ WeightedFeatureChurnCalculator as MVP churn placeholder — parameterized linear model + sigmoid; defers full LightGBM to v1 [ADR-043]
+
+### Still open (Batch 7 — remaining MVP + v1 scope)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-3. **Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
-4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+3. **Adapters registry transport** — how host event bus → platform Redpanda topic.
+4. **Proactive engine** — multi-signal scoring + attention budget (ADR-018 decided, not yet built).
+5. **Voice / multimodal I/O** — WebRTC Phase 5 (post-MVP).
+6. **Full LightGBM churn model** — WeightedFeatureChurnCalculator is the MVP placeholder; real ADR-031 LightGBM model deferred to v1.
+7. **VoC dashboard** — embedded SPA (ADR-030 decided, not yet built).
+8. **Multi-framework WC rendering** — React + vanilla WC MVP shell renders plain DOM today; ADR-010/015 rendering adapter to be built.
+
+## Implemented package structure (Phase 2–5)
+
+The monorepo currently ships 8 packages under `packages/`:
+
+| Package | Role |
+|---|---|
+| `protocol` | Shared TypeScript types (envelopes, descriptors, providers) |
+| `runtime` | Core runtime: RuntimeServer, Planner, Composer, registries, memory, eval, churn |
+| `web-shell` | Web Component shell: InputBar, FeedbackBar, render-modes, DOM observer, mobile-context |
+| `sdk-ts` | TypeScript Sub-Agent SDK (`defineSubAgent()`) |
+| `cli` | CLI: `saasagent` command — start, register, generate |
+| `demo-ecommerce` | E-commerce demo vertical (Walmart/Best-Buy archetype) |
+| `demo-travel` | Travel demo vertical (Expedia/Booking archetype) |
+| `demo-host` | Dev host server for local development and demos |
+
+## SonnetPlanner tool-mapper prefix scheme
+
+The planner dispatches to the 3-tier capability model via namespaced prefixes:
+
+| Prefix | Tier | Example |
+|---|---|---|
+| `skill__` | In-process skill handler | `skill__format-price` |
+| `tool__` | HTTP tool (stateless API call) | `tool__fetch-product-info` |
+| `subagent__` | Federated external runtime | `subagent__weather-specialist` |
+
+## DOM observation implementation (ADR-022)
+
+`dom-observer.ts` wires both `MutationObserver` and `IntersectionObserver`. Observed events are **ring-buffered per WS connection** (not forwarded live to the planner) to prevent flooding. Host-emitted semantic events use the `saasagent:event` custom event name on the host page. The runtime intercepts `dom-mutation`, `dom-intersection`, and `dom-semantic` envelope types and stores them in the ring buffer; the planner may query the buffer but is not interrupted per event.
+
+## WC render modes (ADR-004)
+
+Four modes implemented in `render-modes.ts`:
+
+| Mode | Behaviour |
+|---|---|
+| `side-panel` | Default — fixed panel on page edge |
+| `full-page` | Expands to fill viewport |
+| `drawer` | Fixed bottom overlay |
+| `eject` | Opens in a new `window.open` popup |
+
+## Mobile context detection (ADR-017)
+
+`mobile-context.ts` classifies on connect and on resize:
+- `deviceClass`: `mobile` | `tablet` | `desktop`
+- `viewportWidth`: current px
+- `inputMode`: `touch` | `pointer`
+- `networkClass`: `slow-2g` | `2g` | `3g` | `4g` | `unknown`
+
+Threaded into `ComposeContext.mobileContext` so the composer can adapt layout density, component selection, and text length.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

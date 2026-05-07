@@ -57,3 +57,10 @@
 | Monorepo tooling | pnpm WS / Yarn WS / Nx / Turborepo / Bun WS | **pnpm workspaces + Turborepo** (TS); Python SDK in `packages/sdk-py` with uv or poetry | [ADR-037](../decisions/decision-log.md) |
 | Build team | Rahul-only / Rahul+Claude / external hires | **Rahul + Claude only** (no external hires for MVP) | [ADR-036](../decisions/decision-log.md) |
 | CI/CD | GitHub Actions (default for our build) | GitHub Actions | — |
+| Shell text input affordance | Button-only / text input + buttons | **`InputBar` web component — text input as first-class, alongside action buttons** | [ADR-039](../decisions/decision-log.md) |
+| Eval WS routing | Route through planner / bypass planner | **`eval-feedback` envelopes intercepted at WS layer; route directly to EvalProvider (bypass planner)** | [ADR-040](../decisions/decision-log.md) |
+| Implicit eval signal | Explicit only / behavioral inference | **Re-ask within N seconds of last layout broadcast → `negative/user-implicit` EvalSignal** | [ADR-041](../decisions/decision-log.md) |
+| Federation topology | Directional (parent→sub-agent) / symmetric | **Symmetric — every runtime exposes `/federate`; any runtime can be both parent and sub-agent** | [ADR-042](../decisions/decision-log.md) |
+| MVP churn model | Full LightGBM / linear placeholder | **WeightedFeatureChurnCalculator — parameterized linear weighted sum + sigmoid; LightGBM deferred to v1** | [ADR-043](../decisions/decision-log.md) |
+| Rate limiting algorithm | Fixed window / token-bucket / leaky bucket | **Token-bucket** (configurable window + burst) | [ADR-042](../decisions/decision-log.md) |
+| Bearer auth WS transport | Header only / header + query string | **`Authorization: Bearer <token>` header OR `?token=<token>` query string (WS URL-based fallback)** | [ADR-039](../decisions/decision-log.md) |

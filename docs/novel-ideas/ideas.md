@@ -168,3 +168,30 @@
 - **Novelty signal:** medium-high — the "no compilation, soft prompts, planner-deviation-allowed" stance is a distinctive AI-native design choice.
 - **Patentability hint:** possible — method claim around: a registry of host-authored workflow docs in NL+structured-hint form, consumed directly by an LLM planner as context, with deviation policy gated by runtime preconditions and registry-validated typed-hints.
 - **Open questions:** Deviation gating heuristics? Versioning of docs across registry releases? Caching strategy for prompt-cache-hit on stable docs?
+
+### [2026-05-06] Symmetric peer-to-peer multi-hop agent federation mesh
+- **Originator:** Claude (accepted by Rahul in Phase 2.4.x)
+- **Source:** Conversation 2026-05-06 — "adding `/federate` endpoint to RuntimeServer so any runtime can serve as a sub-agent of another runtime — symmetric federation"; live-verified two independent runtimes (8080 + 8081) forming a parent→child→tool chain.
+- **Description:** Instead of a designated "sub-agent" runtime type, every runtime instance exposes a `/federate` endpoint. Any runtime can receive a federation request and act as a child planner — running its own tool invocations, returning structured results. The same runtime that serves as a parent orchestrator on one port can simultaneously serve as a sub-agent to a different parent on another port. This enables multi-hop delegation chains (A→B→C where each is a full runtime), peer-to-peer topologies, and recursive agent nesting without specialized binary roles. In production this supports patterns like: domain-team sub-agent that itself delegates to more specialized sub-sub-agents, with no code distinction between levels.
+- **Prior-art assessment:**
+  - **LangGraph / AutoGen** multi-agent systems are typically single-process with routers — not federated over the network.
+  - **Anthropic MCP** provides tool/resource discovery but does not frame participating nodes as full planners that can themselves delegate.
+  - **Microservice federation** (GraphQL Federation, gRPC service mesh) federates data/APIs, not agent planning loops.
+  - **ADR-021 sub-agent model** defines federation as directional (platform parent → domain team child). The symmetric `/federate` extension makes this bidirectional and recursive.
+  - Peer-to-peer network-federated LLM planning loops where every node is both a potential orchestrator and a potential child — and can form multi-hop chains at runtime — appears uncommon as a packaged primitive.
+- **Novelty signal:** high.
+- **Patentability hint:** possible — system claim covering: (1) a runtime instance that simultaneously exposes both an orchestration (outbound delegation) interface and a `/federate` reception (inbound delegation) interface, (2) the ability to form multi-hop delegation chains where each hop runs its own planner+executor, (3) symmetric topology that does not require designated "parent" or "child" binary roles.
+- **Open questions:** Circuit-breaking in recursive chains? Depth limit to prevent runaway delegation? Observability across hops (distributed tracing)?
+
+### [2026-05-06] Behavioral re-ask bounce rate as implicit conversational AI quality signal
+- **Originator:** Claude (accepted by Rahul in Phase 2.5.x)
+- **Source:** Conversation 2026-05-06 — "implicit re-ask signal — re-ask within N seconds infers a `negative/user-implicit` on the prior layout"; live-verified — 940ms re-ask captured as `negative/user-implicit`, churn calculator read it correctly.
+- **Description:** Adapted from search-engine "short-session return" (a user who returns to search results immediately after clicking a link implies the clicked result was unsatisfactory), this applies the same behavioral signal to conversational AI: when a user sends a follow-up message within N seconds of the prior AI response, the system infers the response was inadequate without requiring explicit feedback (thumbs-down). This produces an automatic negative eval signal (`negative/user-implicit`) attributed to the prior layout/response, feeding the EvalProvider and ultimately the ChurnRiskCalculator. The threshold N is configurable per deployment. Explicit thumbs-down is still captured when it occurs; the implicit signal supplements, not replaces it.
+- **Prior-art assessment:**
+  - **Search engines** (Google, Bing) use short session return as an implicit relevance signal — well-documented but specific to document retrieval, not conversational AI.
+  - **Conversational AI platforms** (OpenAI, Anthropic) collect explicit thumbs-up/down; some collect regeneration clicks (user clicked "regenerate") as implicit signals. Re-ask timing is a subtler, more universal signal (applies to all follow-ups, not just regeneration).
+  - **Recommender systems** use implicit signals (clicks, dwell time, skips) extensively, but for item recommendation ranking, not for conversational response quality.
+  - Applying time-bounded re-ask as a quality signal in a conversational agent, routing it automatically to an eval/churn pipeline, and attributing it to the prior response — as a packaged capability built into the platform — appears uncommon.
+- **Novelty signal:** medium — the analogy to search bounce rate is well-known; the application to conversational AI quality pipelines as an automated packaged signal is less common.
+- **Patentability hint:** possible — method claim covering: (1) tracking timestamp of last AI response broadcast per user session, (2) on subsequent user message, computing elapsed time, (3) if elapsed time < threshold, emitting a `negative/user-implicit` eval signal attributed to the prior response, (4) routing to a churn-risk model that influences future recommendation decisions for that user.
+- **Open questions:** Optimal threshold N (30s? 60s? user-adaptive?)? False positive rate in rapid multi-turn dialogues? How to suppress when the follow-up is clearly additive ("and also…") vs. corrective ("that's wrong")?

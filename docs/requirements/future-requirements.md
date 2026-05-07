@@ -52,3 +52,28 @@ Each entry:
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
+
+### [2026-05-06] Full LightGBM churn model replacing linear placeholder
+**Source:** Conversation 2026-05-06 — "WeightedFeatureChurnCalculator. Parameterized linear model with sigmoid → step toward real ML"; ADR-043 explicitly defers full LightGBM to v1.
+**Category:** capability
+**Notes:** The current MVP churn model (`WeightedFeatureChurnCalculator`) is a parameterized linear weighted sum + sigmoid. ADR-031 specifies LightGBM with SHAP explainability, generic-prior cold-start (transitions to tenant-specific after ~1k events), and a pluggable adapter for hosts with existing models. v1 delivery: swap `WeightedFeatureChurnCalculator` for a full training/inference pipeline. Both implement the same `ChurnRiskCalculator` interface so the upgrade is an adapter swap, not a re-architecture.
+
+### [2026-05-06] Voice and multimodal I/O (Phase 5 — WebRTC)
+**Source:** Conversation 2026-05-06 — "WebRTC reserved for voice (Phase 5) when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel."
+**Category:** capability
+**Notes:** Phase 5 (post-MVP) adds microphone capture, TTS narration, and multimodal visual DOM interaction over a WebRTC channel. The SSE (output stream) and WS (instruction RPC) channels remain; WebRTC is the third, specialized for voice/audio codec characteristics. The agent's composer must gain multimodal awareness (voice-appropriate response length, TTS phrasing, audio-turn protocol). This also enables hands-free interaction for mobile users.
+
+### [2026-05-06] Proactive engine implementation
+**Source:** Conversation 2026-05-06 — gap analysis identified proactive engine (ADR-018) as not yet built.
+**Category:** capability
+**Notes:** ADR-018 fully specced: multi-signal confidence scoring (planner confidence + memory match + workflow continuity + DOM-state relevance + time-since-last-interaction) + combined attention budget (hard cap + token-bucket + per-user adaptation). Not built in Phase 2–5. The attention budget's per-user adaptation depends on the eval/churn feedback loop (now live) — so the prerequisite infrastructure is in place. v1 milestone: implement the trigger engine and hook it into the existing WS push path.
+
+### [2026-05-06] VoC embedded dashboard
+**Source:** Conversation 2026-05-06 — gap analysis; ADR-016 + ADR-030 decided dashboard, not yet built.
+**Category:** capability
+**Notes:** ADR-030 specifies a bundled SPA (React + Tremor/Recharts), embedded in the admin UI, showing per-skill / per-sub-agent / per-feature eval trends, regressions, sample interactions. Optional exporters to Grafana/Datadog/Honeycomb at v1. The underlying ClickHouseMemoryProvider and eval signal pipeline (now built in Phase 2.5) are the data foundation. The dashboard is the UI layer on top.
+
+### [2026-05-06] Multi-hop agent federation depth limit + circuit-breaker
+**Source:** Conversation 2026-05-06 — symmetric /federate endpoint enables multi-hop chains (ADR-042); open question on depth limits.
+**Category:** capability / safety
+**Notes:** Symmetric federation (any runtime can delegate to any other) enables multi-hop chains of arbitrary depth. Future: configurable max-hop depth limit to prevent runaway delegation cycles. Circuit-breaker at the sub-agent executor level to interrupt chains that exceed latency or cost budgets. Distributed trace correlation across hops for observability.

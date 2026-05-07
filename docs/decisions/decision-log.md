@@ -656,3 +656,78 @@
   - **WebRTC reserved for voice (Phase 5)** when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel.
   - Native browser support for both is universal; no polyfills required.
 - **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).
+
+## ADR-039 — Text input (`InputBar`) as first-class shell interaction affordance
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Self-review during Phase 2.0 found that the welcome layout had zero buttons — the shell's compose-on-click loop produced no interactive elements when there was no concrete user intent, leaving the user with no way to start a conversation. The entire interaction loop was button-driven with no text input surface.
+- **Options considered:**
+  - A. Add more default buttons to seed the welcome flow.
+  - B. **Add a persistent `InputBar` text component to the shell** — text input is always available regardless of composer output.
+- **Decision:** B. `InputBar` is built as a standalone web component and mounted inside the shell independent of any composed layout. Text input is the primary fallback and a first-class affordance at all times. Action buttons from composed layouts are additive, not the sole driver.
+- **Consequences:**
+  - Users can always drive the conversation via free text — not locked into button-only flows.
+  - Closes the critical UX gap where button-only layouts left new users stranded.
+  - InputBar emits `user-message` envelopes to the runtime WS channel.
+  - Bearer auth for WS also accepted via `?token=<token>` query string (for WS URL constraints in browser contexts).
+- **Source:** Conversation 2026-05-06 (self-review finding during Phase 2.0a — "the user has no way to drive the conversation forward").
+
+## ADR-040 — Eval-feedback envelopes intercepted at WS layer (bypass planner)
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** When the shell emits a thumbs-up/thumbs-down signal (via `FeedbackBar`), this eval signal should be captured reliably without competing with or polluting the planning hot path.
+- **Options considered:**
+  - A. Route `eval-feedback` through the planner (planner decides what to do with it).
+  - B. **Intercept `eval-feedback` envelopes at the WS handler before the planner is invoked; write directly to `EvalProvider`.**
+- **Decision:** B. The WS `handleWsConnection` function checks the envelope type first; `eval-feedback` is routed to `EvalProvider.record()` and the planner is not called.
+- **Consequences:**
+  - Eval capture is fast, deterministic, and immune to planner errors/timeouts.
+  - Eval signals cannot accidentally influence the current conversation turn (no feedback loop within same session).
+  - Consistent with the pattern used for `mobile-context`, `dom-*` envelopes — non-planning signals bypass the planner.
+- **Source:** Conversation 2026-05-06 (Phase 2.5 design — "intercept `eval-feedback` envelopes in `handleWsConnection` (skip planner)").
+
+## ADR-041 — Implicit re-ask signal: user message within N seconds of prior response → `negative/user-implicit`
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** Explicit thumbs-down feedback requires deliberate action; most users don't bother. We need an inferred negative signal for cases where the prior response was implicitly unsatisfactory.
+- **Options considered:**
+  - A. Explicit feedback only (thumbs up/down).
+  - B. **Infer negative from re-ask within N seconds** — if the user sends another message within N seconds of the last layout broadcast, treat it as a signal that the prior response was insufficient.
+  - C. Infer from text content (e.g., "that's not right" → negative).
+- **Decision:** B. RuntimeServer tracks the timestamp of the last broadcast layout per WS connection. On the next `user-message` envelope, if elapsed time < threshold, it emits a `negative/user-implicit` `EvalSignal` for the prior turn before processing the new turn. Option C deferred to v1.
+- **Consequences:**
+  - Automated negative signal requires no user action.
+  - Analogous to search-engine "short session return" as a bounce signal.
+  - Some false positives (user may follow up quickly for reasons unrelated to dissatisfaction) — acceptable at MVP accuracy level; threshold tunable.
+  - All eval signals (explicit + implicit) feed the same `EvalProvider` and thus the `ChurnRiskCalculator`.
+- **Source:** Conversation 2026-05-06 (Phase 2.5.x — "implicit re-ask signal — re-ask within N seconds infers a `negative/user-implicit` on the prior layout").
+
+## ADR-042 — Symmetric bidirectional federation: every runtime exposes `/federate` endpoint
+- **Date:** 2026-05-06
+- **Status:** accepted
+- **Context:** ADR-021 defined federation as directional — a platform parent orchestrates domain team sub-agents. A question arose: should the `/federate` endpoint be on sub-agents only, or on every runtime? Making it symmetric changes the topology.
+- **Options considered:**
+  - A. `/federate` only on designated sub-agent runtimes (directional hierarchy — ADR-021 baseline).
+  - B. **`/federate` on every runtime instance** — any runtime can receive a federation request and act as a sub-agent of any other runtime.
+- **Decision:** B. Every `RuntimeServer` exposes `POST /federate`. This makes the topology symmetrically peer-to-peer: a parent runtime delegates to a child via `/federate`; the child runs its own planner and returns results. The same runtime can be both a parent (delegating to children) and a child (receiving from a parent). Multi-hop delegation chains are supported.
+- **Consequences:**
+  - Enables mesh-style agent federation rather than just hierarchical trees.
+  - Two runtimes can cross-federate (parent→child→child's tools, all using the same runtime image).
+  - Simpler ops — no separate "sub-agent" runtime binary, just the same runtime in different roles.
+  - Live verified: two runtime instances (ports 8080 + 8081), parent delegated to child, child ran its own planner + tools end-to-end.
+- **Source:** Conversation 2026-05-06 (Phase 2.4.x — "adding `/federate` endpoint to RuntimeServer so any runtime can serve as a sub-agent of another runtime — symmetric federation").
+
+## ADR-043 — WeightedFeatureChurnCalculator as MVP churn placeholder (defers full LightGBM to v1)
+- **Date:** 2026-05-06
+- **Status:** accepted (refines ADR-031)
+- **Context:** ADR-031 specified LightGBM as the bundled churn model. For the MVP build, implementing a full LightGBM pipeline (training, serialization, inference, SHAP explainability) is out of scope given the Rahul + Claude build team (ADR-036). We need to close the VoC → churn loop in a way that demonstrates the architecture without blocking on full ML.
+- **Options considered:**
+  - A. Wait for full LightGBM before shipping any churn signal.
+  - B. **Ship `WeightedFeatureChurnCalculator` — a parameterized linear model (weighted feature sum + sigmoid output) as a placeholder** that produces valid churn risk scores from eval signals, with the same interface as the eventual LightGBM adapter.
+- **Decision:** B. `WeightedFeatureChurnCalculator` ships as the default `ChurnRiskCalculator` behind the `ChurnRiskCalculator` interface. Its parameters (feature weights) are configurable; the sigmoid output maps to the same `[0,1]` risk score. It can be swapped for LightGBM without touching the interface or the planner/runtime integration.
+- **Consequences:**
+  - Closed-loop VoC → churn → planner feedback loop is demonstrable end-to-end at MVP with valid but simplified scoring.
+  - LightGBM (ADR-031 — training, SHAP, cold-start generic prior, tenant-specific transition) deferred to v1.
+  - Interface is stable — upgrading to LightGBM is an adapter swap, not a re-architecture.
+  - Explainability output is still produced (weighted feature factors logged as human-readable rationale), satisfying the regulatory/debugging requirement minimally.
+- **Source:** Conversation 2026-05-06 (Phase 2.6.x — "`WeightedFeatureChurnCalculator`. Parameterized linear model with sigmoid → step toward real ML").
