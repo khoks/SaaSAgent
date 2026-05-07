@@ -1,8 +1,9 @@
 # STORY-001 — Decide Feature/Service NL→JSON compilation timing
 
-- **Status:** backlog
+- **Status:** done (resolved via ADR-013 — registration-time super-skill-doc model, no compile)
 - **Created:** 2026-04-28
-- **Last updated:** 2026-04-28
+- **Last updated:** 2026-05-06
+- **Completed:** 2026-05-06
 - **Parent epic:** [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 
 ## User story

@@ -1,8 +1,8 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phase 0 started 2026-05-07)
+- **Status:** in-progress (Phases 0+1+2 done; Phase 3 next)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-07
+- **Last updated:** 2026-05-06
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
 
 ## Why
@@ -27,7 +27,7 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 ## Phases & epics
 
-### Phase 0 — Foundation (in progress 2026-05-07)
+### Phase 0 — Foundation (done 2026-05-06)
 - **EPIC-002** Monorepo skeleton (pnpm + Turborepo, package layout, base tsconfig, root scripts)
 - **EPIC-003** Local infrastructure (Docker Compose with full polyglot stack, healthchecks, dev/test profiles)
 - **EPIC-004** CI baseline (GitHub Actions: install + build + lint + test)
@@ -38,7 +38,7 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 **Phase 0 gate:** `pnpm install && pnpm infra:up && pnpm build && pnpm test` succeeds end-to-end on a fresh clone.
 
-### Phase 1 — Composition
+### Phase 1 — Composition (done 2026-05-06)
 - WC shell (side-panel render mode)
 - Atomic UI Components registry schema + storage + hot-reload
 - Theme tokens registry (DTCG canonical + Style Dictionary importer + CSS variable fallback)
@@ -48,7 +48,7 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 **Phase 1 gate:** end-to-end composed artifact renders from a hand-crafted layout-tree input.
 
-### Phase 2 — Planning *(MVP-of-MVP gate)*
+### Phase 2 — Planning *(MVP-of-MVP gate — done 2026-05-06, 384 tests @ commit fb17407)*
 - Planner (Sonnet, on Claude Agent SDK)
 - Three-tier capability invocation (Tools / Skills / Sub-Agents)
 - Basic Skills execution (in-process, process-isolated)
@@ -153,3 +153,14 @@ Pure post-MVP:
 ## Child epics
 
 Owned + maintained by the work-management skill.
+
+**Phase 0 (done):** EPIC-002 through EPIC-008 (see epics/INDEX.md)
+**Phase 1 (done):** EPIC-009
+**Phase 2 (done):** EPIC-010
+**Phase 3 (partial — Sub-Agent SDK done):** EPIC-011; EPIC-014 (STORY-010)
+**Phase 4 (partial — Qdrant/ClickHouse/Kafka/Neo4j providers done):** EPIC-012; EPIC-015
+**Phase 5 (partial — mobile-context, render modes, DOM observation done):** EPIC-013; EPIC-014 (STORY-007, 008, 009)
+**Phase 8 (partial — demo-ecommerce + demo-travel initial builds done):** EPIC-014 (STORY-012)
+
+> **EPIC-014** — [Bucket A: Foundation capabilities sprint](../epics/EPIC-014-bucket-a-foundation-capabilities.md) (done 2026-05-06, commit `c46a366`, 468 tests)
+> **EPIC-015** — [Bucket B: Polyglot storage providers sprint](../epics/EPIC-015-bucket-b-polyglot-storage.md) (done 2026-05-06, commit `c46a366`, 468 tests)

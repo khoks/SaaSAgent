@@ -1,8 +1,9 @@
 # EPIC-001 — Close Batch 3 grooming decisions
 
-- **Status:** in-progress
+- **Status:** done (2026-05-06 — all grooming batches 1–5 resolved; Batch 6 non-blocking items deferred)
 - **Created:** 2026-04-28
-- **Last updated:** 2026-04-28
+- **Last updated:** 2026-05-06
+- **Completed:** 2026-05-06
 - **Parent initiative:** [INIT-001 — Groom platform vision and requirements](../initiatives/INIT-001-groom-vision-and-requirements.md)
 
 ## Outcome
