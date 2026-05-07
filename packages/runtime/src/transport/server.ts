@@ -27,6 +27,7 @@ import type {
   FederationRequest,
   FederationResponse,
   InstructionEnvelope,
+  MobileContext,
   UIComposer,
 } from '@saasagent/protocol';
 
@@ -925,6 +926,17 @@ export class RuntimeServer {
     // if a user-message arrives shortly after, that's a re-ask, infer negative.
     let lastBroadcastCycleId: string | null = null;
     let lastBroadcastAt = 0;
+    // Phase 5 (ADR-017): per-WS mobile-context cache. Shell sends an envelope
+    // type='mobile-context' on connect + on viewport changes; we stash it here
+    // and thread into ComposeContext on subsequent plans so the composer can
+    // adapt density / hover affordances / media weight to the device.
+    let lastMobileContext: MobileContext | null = null;
+    // Phase 5 (ADR-022): per-WS DOM signal ring buffer. Shell DomObserver
+    // emits dom-mutation / dom-visibility / dom-semantic envelopes; we
+    // intercept BEFORE the planner (no compose triggered) and keep the most
+    // recent N for the planner to consult on the next plan().
+    const DOM_BUFFER_MAX = 20;
+    const domSignals: Array<{ type: string; at: string; payload: unknown }> = [];
     // Phase 2.7: per-connection WS message rate limiter.
     const wsLimiter =
       this.wsRateLimitPerMinute > 0 ? new RateLimiter(this.wsRateLimitPerMinute) : null;
@@ -947,6 +959,46 @@ export class RuntimeServer {
         return;
       }
       this.options.onInstruction?.(envelope);
+
+      // Phase 5 (ADR-022): intercept dom-* envelopes BEFORE the planner. They
+      // describe ambient DOM changes / visibility / semantic events from the host
+      // page; planner reads them on next plan() but they don't themselves trigger
+      // a compose cycle. Buffer is bounded at DOM_BUFFER_MAX (FIFO eviction).
+      if (
+        envelope.type === 'dom-mutation' ||
+        envelope.type === 'dom-visibility' ||
+        envelope.type === 'dom-semantic'
+      ) {
+        domSignals.push({
+          type: envelope.type,
+          at: envelope.emittedAt,
+          payload: envelope.payload ?? {},
+        });
+        if (domSignals.length > DOM_BUFFER_MAX) {
+          domSignals.splice(0, domSignals.length - DOM_BUFFER_MAX);
+        }
+        return;
+      }
+
+      // Phase 5 (ADR-017): intercept mobile-context envelopes BEFORE the planner.
+      // Payload is the MobileContext { deviceClass, viewportWidth, inputMode, networkClass? }.
+      // Stash on the per-WS state for subsequent plans. No re-compose triggered.
+      if (envelope.type === 'mobile-context') {
+        const p = (envelope.payload ?? {}) as Partial<MobileContext>;
+        if (
+          (p.deviceClass === 'mobile' || p.deviceClass === 'tablet' || p.deviceClass === 'desktop') &&
+          typeof p.viewportWidth === 'number' &&
+          (p.inputMode === 'touch' || p.inputMode === 'pointer' || p.inputMode === 'hybrid')
+        ) {
+          lastMobileContext = {
+            deviceClass: p.deviceClass,
+            viewportWidth: p.viewportWidth,
+            inputMode: p.inputMode,
+            ...(p.networkClass ? { networkClass: p.networkClass } : {}),
+          };
+        }
+        return;
+      }
 
       // Phase 2.5: intercept eval-feedback envelopes BEFORE the planner.
       // payload shape: { signal: 'positive'|'negative'|'neutral'|'completion',
@@ -1022,6 +1074,7 @@ export class RuntimeServer {
             ...(planResult.invocations.length > 0
               ? { toolResults: planResult.invocations.map(toComposedInvocation) }
               : {}),
+            ...(lastMobileContext ? { mobileContext: lastMobileContext } : {}),
           };
           const layout = await this.options.composer.compose(planResult.intent, composeCtx);
           // Track this broadcast for the next user-message's re-ask check.

@@ -90,19 +90,48 @@ export {
   DurableFileMemoryProvider,
   PostgresMemoryProvider,
   ChainedMemoryProvider,
+  QdrantMemoryProvider,
   type KeyValueMemoryProviderOptions,
   type DurableFileMemoryProviderOptions,
   type PostgresMemoryProviderOptions,
+  type QdrantMemoryProviderOptions,
+  type EmbeddingFn,
   type PgClient,
   type MemoryProvider,
   type MemoryQuery,
 } from './memory/index.js';
 export {
   KeyValueEvalProvider,
+  ClickHouseEvalProvider,
   type KeyValueEvalProviderOptions,
+  type ClickHouseEvalProviderOptions,
+  type ClickHouseClient,
   type EvalProvider,
   type EvalFilter,
 } from './eval/index.js';
+export {
+  InMemoryEventStream,
+  KafkaEventStream,
+  RuntimeTopics,
+  type EventStream,
+  type EventHandler,
+  type RuntimeEvent,
+  type KafkaEventStreamOptions,
+  type KafkaProducer,
+  type KafkaConsumer,
+} from './events/index.js';
+export {
+  InMemoryGraphProvider,
+  Neo4jGraphProvider,
+  type RelationshipGraph,
+  type GraphNode,
+  type GraphEdge,
+  type GraphPath,
+  type Neo4jGraphProviderOptions,
+  type Neo4jDriver,
+  type Neo4jSession,
+  type Neo4jRecord,
+} from './graph/index.js';
 export {
   RuleBasedChurnCalculator,
   WeightedFeatureChurnCalculator,

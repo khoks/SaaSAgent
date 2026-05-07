@@ -1,0 +1,21 @@
+{
+  "name": "@saasagent/demo-travel",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Travel demo vertical — flight search results wired to SaaSAgent shell with DOM observation + semantic events",
+  "type": "module",
+  "scripts": {
+    "predev": "pnpm --filter @saasagent/web-shell --filter @saasagent/protocol build",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@saasagent/web-shell": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10",
+    "typescript": "^5.6.3"
+  }
+}

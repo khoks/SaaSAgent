@@ -18,7 +18,33 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
+  apps/demo-ecommerce:
+    dependencies:
+      '@saasagent/web-shell':
+        specifier: workspace:*
+        version: link:../../packages/web-shell
+    devDependencies:
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.10
+        version: 5.4.21(@types/node@22.19.17)
+
   apps/demo-host:
+    dependencies:
+      '@saasagent/web-shell':
+        specifier: workspace:*
+        version: link:../../packages/web-shell
+    devDependencies:
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.10
+        version: 5.4.21(@types/node@22.19.17)
+
+  apps/demo-travel:
     dependencies:
       '@saasagent/web-shell':
         specifier: workspace:*
@@ -87,6 +113,13 @@ importers:
         version: 2.1.9(@types/node@22.19.17)(jsdom@25.0.1)
 
   packages/sdk-ts:
+    dependencies:
+      '@saasagent/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@saasagent/runtime':
+        specifier: workspace:*
+        version: link:../runtime
     devDependencies:
       '@types/node':
         specifier: ^22.9.0

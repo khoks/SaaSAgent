@@ -24,3 +24,8 @@ export {
   type PgClient,
 } from './postgres.js';
 export { ChainedMemoryProvider } from './chained.js';
+export {
+  QdrantMemoryProvider,
+  type QdrantMemoryProviderOptions,
+  type EmbeddingFn,
+} from './qdrant.js';

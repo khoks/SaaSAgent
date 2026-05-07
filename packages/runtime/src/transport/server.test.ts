@@ -1495,6 +1495,155 @@ describe('RuntimeServer /eval endpoints + eval-feedback WS intercept', () => {
     }
   });
 
+  /**
+   * Phase 5 (ADR-017): mobile-context envelope is intercepted before the
+   * planner and threaded into ComposeContext.mobileContext on subsequent plans.
+   */
+  it('intercepts mobile-context envelopes and threads MobileContext into ComposeContext', async () => {
+    const captures: Array<{ intent: string; mobileWidth?: number; deviceClass?: string }> = [];
+    const recordingComposer: UIComposer = {
+      compose: async (intent, ctx) => {
+        captures.push({
+          intent,
+          ...(ctx.mobileContext?.viewportWidth !== undefined ? { mobileWidth: ctx.mobileContext.viewportWidth } : {}),
+          ...(ctx.mobileContext?.deviceClass ? { deviceClass: ctx.mobileContext.deviceClass } : {}),
+        });
+        return {
+          composeCycleId: `rec-${captures.length}`,
+          composedAt: new Date().toISOString(),
+          root: { id: 'r', component: 'Card', props: {} },
+          metadata: { intent, sources: ['recording-composer'], modelUsed: { composer: 'rec' }, fromCache: false },
+        };
+      },
+    };
+    const fakePlanner: Planner = {
+      name: 'fake',
+      plan: async (req) => ({
+        intent:
+          (req.envelope.payload as { text?: string } | undefined)?.text ?? req.envelope.type,
+        invocations: [],
+      }),
+    };
+    const srv = new RuntimeServer({
+      port: 0,
+      composer: recordingComposer,
+      planner: fakePlanner,
+    });
+    await srv.start();
+    try {
+      const sse = new EventSource(`http://127.0.0.1:${srv.port}/sse`);
+      const layouts: ComposedLayout[] = [];
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      const ws = new WebSocket(`ws://127.0.0.1:${srv.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+
+      // Send mobile-context first — should NOT trigger a compose (captures stays at 1).
+      ws.send(
+        JSON.stringify({
+          composeCycleId: layouts[0]!.composeCycleId,
+          sourceNodeId: 'mobile-context',
+          emittedAt: new Date().toISOString(),
+          type: 'mobile-context',
+          sequence: 0,
+          payload: {
+            deviceClass: 'mobile',
+            viewportWidth: 414,
+            inputMode: 'touch',
+            networkClass: '3g',
+          },
+        }),
+      );
+
+      // Now send a real user-message — composer should see mobileContext threaded.
+      ws.send(
+        JSON.stringify({
+          composeCycleId: layouts[0]!.composeCycleId,
+          sourceNodeId: 'user-input',
+          emittedAt: new Date().toISOString(),
+          type: 'user-message',
+          sequence: 1,
+          payload: { text: 'hello' },
+        }),
+      );
+
+      await waitFor(() => captures.length >= 2, 1500);
+      // captures[0] = welcome (no mobile context)
+      expect(captures[0]!.mobileWidth).toBeUndefined();
+      // captures[1] = post-user-message — must carry the threaded mobile context
+      expect(captures[1]!.mobileWidth).toBe(414);
+      expect(captures[1]!.deviceClass).toBe('mobile');
+
+      ws.close();
+      sse.close();
+    } finally {
+      await srv.stop();
+    }
+  });
+
+  it('rejects malformed mobile-context envelopes (no crash, no stash)', async () => {
+    const captures: Array<{ hasMobile: boolean }> = [];
+    const recordingComposer: UIComposer = {
+      compose: async (intent, ctx) => {
+        captures.push({ hasMobile: !!ctx.mobileContext });
+        return {
+          composeCycleId: `rec-${captures.length}`,
+          composedAt: new Date().toISOString(),
+          root: { id: 'r', component: 'Card', props: {} },
+          metadata: { intent, sources: [], modelUsed: { composer: 'rec' }, fromCache: false },
+        };
+      },
+    };
+    const fakePlanner: Planner = {
+      name: 'fake',
+      plan: async (req) => ({ intent: req.envelope.type, invocations: [] }),
+    };
+    const srv = new RuntimeServer({ port: 0, composer: recordingComposer, planner: fakePlanner });
+    await srv.start();
+    try {
+      const sse = new EventSource(`http://127.0.0.1:${srv.port}/sse`);
+      const layouts: ComposedLayout[] = [];
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      const ws = new WebSocket(`ws://127.0.0.1:${srv.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+      // Garbage payload — missing required fields.
+      ws.send(
+        JSON.stringify({
+          composeCycleId: layouts[0]!.composeCycleId,
+          sourceNodeId: 'mobile-context',
+          emittedAt: new Date().toISOString(),
+          type: 'mobile-context',
+          sequence: 0,
+          payload: { junk: true },
+        }),
+      );
+      // Then a normal user-message.
+      ws.send(
+        JSON.stringify({
+          composeCycleId: layouts[0]!.composeCycleId,
+          sourceNodeId: 'user-input',
+          emittedAt: new Date().toISOString(),
+          type: 'user-message',
+          sequence: 1,
+          payload: { text: 'hi' },
+        }),
+      );
+      await waitFor(() => captures.length >= 2, 1500);
+      expect(captures[1]!.hasMobile).toBe(false);
+      ws.close();
+      sse.close();
+    } finally {
+      await srv.stop();
+    }
+  });
+
   it('does NOT record an implicit signal when implicitReaskWindowMs=0', async () => {
     const evalProv = new KeyValueEvalProvider();
     const noImpl = new RuntimeServer({

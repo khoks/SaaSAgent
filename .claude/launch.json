@@ -18,6 +18,18 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@saasagent/demo-host", "dev"],
       "port": 5173
+    },
+    {
+      "name": "demo-ecommerce",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@saasagent/demo-ecommerce", "dev"],
+      "port": 5174
+    },
+    {
+      "name": "demo-travel",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@saasagent/demo-travel", "dev"],
+      "port": 5175
     }
   ]
 }

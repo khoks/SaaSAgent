@@ -1,0 +1,21 @@
+{
+  "name": "@saasagent/demo-ecommerce",
+  "version": "0.0.0",
+  "private": true,
+  "description": "E-commerce demo vertical — product grid + cart wired to SaaSAgent shell with DOM observation + semantic events",
+  "type": "module",
+  "scripts": {
+    "predev": "pnpm --filter @saasagent/web-shell --filter @saasagent/protocol build",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@saasagent/web-shell": "workspace:*"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10",
+    "typescript": "^5.6.3"
+  }
+}

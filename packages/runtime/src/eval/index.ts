@@ -10,3 +10,8 @@ export {
   KeyValueEvalProvider,
   type KeyValueEvalProviderOptions,
 } from './keyvalue.js';
+export {
+  ClickHouseEvalProvider,
+  type ClickHouseEvalProviderOptions,
+  type ClickHouseClient,
+} from './clickhouse.js';

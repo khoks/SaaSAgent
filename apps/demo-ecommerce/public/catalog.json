@@ -1,0 +1,10 @@
+{
+  "products": {
+    "tv-55": { "id": "tv-55", "name": "Sony Bravia 55\"", "price": 749, "stock": 12 },
+    "tv-65": { "id": "tv-65", "name": "Sony Bravia 65\"", "price": 1199, "stock": 5 },
+    "lg-c3": { "id": "lg-c3", "name": "LG C3 OLED 55\"", "price": 1399, "stock": 3 },
+    "samsung-q60": { "id": "samsung-q60", "name": "Samsung Q60C 50\"", "price": 549, "stock": 22 },
+    "hisense-u8": { "id": "hisense-u8", "name": "Hisense U8K 65\"", "price": 999, "stock": 8 },
+    "tcl-q7": { "id": "tcl-q7", "name": "TCL Q7 75\"", "price": 899, "stock": 14 }
+  }
+}
