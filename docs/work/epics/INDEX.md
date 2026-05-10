@@ -13,3 +13,4 @@
 | EPIC-007 | [Bucket B data store providers](EPIC-007-bucket-b-data-providers.md) | INIT-003 | done | 2026-05-10 | 2026-05-10 |
 | EPIC-008 | [Bucket C auth, telemetry, ML, and E2E](EPIC-008-bucket-c-auth-telemetry-ml.md) | INIT-003 | done | 2026-05-10 | 2026-05-10 |
 | EPIC-009 | [Patents track — IP preparation](EPIC-009-patents-track.md) | INIT-003 | in-progress | 2026-05-10 | 2026-05-10 |
+| EPIC-010 | [Expedia demo vertical (Phase 8)](EPIC-010-expedia-demo-vertical.md) | INIT-003 | in-progress | 2026-05-10 | 2026-05-10 |

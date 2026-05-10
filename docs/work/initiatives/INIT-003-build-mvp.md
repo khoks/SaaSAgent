@@ -158,3 +158,4 @@ Owned + maintained by the work-management skill.
 | [EPIC-007](../epics/EPIC-007-bucket-b-data-providers.md) | Bucket B data store providers | done |
 | [EPIC-008](../epics/EPIC-008-bucket-c-auth-telemetry-ml.md) | Bucket C auth, telemetry, ML, and E2E | done |
 | [EPIC-009](../epics/EPIC-009-patents-track.md) | Patents track — IP preparation | in-progress |
+| [EPIC-010](../epics/EPIC-010-expedia-demo-vertical.md) | Expedia demo vertical (Phase 8) | in-progress |
