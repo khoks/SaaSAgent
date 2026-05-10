@@ -77,3 +77,23 @@ Each entry:
 **Source:** ADR-035: "before any code reaches the public OSS repo, file provisional patent applications for the patentability-strong novel-idea entries."
 **Category:** other
 **Notes:** The repo must remain private (`khoks/SaaSAgent`) until all Bucket A provisional patents are filed (P-001 through P-005 disclosures are drafted; attorney filing is pending). This is a hard gate on Phase 9 (OSS release). Budget: ~$2–5k per provisional filing; total ~$10–25k for the full set. After filing, Apache 2.0 applies.
+
+### [2026-05-10] Web-shell: queue pre-handshake emits until first SSE layout, then flush with first cycle id
+**Source:** Expedia E2E onboarding test: "apps/demo-expedia/src/main.ts:218 calls searchFlights/Hotels/Activities() synchronously on boot, which dispatches *-search-performed semantic events. These fire before the web-shell's WS opens, so they reach the runtime with cycle=no-cycle. The runtime accepts them gracefully but P-001 binding is silently broken for those three events."
+**Category:** capability
+**Notes:** Any domain action that fires before the WS handshake completes loses its compose-cycle-id attribution (P-001 invariant broken silently). Fix: the web-shell's WS client should buffer emitted envelopes until it receives the first SSE layout broadcast, then flush the queue stamping each buffered event with that first cycle id. Priority: high — the enterprise onboarding demo triggers this reliably on page load.
+
+### [2026-05-10] `/federate` response should include sub-agent skill list when planner is stub (no LLM)
+**Source:** Expedia E2E: "`/federate` returned just `{}` — a real onboarding gap when sub-agent has no LLM planner. An enterprise dev evaluating the platform in CI without an API key would think federation is broken. Suggested fix: include the sub-agent's skill list + descriptor in the response so the parent can fall back to direct dispatch."
+**Category:** capability
+**Notes:** When the sub-agent's planner is Stub (no `ANTHROPIC_API_KEY`), no invocations fire and the response is `{}`. The parent runtime has no way to distinguish "federation worked but chose to skip skills" from "federation is broken." The `/federate` response envelope should always include at minimum: `{skipped: true, reason: 'stub-planner', availableSkills: [...]}`. This lets the parent runtime fall back to direct `/executor/skill/<name>` dispatch against the sub-agent. Relevant file: `packages/runtime/src/transport/server.ts:482`.
+
+### [2026-05-10] REST API usability: skill execution path aliasing + input-format error messages
+**Source:** Expedia E2E: "The correct path is POST /executor/skill/<name> with the input as the body root (no `{input:...}` wrapping). I assumed /skills/<name>/execute (the more conventional REST shape). Most devs will too."
+**Category:** capability
+**Notes:** Two adjacent DX gaps found: (1) The skill execution endpoint is `/executor/skill/<name>` but the expected REST convention is `/skills/<name>/execute` — add the alias or rename; (2) Skill input goes in the body root, not under `{input:...}` — the error response should include a usage line like `expected JSON body = skill input args; got: …`. Both are in `packages/runtime/src/transport/server.ts:691`. Low-cost fixes with high impact for first-time enterprise integrators.
+
+### [2026-05-10] "Dev mode without API key" story: surface stub mode in `/health` + console warning
+**Source:** Expedia E2E: "a new enterprise dev cloning the repo immediately runs node start-runtime.mjs and gets StubComposer + StubPlanner. The agent panel echoes messages but never invokes skills. They'd assume nothing works. The actual story … is: stub mode is for UI / data-plane validation; LLM mode is for orchestration. This needs to be surfaced."
+**Category:** capability
+**Notes:** When the runtime boots in stub mode (no `ANTHROPIC_API_KEY`), the `/health` response should include `"mode": "stub"` with a human-readable hint (e.g., `"hint": "Set ANTHROPIC_API_KEY to enable LLM planning and composition"`). Additionally, the WS connection handler should log a prominent console warning on first client connect in stub mode. This is the highest-priority onboarding gap found during the Expedia integration test (ranked #5 by enterprise adoption impact). No code-path changes needed — just adding a field to the existing `/health` response schema and one `console.warn` call.

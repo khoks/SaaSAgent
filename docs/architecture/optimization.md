@@ -51,4 +51,31 @@
 - **WebSocket token via query param** exposes the bearer token in server logs (URL logging). Phase 3 should add a short-lived signed handshake token for the WS upgrade.
 - **Implicit re-ask 8-second window** is a fixed default — travel-planning sessions have longer think-time between turns; an overly-aggressive window will generate false-positive negative signals. Needs per-tenant tuning knob documented in the admin UI.
 
+## Enterprise onboarding surface (validated 2026-05-10)
+
+End-to-end Expedia integration test (`apps/demo-expedia/`) quantified the minimum viable enterprise integration surface:
+
+| Onboarding task | Mechanism | LOC |
+|---|---|---|
+| Register 5 in-process skills + 1 sub-agent descriptor, start runtime | `start-runtime.mjs` via `@saasagent/runtime` | ~30 |
+| Define a domain sub-agent with its own skill | `start-trip-planner.mjs` via `@saasagent/sdk` `defineSubAgent` | ~40 |
+| Seed feature.md + tool descriptors from host page | `POST /runtime/features` + `POST /runtime/tools` on boot | ~15 |
+
+**What was verified live in Chrome (Expedia scenario):**
+- All 5 registered skills callable via direct REST (`POST /executor/skill/<name>`)
+- Sub-agent skill callable directly on its port (`POST /executor/skill/build-itinerary` → full 4-day Tokyo itinerary)
+- P-001 compose-cycle-id binding: every post-handshake emit carries the most-recent broadcast cycle id
+- P-004 implicit re-ask: second user message within 8s window increments `evalSignalCount` (`negative/user-implicit`)
+- Custom semantic events (`flight-shortlisted`, `hotel-shortlisted`, `activity-shortlisted`, etc.) with structured payloads flow through unmodified
+- Mobile context auto-emit (`deviceClass`, `viewportWidth`, `inputMode`, `networkClass`) works without host code
+
+**Five onboarding gaps found (priority order for enterprise adoption):**
+1. *(highest)* No stub-mode signal in `/health` — devs think the platform is broken when `ANTHROPIC_API_KEY` is absent
+2. `/federate` returns `{}` when sub-agent planner is stub — indistinguishable from a federation failure
+3. Pre-handshake events get `cycle=no-cycle` — P-001 silently broken for any event dispatched before WS opens
+4. Skill execution path is `/executor/skill/<name>`, not the conventional `/skills/<name>/execute`
+5. *(lowest)* Skill input goes in body root, not under `{input:...}` — non-obvious without docs
+
+All five are captured in `docs/requirements/future-requirements.md`.
+
 > The `extract-insights` skill appends entries as conversations surface new performance data, cost observations, or scaling decisions.
