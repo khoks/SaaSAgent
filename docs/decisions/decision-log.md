@@ -656,3 +656,73 @@
   - **WebRTC reserved for voice (Phase 5)** when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel.
   - Native browser support for both is universal; no polyfills required.
 - **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).
+
+## ADR-039 — Planner tool-mapper: prefix-discriminated three-tier dispatch (`skill__`, `tool__`, `subagent__`)
+- **Date:** 2026-05-10
+- **Status:** accepted
+- **Context:** SonnetPlanner (Phase 2.1b) must present Skills, Tools, and Sub-Agents to `claude-sonnet-4-6` via the flat tool-use API. These three tiers have different cost/latency/failure profiles that the model should be able to reason about. Design choice: encode tier in tool names, or hide entirely, or use per-tier prompt hints?
+- **Options considered:**
+  - A. Flat list — all capabilities presented as opaque tools; runtime dispatches at execution time only.
+  - B. Per-tier tool lists — not supported by most LLM APIs.
+  - C. Prompt-injected tier hints — brittle; model often ignores them.
+  - D. **Prefix-encoded names** — `skill__<name>`, `tool__<name>`, `subagent__<name>`; tier is both model-visible (in the name string) and runtime-parseable (strip prefix, route to executor).
+- **Decision:** D. The tool-mapper (`packages/runtime/src/planner/tool-mapper.ts`) constructs the tool list by prepending the tier prefix; the dispatch loop strips the prefix to identify and call the correct executor (`SkillExecutor`, `ToolExecutor`, or `SubAgentExecutor`).
+- **Consequences:**
+  - Model can reason about cost/latency tiers when choosing between a `skill__` (sub-millisecond) and `subagent__` (multi-second) capability.
+  - Runtime dispatch is O(1): prefix lookup determines executor with no registry scan.
+  - Tool names exposed to the model are not identical to their registry names — logging must join on the stripped name for clarity.
+  - Prefix scheme is now a de facto protocol; changing it is a breaking change for any client that parses tool names out of planner traces.
+- **Novelty:** medium-high — see `novel-ideas/ideas.md` entry and `docs/patents/disclosures/P-002-prefix-discriminated-tool-routing.md`.
+- **Source:** Conversation 2026-05-10 — Phase 2.1b implementation; verified live end-to-end with tool call `[sonnet-planner] tool__fetch-product-info(...) → ok`.
+
+## ADR-040 — Symmetric federation: every runtime exposes `POST /federate` and can act as a sub-agent of any other runtime
+- **Date:** 2026-05-10
+- **Status:** accepted
+- **Context:** Phase 2.4.x implemented the SubAgentExecutor (HTTP POST to a sub-agent's `/federate` endpoint). The question was whether `/federate` should be a special endpoint only on "designated sub-agent" runtimes, or whether every runtime should expose it so any runtime can be delegated to.
+- **Options considered:**
+  - A. Separate "sub-agent runtime" binary — different code path, different config.
+  - B. **Same runtime binary, `/federate` endpoint always present** — role is determined by who calls whom.
+- **Decision:** B. `POST /federate` is added to every RuntimeServer instance (Phase 2.4.x). When called, the runtime synthesizes an internal `user-message` envelope, routes it through its own planner pipeline, and returns a `FederationResponse`. No separate binary, no role registration, no static hierarchy.
+- **Consequences:**
+  - **Topology is dynamic** — a runtime that acts as a child to one parent can simultaneously be a parent to a third runtime.
+  - **Recursive delegation** (A→B→C) works without any special support — each node just runs its normal planner.
+  - **Cycle detection not yet implemented** — a misconfigured A→B→A loop would recurse until timeout. Requires a `X-Federation-Depth` header + limit in a future hardening pass.
+  - **Security:** `/federate` is protected by the same bearer-auth middleware as other endpoints.
+  - The symmetric design was verified live with two runtimes on ports 8080 + 8081; parent logs showed `subagent__weather-specialist(...) → ok` while child logs showed `tool__fetch-weather(...) → ok`.
+- **Novelty:** high — see `novel-ideas/ideas.md` entry and `docs/patents/disclosures/P-003-symmetric-federation-contract.md`.
+- **Source:** Conversation 2026-05-10 — Phase 2.4.x build and live two-runtime browser verification.
+
+## ADR-041 — Runtime hardening: bearer-token auth + token-bucket rate limiting (Phase 2.7)
+- **Date:** 2026-05-10
+- **Status:** accepted
+- **Context:** The runtime's HTTP/SSE/WS endpoints were unauthenticated in Phases 0–2.6. Phase 2.7 added a hardening gate before proceeding to multi-tenant work. What level of auth and rate limiting to ship at MVP?
+- **Options considered:**
+  - A. No auth for MVP (add at v1).
+  - B. mTLS only (too heavy for a dev/demo deployment).
+  - C. **Bearer token auth + token-bucket rate limiting**.
+  - D. OAuth2/OIDC (correct for production but too heavy for MVP build).
+- **Decision:** C. `SAAS_AGENT_TOKEN` env var configures a shared bearer token; the `Authorization: Bearer <token>` header is checked on every HTTP + SSE endpoint; the WebSocket `/ws` path accepts the token as a query param (`?token=<token>`) for browser clients that can't set custom headers. Token-bucket rate limiter (per source IP, configurable burst + fill-rate) blocks runaway request floods.
+- **Consequences:**
+  - Zero-friction for dev (set one env var; all routes secured).
+  - WebSocket token-via-query-param is not ideal for production (URL logs) — documented; production deployments should add a short-lived signed token flow.
+  - Token-bucket per-IP prevents single-client flooding; does NOT prevent distributed abuse — adequate for MVP intranet deployment; v1 adds per-user quotas (ADR-019).
+  - Auth and rate-limit are wired into `RuntimeConfig` so they're toggleable without code changes.
+- **Source:** Conversation 2026-05-10 — Phase 2.7 hardening build; 4 new auth + rate-limit tests in `server.test.ts`.
+
+## ADR-042 — Implicit re-ask behavioral signal: second NL message within 8-second window → `negative/user-implicit` eval signal
+- **Date:** 2026-05-10
+- **Status:** accepted
+- **Context:** ADR-016/ADR-023 committed to deduced (implicit) feedback as a first-class input to the eval + churn pipeline. Phase 2.5.x had to decide which specific behavioral rule to implement for the "deduced negative" signal.
+- **Options considered:**
+  - A. Dwell time / abandonment (standard web analytics).
+  - B. Re-query similarity (NLP on consecutive messages).
+  - C. **Timing window: if a new `user-message` arrives within N seconds of the runtime's last broadcast, record `negative/user-implicit` on the previous compose-cycle-id.**
+  - D. Click-through rate (requires tracking what the user did NOT click).
+- **Decision:** C. Default window = 8 seconds (configurable via `implicitReaskWindowMs` in `RuntimeConfig`). The rule: on each `user-message` envelope, if `Date.now() - lastBroadcastAt < implicitReaskWindowMs`, emit a `negative/user-implicit` signal attributed to `lastBroadcastCycleId`. The runtime maintains per-WS state (`lastBroadcastAt`, `lastBroadcastCycleId`).
+- **Consequences:**
+  - **Zero friction** — no widget, no user action required.
+  - **8-second default is empirical** — may need per-domain tuning (travel planning has longer think-time between turns than e-commerce; the window should be widened there).
+  - **False positives** when a user sends a genuinely new (unrelated) question quickly — accepted as a calibration issue; the churn model learns to discount these signals if the session-level pattern is otherwise positive.
+  - Verified live in Chrome: second message within 940ms after broadcast → `evalSignalCount: 1 → 2`, `signal.kind = 'negative/user-implicit'`.
+- **Novelty:** high — see `novel-ideas/ideas.md` entry and `docs/patents/disclosures/P-004-implicit-reask-signal-inference.md`.
+- **Source:** Conversation 2026-05-10 — Phase 2.5.x build; browser verified two-signal accumulation.

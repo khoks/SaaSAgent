@@ -52,3 +52,28 @@ Each entry:
 **Source:** Implied by ADR-005 architecture; raised in conversation 2026-04-26.
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
+
+### [2026-05-10] Production-grade Postgres memory provider with Docker CI
+**Source:** Phase 2.3.x shipped DurableFileMemoryProvider + PostgresMemoryProvider stubs; live Postgres was explicitly deferred: "Postgres seam already proven via KeyValueMemoryProvider; real Postgres impl needs CI/Docker infra that's a future deliverable."
+**Category:** capability
+**Notes:** The `PostgresMemoryProvider` interface and injectable `pg` client exist in the codebase, but the live Postgres integration tests and Docker-CI pipeline are not yet built. Blocked on: spinning up a Postgres container in CI, running schema migrations via `pg`, and wiring the provider into Runtime as the default when `DATABASE_URL` is set. Pre-condition for production memory durability.
+
+### [2026-05-10] WASM skill sandboxing for adapter-supplied code (v1)
+**Source:** ADR-021 consequences: "Skills isolation still relevant — handled by process isolation by default within the platform; WASM at v1 for adapter-supplied skill code."
+**Category:** capability
+**Notes:** In-process skills currently run in the same Node.js process as the runtime (no isolation). For v1, skill handlers supplied by host adapters should execute in a WASM sandbox (e.g., Wasmtime or a Node.js WASM module) to prevent a rogue skill from crashing or reading the runtime's memory. Design: skill-handler interface stays the same; executor wraps the handler in a sandboxed WASM call.
+
+### [2026-05-10] WebRTC voice channel for mic capture + TTS narration (Phase 5)
+**Source:** ADR-038 decision: "WebRTC reserved for voice (Phase 5) when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel."
+**Category:** capability
+**Notes:** Phase 5 adds voice as a first-class interaction mode. The architecture reserves WebRTC as a third transport channel (distinct from SSE and WS). Requires: browser `getUserMedia`, WebRTC peer connection, TTS model (or cloud TTS) for narration, planner awareness of voice-vs-text mode, atomic UI components that are voice-navigable.
+
+### [2026-05-10] Native iOS + Android SDKs for mobile-native embedding (v1.5)
+**Source:** ADR-017 decision: "v1.5: native SDKs (iOS / Android) for hosts who need full native UX."
+**Category:** capability
+**Notes:** MVP mobile strategy is WebView bridge + thin native shim. v1.5 delivers full native SDKs (Swift for iOS, Kotlin for Android) for hosts that need deep native integrations: biometrics, push notifications, camera, on-device ML. SDK API surface mirrors the WebView bridge but bypasses the WebView entirely.
+
+### [2026-05-10] OSS publish gate: provisional patents filed before any public release
+**Source:** ADR-035: "before any code reaches the public OSS repo, file provisional patent applications for the patentability-strong novel-idea entries."
+**Category:** other
+**Notes:** The repo must remain private (`khoks/SaaSAgent`) until all Bucket A provisional patents are filed (P-001 through P-005 disclosures are drafted; attorney filing is pending). This is a hard gate on Phase 9 (OSS release). Budget: ~$2–5k per provisional filing; total ~$10–25k for the full set. After filing, Apache 2.0 applies.

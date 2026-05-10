@@ -153,11 +153,19 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
-### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
+### Closed in Build Phase (2026-05-10)
+- ✅ Real-time transport: SSE (server→shell) + WebSocket (bidirectional) — already closed as ADR-038; confirmed in Phase 1.2 build
+- ✅ Planner dispatch: prefix-discriminated three-tier tool routing (`skill__`, `tool__`, `subagent__`) [ADR-039]
+- ✅ Symmetric federation: every runtime exposes `POST /federate` [ADR-040]
+- ✅ Runtime hardening: bearer-token auth + token-bucket rate limiting [ADR-041]
+- ✅ Implicit re-ask deduced feedback: 8-second timing window → `negative/user-implicit` signal [ADR-042]
+
+### Still open (v1/v2 — can groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-3. **Real-time transport** for the WC shell ↔ runtime — WebSocket / SSE / WebRTC (voice) / hybrid.
-4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+3. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
+4. **WebSocket bearer token in URL** — short-lived signed handshake token needed for production (current `?token=` approach exposes it in server logs).
+5. **Implicit re-ask window per-tenant tuning** — 8s default needs a per-tenant config surface in admin UI.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).
