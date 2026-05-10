@@ -1,24 +1,27 @@
-# EPIC-002 — Phase 0 Foundation
+# EPIC-002 — Phase 0 Foundation skeleton
 
 - **Status:** done
-- **Created:** 2026-05-05
-- **Last updated:** 2026-05-05
+- **Created:** 2026-05-10
+- **Last updated:** 2026-05-10
+- **Completed:** 2026-05-07
 - **Parent initiative:** [INIT-003 — Build MVP runtime + embeddable shell](../initiatives/INIT-003-build-mvp.md)
 
 ## Outcome
-Monorepo skeleton with all five packages (`@saasagent/protocol`, `@saasagent/runtime`, `@saasagent/sdk`, `@saasagent/web-shell`, `@saasagent/cli`) built, tested, and passing the Phase 0 gate: `pnpm install && pnpm build && pnpm test` succeeds end-to-end on a fresh clone.
+Working monorepo scaffold with pnpm workspaces + Turborepo, five package skeletons (protocol, runtime, sdk-ts, web-shell, cli), Docker Compose full polyglot stack, and a green CI gate (`pnpm install && pnpm build && pnpm test`).
 
 ## Why
-Phase 0 establishes the build-system contract that all subsequent phases depend on. No MVP work can be validated without a clean monorepo baseline.
+Nothing else can build without a working monorepo + test baseline. Phase 0 is the prerequisite for all subsequent phases.
 
-## Done when
-- pnpm workspaces + Turborepo wired, all packages compile.
-- Vitest configured with `--passWithNoTests` for package stubs.
-- `@saasagent/cli` binary entrypoint (`agentsaas`) executable.
-- Runtime smoke-test passes.
+## Done when (all satisfied)
+- ✅ pnpm install succeeds across all workspaces
+- ✅ pnpm build (Turborepo) compiles 4/4 packages cleanly
+- ✅ pnpm test passes (8 tests + passWithNoTests)
+- ✅ Runtime smoke: runtime process prints start message
+- ✅ CLI smoke: `agentsaas --help` and `--version` respond
 
-## Resolution (2026-05-05)
-Gate passed: 4/4 packages built (1.1s), 8 tests pass, runtime + CLI smoke green. Commits: c9110fc, 80da183.
+## Commits
+- `c9110fc` — initial monorepo scaffold + ADRs 032-037 + MVP scope accepted
+- `80da183` — fix: vitest `--passWithNoTests`; cross-platform main detection
 
-## Child stories
-_(tracked at epic level — Phase 0 is done)_
+## Notes
+Phase 0 gate satisfied 2026-05-07. Docker Compose includes Postgres, Qdrant, Redpanda, ClickHouse, Neo4j per ADR-032.
