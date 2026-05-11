@@ -1,10 +1,11 @@
 # STORY-007 — Build Expedia reference integration
 
-- **Status:** in-review
+- **Status:** done
+- **Completed:** 2026-05-11
 - **Epic:** [EPIC-002 — Expedia enterprise demo + onboarding validation](../epics/EPIC-002-expedia-demo-onboarding-validation.md)
 - **Created:** 2026-05-11
 - **Last updated:** 2026-05-11
-- **PR:** khoks/SaaSAgent#30
+- **PR:** khoks/SaaSAgent#30 (merged)
 
 ## User story
 As an enterprise developer evaluating SaaSAgent, I can clone `apps/demo-expedia/` and see a fully working travel-vertical integration that shows me exactly how to wire up skills, sub-agents, DOM observation, and semantic events — in 30 lines of boilerplate.

@@ -1,10 +1,11 @@
 # STORY-008 — Close 5 enterprise-onboarding gaps
 
-- **Status:** in-review
+- **Status:** done
+- **Completed:** 2026-05-11
 - **Epic:** [EPIC-002 — Expedia enterprise demo + onboarding validation](../epics/EPIC-002-expedia-demo-onboarding-validation.md)
 - **Created:** 2026-05-11
 - **Last updated:** 2026-05-11
-- **PR:** khoks/SaaSAgent#30 (commit `a35530d`, 16 files, +1,224/−37)
+- **PR:** khoks/SaaSAgent#30 merged (commit `a35530d`, 16 files, +1,224/−37)
 
 ## User story
 As an enterprise developer integrating SaaSAgent, the runtime gives me clear feedback when I call endpoints incorrectly, tells me what mode it's running in, and the web shell doesn't drop events before the WS handshake completes.
