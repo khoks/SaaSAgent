@@ -656,7 +656,7 @@
 
 ## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
 - **Date:** 2026-05-08
-- **Status:** accepted (closes Q6.3)
+- **Status:** accepted (closes Batch-6 open item #3)
 - **Context:** The Web Component shell needs a real-time channel to the runtime: planner streams composed UI updates + status to the shell as it generates them, and the shell streams typed-JSON interaction emits back as the user clicks/types/hovers (per ADR-005 + ADR-013).
 - **Options considered:**
   - A. WebSocket only (bidirectional single channel).
@@ -674,18 +674,18 @@
   - Native browser support for both is universal; no polyfills required.
 - **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).
 
-## ADR-039 — Conversational text input is the primary user affordance alongside button interaction
-- **Date:** 2026-05-07
-- **Status:** accepted (validated during Phase 2.0a self-review and live browser testing)
-- **Context:** Phase 1.4 built a fully working bidirectional compose→click→re-compose loop. During Phase 2.0a self-review Claude identified that when the composer judges there is "no concrete intent" (e.g., a welcome layout), it emits zero interactive buttons — leaving the user with no way to initiate a conversation. The button-only interaction model is fragile for any open-ended flow.
+## ADR-039 — Reference enterprise integration demo as the primary developer-onboarding validation pattern
+- **Date:** 2026-05-11
+- **Status:** accepted
+- **Context:** The platform needed a way to validate the developer-onboarding path (what it actually takes for an enterprise dev to drop SaaSAgent into their product) AND to surface implementation gaps before design partners engage. Options: (a) write docs + tutorial and rely on review for gap-finding, or (b) build and actually run a self-contained reference integration against a real enterprise scenario, driven E2E through Chrome.
 - **Options considered:**
-  - A. Buttons only — rely on the composer to always emit actionable elements.
-  - B. **Text input bar as a persistent first-class affordance**, alongside composed buttons. Users can always type; buttons are additive guidance.
-  - C. Text input only — eliminate button-driven shortcuts.
-- **Decision:** B. A persistent `InputBar` component is part of the shell's chrome — always visible regardless of what the composer emits. Composed buttons remain as accelerators and guided-flow affordances. User-typed text is routed through the same `InstructionEnvelope` protocol as button emits (type = `user-message`, payload = `{ text }`, `composeCycleId` = current layout's ID).
+  - A. Docs + tutorial only — low build cost; gaps only surface when the first enterprise dev hits them.
+  - B. **Self-contained reference integration** — Expedia-styled host page, branded runtime config, 5 domain skills + 1 sub-agent, mock backend APIs; driven E2E through Chrome to simulate realistic user behavior.
+- **Decision:** B. Reference integration (`apps/demo-expedia/`) is the validation artifact; docs come after the reference runs cleanly.
 - **Consequences:**
-  - Closes the zero-button dead-end UX gap — users can always move the conversation forward.
-  - The `InstructionEnvelope` protocol is already the right abstraction — text input is just another instruction type; no protocol changes required.
-  - Shell must manage focus correctly (text input should not steal focus from host page unless agent is expanded).
-  - "Build muscle memory" (ADR-034) depends on this: users learn to type to the agent over time; button shortcuts are training wheels.
-- **Source:** Conversation 2026-05-07 — Phase 2.0a self-review finding: "The welcome layout has zero buttons (composer correctly judged 'no concrete intent → no interactive elements'), which means the user has no way to drive the conversation forward. The whole loop is button-only — there's no text input. This is the critical UX gap." Rahul accepted with "you do the comprehensive testing in chrome yourself and proceed."
+  - **Validated developer-experience claim: ~30 lines of boilerplate** to bring up a fully configured enterprise agent (import `@saasagent/runtime`, register skills + sub-agent descriptor, start). Concrete DX anchor for onboarding copy and design-partner pitches.
+  - **Surfaced 5 onboarding gaps** that doc-only review would not have caught — all fixed in PR #30 before any design-partner engagement: (1) pre-handshake events tagged `cycle=no-cycle`, (2) `/federate` returning `{}` with no context in stub mode, (3) non-conventional executor REST paths, (4) unhelpful skill-input wrapping error message, (5) `/health` not surfacing stub-mode status to new developers.
+  - **Pattern for future verticals:** each anchor vertical (e-commerce Walmart-/Best Buy-style; travel Expedia-/Booking-style — per ADR-033) should have a corresponding reference integration under `apps/demo-<vertical>/` serving as both the onboarding example and the E2E regression harness.
+  - **Future CI gate:** reference integration E2E becomes the developer-onboarding regression test — a platform change that breaks the 30-line boilerplate flow must be caught before merge.
+  - **Stub-mode discoverability pattern established:** `/health` now exposes `mode: 'stub'|'live'` and a `devHint` block (registeredSkills, example curl for each executor path) when in stub mode. All reference integrations should be testable without an API key; the stub-mode experience is a first-class concern.
+- **Source:** Session 2026-05-11 — "I'll set up a realistic Expedia integration: a 'expedia.com'-style host page, an Expedia-specific runtime configuration with flight/hotel tools + skills + a trip-planner sub-agent, then drive realistic scenarios end-to-end. This will simultaneously stress-test the developer-onboarding path." Five gaps surfaced and fixed; 449/449 tests pass; PR #30 (`a35530d`).
