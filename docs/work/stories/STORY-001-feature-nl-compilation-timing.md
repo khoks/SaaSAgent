@@ -2,8 +2,7 @@
 
 - **Status:** done
 - **Created:** 2026-04-28
-- **Last updated:** 2026-05-04
-- **Completed:** 2026-05-04
+- **Last updated:** 2026-05-05
 - **Parent epic:** [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 
 ## User story
@@ -17,3 +16,6 @@ ADR-011 settled the `.feature.md` format (MD + YAML frontmatter + inline JSON). 
 ## Done when
 - Decision recorded in `docs/decisions/decision-log.md` as a new ADR.
 - INIT-001 Q3.1 marked resolved.
+
+## Resolution (2026-05-05)
+Decided: agent platform reads `.feature.md` super-skill docs directly with its intelligence — no NL→JSON compilation step. If conversion is needed, it happens at registration time as a secondary option. Recorded as ADR-036 (session b2da6a2e).

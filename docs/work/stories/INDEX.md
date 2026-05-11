@@ -4,18 +4,19 @@
 
 | ID | Title | Epic | Status | Created | Last update |
 |---|---|---|---|---|---|
-| STORY-001 | [Decide Feature/Service NL→JSON compilation timing](STORY-001-feature-nl-compilation-timing.md) | EPIC-001 | done | 2026-04-28 | 2026-05-04 |
-| STORY-002 | [Define MVP framework scope for multi-framework rendering](STORY-002-mvp-framework-scope.md) | EPIC-001 | done | 2026-04-28 | 2026-05-04 |
-| STORY-003 | [Choose stream processing for derivation pipeline](STORY-003-stream-processing-choice.md) | EPIC-001 | done | 2026-04-28 | 2026-05-04 |
-| STORY-004 | [Define voice-of-customer surface for dev team](STORY-004-voice-of-customer-surface.md) | EPIC-001 | done | 2026-04-28 | 2026-05-04 |
-| STORY-005 | [Decide mobile embedding strategy](STORY-005-mobile-embedding-strategy.md) | EPIC-001 | done | 2026-04-28 | 2026-05-04 |
-| STORY-006 | [Define proactive engine confidence and attention-budget model](STORY-006-proactive-engine-confidence.md) | EPIC-001 | done | 2026-04-28 | 2026-05-04 |
-| STORY-007 | [Monorepo skeleton and package setup](STORY-007-monorepo-skeleton-setup.md) | EPIC-002 | done | 2026-05-04 | 2026-05-04 |
-| STORY-008 | [Protocol typed-JSON schema package](STORY-008-protocol-schema-package.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
-| STORY-009 | [Real SSE and WebSocket transport](STORY-009-sse-websocket-transport.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
-| STORY-010 | [HaikuComposer with Anthropic provider](STORY-010-haiku-composer-anthropic.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
-| STORY-011 | [Browser demo host with live Haiku compose](STORY-011-browser-demo-host.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
-| STORY-012 | [AtomicComponentRegistry store and REST API](STORY-012-atomic-component-registry.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
-| STORY-013 | [ThemeRegistryStore and REST API](STORY-013-theme-registry-store.md) | EPIC-003 | done | 2026-05-04 | 2026-05-04 |
-| STORY-014 | [Shell inline error banner on composer failure](STORY-014-shell-error-banner.md) | EPIC-003 | done | 2026-05-08 | 2026-05-08 |
-| STORY-015 | [Style Dictionary and CSS variable importers](STORY-015-style-dictionary-importers.md) | EPIC-003 | done | 2026-05-08 | 2026-05-08 |
+| STORY-001 | [Decide Feature/Service NL→JSON compilation timing](STORY-001-feature-nl-compilation-timing.md) | EPIC-001 | done | 2026-04-28 | 2026-05-05 |
+| STORY-002 | [Define MVP framework scope for multi-framework rendering](STORY-002-mvp-framework-scope.md) | EPIC-001 | done | 2026-04-28 | 2026-05-05 |
+| STORY-003 | [Choose stream processing for derivation pipeline](STORY-003-stream-processing-choice.md) | EPIC-001 | done | 2026-04-28 | 2026-05-05 |
+| STORY-004 | [Define voice-of-customer surface for dev team](STORY-004-voice-of-customer-surface.md) | EPIC-001 | done | 2026-04-28 | 2026-05-05 |
+| STORY-005 | [Decide mobile embedding strategy](STORY-005-mobile-embedding-strategy.md) | EPIC-001 | done | 2026-04-28 | 2026-05-05 |
+| STORY-006 | [Define proactive engine confidence and attention-budget model](STORY-006-proactive-engine-confidence.md) | EPIC-001 | done | 2026-04-28 | 2026-05-05 |
+| STORY-007 | [Text input bar in web-shell (Phase 2.0a)](STORY-007-text-input-bar.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-008 | [Skills and Tools registries (Phase 2.0b)](STORY-008-skills-tools-registries.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-009 | [Skill and Tool executors with REST endpoints (Phase 2.0c)](STORY-009-skill-tool-executors.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-010 | [Planner integration (Phase 2.1)](STORY-010-planner-integration.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-011 | [Features registry as planner super-skill context (Phase 2.2)](STORY-011-features-registry.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-012 | [KeyValueMemoryProvider + per-WS sessionId (Phase 2.3)](STORY-012-kv-memory-provider.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-013 | [Federated Sub-Agents (Phase 2.4)](STORY-013-federated-sub-agents.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-014 | [/federate endpoint — symmetric two-runtime federation (Phase 2.4.x)](STORY-014-federate-endpoint.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-015 | [Embedded eval scoring — per-turn quality signals (Phase 2.5)](STORY-015-embedded-eval-scoring.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
+| STORY-016 | [VoC + Customer Churn Risk (Phase 2.6)](STORY-016-voc-churn-risk.md) | EPIC-010 | done | 2026-05-05 | 2026-05-05 |
