@@ -131,4 +131,20 @@ export interface FederationResponse {
   }>;
   /** Sub-agent reports a soft failure here; HTTP-level errors come back as ExecutionError instead. */
   error?: { code: string; message: string };
+  /**
+   * Sub-agent's planner mode at the time of this response. 'stub' means the
+   * sub-agent had no LLM key and its planner did not translate the intent
+   * into invocations — the parent can fall back to direct dispatch using
+   * `availableSkills` below.
+   */
+  mode?: 'stub' | 'live';
+  /**
+   * The sub-agent's registered skill names, surfaced when the federation
+   * planner produced no invocations (typically in stub mode). Lets the parent
+   * — or a test harness — fall back to direct dispatch:
+   *   POST <subAgentBaseUrl>/executor/skill/<availableSkills[i]>
+   * Only populated when `invocations` is empty, so live-mode responses with
+   * real outputs don't pay the wire cost.
+   */
+  availableSkills?: ReadonlyArray<string>;
 }

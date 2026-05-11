@@ -362,6 +362,16 @@ export class Runtime {
     console.log(`  • GET  http://localhost:${this.server.port}/sse`);
     // eslint-disable-next-line no-console
     console.log(`  • WS   ws://localhost:${this.server.port}/ws`);
+    // Surface the dev-mode story prominently on first boot so enterprise devs
+    // evaluating the platform don't conclude "nothing works" when StubPlanner
+    // is active. The data plane works; only natural-language → skill orchestration
+    // needs an API key.
+    if (this.planner.name === 'stub') {
+      // eslint-disable-next-line no-console
+      console.log(
+        `\n[runtime] mode=STUB — no ANTHROPIC_API_KEY detected. The UI shell will load and\n          DOM observation / eval signals will flow, but the planner will not\n          translate user messages into skill calls. To exercise skills:\n            curl -X POST -H 'content-type: application/json' \\\n              -d '<input JSON>' http://localhost:${this.server.port}/executor/skill/<name>\n          GET /health for the full dev-hint with registered skill names.\n`,
+      );
+    }
   }
 
   async stop(): Promise<void> {

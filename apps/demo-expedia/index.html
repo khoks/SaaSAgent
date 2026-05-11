@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Expedia (demo) — flights, hotels, things to do</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f8fb;
+        --card-bg: #ffffff;
+        --border: #e1e5eb;
+        --muted: #5e6b7a;
+        --text: #1c2433;
+        --accent: #1668e3;
+        --accent-dark: #0e4fb0;
+        --success: #16864a;
+        --warning: #c87f00;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+      header { background: linear-gradient(180deg, #00355f 0%, #002b4d 100%); color: #fff; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+      header .brand { font-weight: 800; font-size: 18px; letter-spacing: -0.3px; }
+      header .brand .pill { background: #ffb700; color: #000; font-size: 10px; padding: 2px 6px; border-radius: 3px; margin-left: 8px; vertical-align: middle; }
+      header nav { display: flex; gap: 18px; font-size: 13px; }
+      header nav a { color: #fff; text-decoration: none; opacity: 0.85; }
+      header nav a.active { font-weight: 700; opacity: 1; border-bottom: 2px solid #ffb700; padding-bottom: 2px; }
+      .layout { display: grid; grid-template-columns: 1fr 420px; gap: 24px; max-width: 1400px; margin: 0 auto; padding: 24px; }
+      main { background: var(--card-bg); padding: 24px; border-radius: 10px; border: 1px solid var(--border); }
+      h1 { margin: 0 0 16px; font-size: 24px; font-weight: 700; }
+      h2 { margin: 24px 0 12px; font-size: 16px; font-weight: 700; }
+      .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+      .tab { padding: 10px 16px; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: var(--muted); }
+      .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+      .search-bar { display: grid; gap: 10px; margin-bottom: 18px; background: #f0f4f9; padding: 14px; border-radius: 8px; }
+      .search-bar.flight-search { grid-template-columns: 1.2fr 1.2fr 1fr 1fr auto; }
+      .search-bar.hotel-search { grid-template-columns: 1.4fr 1fr 1fr 0.8fr auto; }
+      .search-bar label { font-size: 11px; color: var(--muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.3px; }
+      .search-bar input, .search-bar select, .search-bar button { padding: 10px 12px; font-size: 14px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+      .search-bar button { background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: 700; min-width: 110px; align-self: end; }
+      .search-bar button:hover { background: var(--accent-dark); }
+      .field { display: flex; flex-direction: column; gap: 4px; }
+      .results { display: flex; flex-direction: column; gap: 10px; }
+      .flight { border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 90px 1fr 1fr 1fr auto; align-items: center; gap: 14px; transition: border-color 120ms; }
+      .flight:hover { border-color: var(--accent); }
+      .flight .airline { font-weight: 700; }
+      .flight .route { font-weight: 600; }
+      .flight .stops { font-size: 12px; color: var(--muted); }
+      .flight .duration { font-size: 12px; color: var(--muted); }
+      .flight .price { color: var(--success); font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+      .flight .price small { display: block; font-size: 11px; color: var(--muted); font-weight: normal; }
+      .flight button { padding: 8px 14px; background: var(--accent); color: #fff; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; }
+      .hotel { border: 1px solid var(--border); border-radius: 8px; padding: 14px; display: grid; grid-template-columns: 60px 1fr auto; gap: 14px; align-items: center; }
+      .hotel:hover { border-color: var(--accent); }
+      .hotel .icon { font-size: 36px; }
+      .hotel .name { font-weight: 700; font-size: 15px; }
+      .hotel .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .hotel .amenities { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+      .hotel .amenities span { font-size: 10px; background: #eef3f9; color: var(--muted); padding: 2px 6px; border-radius: 3px; }
+      .hotel .rating { color: var(--warning); font-weight: 700; font-size: 13px; }
+      .hotel .price { color: var(--success); font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+      .trip-summary { background: linear-gradient(135deg, #fff8e6 0%, #fef3d3 100%); border: 1px solid #f0d77a; border-radius: 8px; padding: 14px; margin-bottom: 16px; font-size: 13px; }
+      .trip-summary .label { font-size: 11px; text-transform: uppercase; color: var(--warning); font-weight: 700; letter-spacing: 0.4px; }
+      aside { position: sticky; top: 24px; align-self: start; }
+      aside saas-agent { display: block; background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; min-height: 420px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+      .empty { color: var(--muted); font-style: italic; padding: 20px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span>expedia<sup style="font-size: 10px; opacity: 0.7;"> demo</sup></span>
+        <span class="pill">SaaSAgent</span>
+      </div>
+      <nav data-saas-agent-observe="nav">
+        <a class="active" data-tab="flights">Flights</a>
+        <a data-tab="hotels">Stays</a>
+        <a data-tab="activities">Things to do</a>
+      </nav>
+      <div style="font-size: 12px; opacity: 0.8;" data-saas-agent-observe="user-context">Welcome back — view trips</div>
+    </header>
+
+    <div class="layout">
+      <main>
+        <div class="trip-summary" data-saas-agent-observe="trip-context" id="trip-context" style="display:none">
+          <div class="label">Trip in progress</div>
+          <div id="trip-context-body"></div>
+        </div>
+
+        <h1 id="page-title">Find your flight</h1>
+
+        <!-- Flight search -->
+        <section id="panel-flights">
+          <div class="search-bar flight-search" data-saas-agent-observe="flight-search-form">
+            <div class="field"><label>From</label><input id="flight-from" value="SFO"></div>
+            <div class="field"><label>To</label><input id="flight-to" value="NRT"></div>
+            <div class="field"><label>Depart</label><input id="flight-when" type="date" value="2026-08-15"></div>
+            <div class="field"><label>Cabin</label><select id="flight-cabin"><option value="economy">Economy</option><option value="premium-economy">Premium economy</option><option value="business">Business</option><option value="first">First</option></select></div>
+            <button id="flight-search-btn">Search</button>
+          </div>
+          <h2>Flights to <span id="flight-results-route">NRT</span></h2>
+          <div class="results" data-saas-agent-observe="flight-results" id="flight-results"></div>
+        </section>
+
+        <!-- Hotel search -->
+        <section id="panel-hotels" style="display:none">
+          <div class="search-bar hotel-search" data-saas-agent-observe="hotel-search-form">
+            <div class="field"><label>City</label><input id="hotel-city" value="Tokyo"></div>
+            <div class="field"><label>Check in</label><input id="hotel-checkin" type="date" value="2026-08-15"></div>
+            <div class="field"><label>Check out</label><input id="hotel-checkout" type="date" value="2026-08-19"></div>
+            <div class="field"><label>Guests</label><input id="hotel-guests" type="number" value="2" min="1"></div>
+            <button id="hotel-search-btn">Search</button>
+          </div>
+          <h2>Stays in <span id="hotel-results-city">Tokyo</span></h2>
+          <div class="results" data-saas-agent-observe="hotel-results" id="hotel-results"></div>
+        </section>
+
+        <!-- Activities -->
+        <section id="panel-activities" style="display:none">
+          <div class="search-bar hotel-search" data-saas-agent-observe="activity-search-form" style="grid-template-columns: 1fr 1fr auto">
+            <div class="field"><label>City</label><input id="activity-city" value="Tokyo"></div>
+            <div class="field"><label>Category</label><select id="activity-cat"><option value="">All</option><option value="tour">Tours</option><option value="food">Food</option><option value="museum">Museums</option><option value="outdoor">Outdoor</option><option value="show">Shows</option></select></div>
+            <button id="activity-search-btn">Search</button>
+          </div>
+          <h2>Things to do in <span id="activity-results-city">Tokyo</span></h2>
+          <div class="results" data-saas-agent-observe="activity-results" id="activity-results"></div>
+        </section>
+      </main>
+
+      <aside data-saas-agent-track-viewport="agent-panel">
+        <saas-agent runtime="http://localhost:8080" mode="side-panel"></saas-agent>
+      </aside>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
