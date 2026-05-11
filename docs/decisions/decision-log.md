@@ -637,6 +637,24 @@
   - If Rahul prefers a different stack (Nx for heavier orchestration; Bun for speed), we can swap before too much code accumulates.
 - **Source:** Conversation 2026-05-07 (Phase 0 scaffolding default).
 
+## ADR-039 — MVP sub-agent federation runtime: HTTP fetch + typed JSON envelopes (gRPC deferred to v1)
+- **Date:** 2026-05-05
+- **Status:** accepted (MVP concession; gRPC per ADR-028 is the v1 north star)
+- **Context:** ADR-021 requires sub-agents to federate over a defined protocol. ADR-028 specifies gRPC bidirectional streaming for the runtime planner ↔ sub-agent channel, but implementing gRPC in Phase 2.4 would have required a proto toolchain, code-gen, and multi-language stub setup — complexity disproportionate to the MVP goal of proving end-to-end federation semantics. The team chose HTTP for MVP.
+- **Options considered:**
+  - A. gRPC bidirectional streaming from day 1 (ADR-028 target) — correct for production; adds proto toolchain to MVP.
+  - B. **HTTP fetch + typed JSON envelopes (`FederationRequest` / `FederationResponse`) at MVP** — simpler; aligns with existing REST admin plane; loses streaming progress signals from sub-agents.
+- **Decision:** B for MVP.
+- **Consequences:**
+  - `SubAgentExecutor` dispatches federation requests as HTTP `POST` to the sub-agent's registered endpoint; request body is `FederationRequest` JSON; response is `FederationResponse` JSON.
+  - No real-time streaming of sub-agent progress at MVP (HTTP is request/response) — intermediate progress signals are not propagated to the planner.
+  - v1 upgrade path: switch `SubAgentExecutor` to gRPC bidirectional streaming per ADR-028; update sub-agent SDK server stubs (TS + Python) to expose a gRPC server. The executor and SDK stubs are the only upgrade surface.
+  - ADR-028 gRPC target remains the architectural north star; this ADR is a phasing concession only.
+  - Live-verified in Phase 2.4g: `[sonnet-planner] subagent__weather-specialist({"intent":"...", "payload":{"location":"Tokyo"}}) → ok (372ms)` — federation round-trip confirmed.
+- **Source:** Phase 2.4 plan (conversation 2026-05-05): "2.4c: SubAgentExecutor — HTTP fetch + federation envelope marshaling + tests"; implicit decision accepted when Rahul confirmed "(B). start 2.1a and keep building till you exhaust the complete plan."
+
+---
+
 ## ADR-038 — Real-time transport: SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit
 - **Date:** 2026-05-08
 - **Status:** accepted (closes Q6.3)
