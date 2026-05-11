@@ -58,17 +58,7 @@ Each entry:
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
 
-### [2026-05-03] Phase 1.4: Atomic UI Component registry + DTCG theme tokens importer + Vite browser demo
-**Source:** Session 2026-05-03, Phase 1.3 closure: "Phase 1.4 → Atomic UI Components registry replacing the hardcoded primitives in `prompt.ts`, DTCG theme tokens importer, and a Vite-bundled browser demo so the loop runs in an actual browser tab instead of curl/JSDOM."
-**Category:** capability / infrastructure
-**Notes:** The hardcoded `Card → Text → Button` primitives in `HaikuComposer/prompt.ts` are placeholders. Phase 1.4 replaces them with a runtime-loaded `AtomicComponent` registry (schema defined in `@saasagent/protocol`). The DTCG theme tokens importer (ADR-025) is wired in this phase to populate the Anthropic prompt-cache prefix (4096-token min on Haiku 4.5 — won't activate until the registry has real content). The Vite-bundled browser demo converts the current JSDOM test harness into a real browser tab, proving the WC shell renders correctly with live SSE/WS connections to the runtime.
-
-### [2026-05-03] Phase 2: Planner + 3-tier capability invocation + .feature.md (MVP-of-MVP gate)
-**Source:** Session 2026-05-03, Phase 1.3 closure: "Phase 2 → Planner + 3-tier capability invocation + .feature.md (MVP-of-MVP gate)."
+### [2026-05-08] Voice I/O channel via WebRTC (Phase 5)
+**Source:** ADR-038 (conversation 2026-05-08): "WebRTC reserved for voice in Phase 5 when microphone capture and TTS narration land; voice has different latency / codec characteristics that warrant a third channel."
 **Category:** capability
-**Notes:** Phase 2 adds: (a) the planner layer (`claude-sonnet-4-6`, per ADR-007/ADR-012) that orchestrates multi-turn conversations; (b) the three-tier capability invocation model — Tools → Skills → Sub-Agents (ADR-021) — wired to the planner; (c) `.feature.md` document loading (ADR-013) so domain-dev feature documents influence planner decisions at runtime. Phase 2 completion defines the MVP-of-MVP: a real end-to-end conversation where a user intent drives planner-directed composition from the host's atomic design system, invoking a registered feature. Everything in Phases 0–1 is scaffolding for this moment.
-
-### [2026-05-03] Composer error UX: SSE event:error emission when composer fails (deferred from Phase 1.3)
-**Source:** Session 2026-05-03, Phase 1.3 live smoke: "When Haiku fails, the runtime currently logs the error but the SSE client just hangs (no event delivered → 30 s timeout). The right behavior is to emit an `event: error\ndata: {...}\n\n` SSE message so the shell can render an error layout."
-**Category:** capability / quality
-**Notes:** If both HaikuComposer (Haiku 4.5) and SonnetFallbackComposer (Sonnet 4.6 + adaptive thinking) fail, the runtime logs the error but sends no SSE event. The shell times out silently after ~30 s. Fix: `RuntimeServer.handleRequest` must catch composer errors and emit a typed SSE error event, giving the shell enough context to render a graceful error state (e.g., "I'm having trouble right now — please try again"). Explicitly deferred to Phase 1.3.1 polish or Phase 1.4 error-handling pass.
+**Notes:** The real-time transport design (ADR-038) reserves WebRTC as a dedicated third channel for Phase 5 voice features. SSE (planner output) and WebSocket (typed instruction emit) are insufficient for the latency/codec requirements of voice. Phase 5 brings: microphone capture in the WC shell, server-side WebRTC peer-connection endpoint, TTS narration output stream, and integration with the existing composited UI surface. Requires voice-aware planner mode and narration-aware UI composer.

@@ -177,24 +177,8 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 ### Still open (Batch 7 — implementation/v2 details)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
-3. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
-4. **SubAgentExecutor gRPC upgrade** — switch from HTTP fetch MVP transport to gRPC bidirectional streaming per ADR-028; add proto definitions + SDK server stubs [ADR-039].
-
-## Phase 0 scaffold (completed 2026-05-03)
-
-Monorepo is bootstrapped and all gate checks pass. Package structure:
-
-| Package | npm name | Purpose |
-|---|---|---|
-| `packages/runtime` | `@saasagent/runtime` | Core `Runtime` class + config interface; entry point for the platform process |
-| `packages/sdk-ts` | `@saasagent/sdk` | TypeScript Sub-Agent SDK — `SubAgentDescriptor` type + `registerSubAgent` stub |
-| `packages/web-shell` | `@saasagent/web-shell` | `<saas-agent>` custom element; side-panel placeholder; WC shell host |
-| `packages/cli` | `@saasagent/cli` | `agentsaas` binary — `init` / `dev` / `registry` CLI stubs |
-| `infra/docker-compose.yml` | — | Full polyglot dev stack: PG + Qdrant + Redpanda + ClickHouse + Neo4j (per ADR-032) |
-
-Gate: `pnpm install && pnpm build && pnpm test` — all green (4/4 builds, 8/8 tests with `--passWithNoTests`). Runtime smoke (`[saasagent/runtime v0.0.0] starting`) and CLI smoke (`agentsaas --help / --version / init / dev / registry`) both pass.
-
-**Source:** Session 2026-05-03 — Phase 0 implementation; commit 80da183.
+3. ✅ **Real-time transport** — closed by [ADR-038](../decisions/decision-log.md): SSE for streaming planner output to shell; WebSocket for bidirectional typed-instruction emit; WebRTC reserved for voice Phase 5.
+4. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).
