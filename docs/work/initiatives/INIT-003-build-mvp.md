@@ -146,34 +146,9 @@ Pure post-MVP:
 
 ## Child epics
 
-Owned + maintained by the work-management skill.
-
-### Phase 0 — Foundation (done 2026-05-06)
-- [EPIC-002 — Monorepo skeleton](../epics/EPIC-002-phase0-monorepo-skeleton.md)
-- [EPIC-003 — Local infrastructure (Docker Compose)](../epics/EPIC-003-phase0-local-infra.md)
-- [EPIC-004 — CI baseline (GitHub Actions)](../epics/EPIC-004-phase0-ci-baseline.md)
-- [EPIC-005 — Runtime package skeleton](../epics/EPIC-005-phase0-runtime-skeleton.md)
-- [EPIC-006 — SDK-TS package skeleton](../epics/EPIC-006-phase0-sdk-ts-skeleton.md)
-- [EPIC-007 — Web shell package skeleton](../epics/EPIC-007-phase0-web-shell-skeleton.md)
-- [EPIC-008 — CLI package skeleton](../epics/EPIC-008-phase0-cli-skeleton.md)
-
-### Phase 1 — Composition (done 2026-05-06)
-- [EPIC-009 — WC shell + composition pipeline](../epics/EPIC-009-phase1-composition-pipeline.md)
-
-### Phase 2 — Planning + Memory + VoC + Churn (done 2026-05-06)
-- [EPIC-010 — Planning + three-tier capability + memory + VoC + churn](../epics/EPIC-010-phase2-planning-capability.md)
-
-### Phase 5 — Multimodal + Proactive + Sub-Agent SDK (done 2026-05-06, Bucket A+B)
-- [EPIC-011 — Multimodal + proactive + Sub-Agent SDK + providers](../epics/EPIC-011-phase5-multimodal-proactive.md)
-
-### Phase 6 — Auth + Telemetry + Multi-tenant + ML + Eval (done 2026-05-06, Bucket C)
-- [EPIC-012 — Auth + telemetry + multi-tenant + ML training + eval](../epics/EPIC-012-phase6-auth-telemetry-hardening.md)
-
-### Phase 7 — Tier/Quota (backlog)
-- [EPIC-013 — Tier/quota enforcement](../epics/EPIC-013-phase7-tier-quota.md)
-
-### Phase 8 — Demo Verticals (backlog)
-- [EPIC-014 — Demo verticals (e-commerce + travel)](../epics/EPIC-014-phase8-demo-verticals.md)
-
-### Phase 9 — Mobile + Distribution + IP Gate (backlog)
-- [EPIC-015 — Mobile + distribution + IP gate + OSS publication](../epics/EPIC-015-phase9-mobile-distribution-ip.md)
+| Epic | Coverage | Status |
+|---|---|---|
+| [EPIC-002](../epics/EPIC-002-build-mvp-core-runtime-planning.md) | Phases 2.1–2.7 — planner, memory, VoC, churn, auth hardening | done |
+| [EPIC-003](../epics/EPIC-003-multimodal-shell-and-storage-providers.md) | Bucket A+B — mobile context, render modes, DOM observation, Sub-Agent SDK, CLI, demo verticals, storage providers | done |
+| [EPIC-004](../epics/EPIC-004-platform-hardening-bucket-c.md) | Bucket C — auth abstraction, telemetry, multi-tenant, ML training, E2E, metering | done |
+| [EPIC-005](../epics/EPIC-005-provisional-patent-disclosures-strategy.md) | Provisional patent disclosures + filing strategy (Phase 9 gate) | in-progress |
