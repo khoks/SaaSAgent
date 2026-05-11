@@ -1,8 +1,8 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phase 0 done; Phase 1 gate satisfied — slices 1.1 + 1.2 done; remaining slices 1.3-1.5 in backlog)
+- **Status:** in-progress (Phase 1 complete 2026-05-04; Phase 2 next)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-03
+- **Last updated:** 2026-05-04
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
 
 ## Why
