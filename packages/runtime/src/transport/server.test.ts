@@ -20,6 +20,7 @@ import { SkillExecutor, SubAgentExecutor, ToolExecutor } from '../executor/index
 import { KeyValueMemoryProvider, NullMemoryProvider } from '../memory/index.js';
 import { KeyValueEvalProvider } from '../eval/index.js';
 import type { Planner } from '../planner/index.js';
+import { InMemoryTierProvider } from '../quota/index.js';
 import { RuntimeServer } from './server.js';
 
 /**
@@ -1932,5 +1933,181 @@ describe('RuntimeServer /churn endpoints', () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/health`);
     const body = (await res.json()) as { churnCalculator: string };
     expect(body.churnCalculator).toBe('rule-based-v0');
+  });
+});
+
+/**
+ * Phase 7 / ADR-019: end-user tier/quota enforcement over WS user-messages.
+ * Verifies the full path: TierProvider.consume on user-message → status
+ * attached to ComposedLayout.metadata.quotaStatus → exhaustion broadcasts a
+ * 'quota-exceeded' layout without invoking the planner.
+ */
+describe('RuntimeServer end-user tier/quota enforcement', () => {
+  it('attaches metadata.quotaStatus to layouts; counter decreases per user-message', async () => {
+    const provider = new InMemoryTierProvider({
+      defaultTier: 'free',
+      tiers: [{ id: 'free', label: 'Free', dailyRequests: 5 }],
+    });
+    const server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      quotaProvider: provider,
+    });
+    await server.start();
+    try {
+      const sseUrl = `http://127.0.0.1:${server.port}/sse`;
+      const layouts: ComposedLayout[] = [];
+      const sse = new EventSource(sseUrl);
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+      const envelope: InstructionEnvelope = {
+        composeCycleId: layouts[0]!.composeCycleId,
+        sourceNodeId: 'input-bar',
+        emittedAt: new Date().toISOString(),
+        type: 'user-message',
+        sequence: 0,
+        payload: { text: 'hi' },
+      };
+      ws.send(JSON.stringify(envelope));
+      await waitFor(() => layouts.length >= 2, 2000);
+
+      const second = layouts[1]!;
+      expect(second.metadata?.quotaStatus).toBeDefined();
+      expect(second.metadata?.quotaStatus?.tier).toBe('free');
+      expect(second.metadata?.quotaStatus?.used).toBe(1);
+      expect(second.metadata?.quotaStatus?.remaining).toBe(4);
+      expect(second.metadata?.quotaStatus?.limit).toBe(5);
+      expect(second.metadata?.quotaStatus?.allowed).toBe(true);
+
+      ws.close();
+      sse.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('broadcasts a quota-exceeded layout once the tier limit is hit, without running the planner', async () => {
+    const provider = new InMemoryTierProvider({
+      defaultTier: 'free',
+      tiers: [{ id: 'free', label: 'Free', dailyRequests: 1 }],
+    });
+    let plannerCalled = 0;
+    const planner: Planner = {
+      name: 'counting',
+      plan: async () => {
+        plannerCalled++;
+        return { intent: 'echo', invocations: [], narration: 'ok' };
+      },
+    };
+    const server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      planner,
+      quotaProvider: provider,
+    });
+    await server.start();
+    try {
+      const sseUrl = `http://127.0.0.1:${server.port}/sse`;
+      const layouts: ComposedLayout[] = [];
+      const sse = new EventSource(sseUrl);
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+      const baseEnvelope: InstructionEnvelope = {
+        composeCycleId: layouts[0]!.composeCycleId,
+        sourceNodeId: 'input-bar',
+        emittedAt: new Date().toISOString(),
+        type: 'user-message',
+        sequence: 0,
+        payload: { text: 'first' },
+      };
+      ws.send(JSON.stringify(baseEnvelope));
+      await waitFor(() => layouts.length >= 2, 2000);
+      // Second message should be rejected — planner NOT called again.
+      ws.send(
+        JSON.stringify({
+          ...baseEnvelope,
+          composeCycleId: layouts[1]!.composeCycleId,
+          sequence: 1,
+          payload: { text: 'second' },
+        }),
+      );
+      await waitFor(() => layouts.length >= 3, 2000);
+
+      expect(plannerCalled).toBe(1); // only first message reached the planner
+      const denied = layouts[2]!;
+      expect(denied.metadata?.quotaStatus?.allowed).toBe(false);
+      expect(denied.metadata?.quotaStatus?.reason).toBe('quota-exceeded');
+      expect(denied.metadata?.quotaStatus?.remaining).toBe(0);
+      expect(denied.metadata?.intent).toBe('quota-exceeded');
+
+      ws.close();
+      sse.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('default NoQuotaProvider attaches no quotaStatus to layouts', async () => {
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer() });
+    await server.start();
+    try {
+      const sseUrl = `http://127.0.0.1:${server.port}/sse`;
+      const layouts: ComposedLayout[] = [];
+      const sse = new EventSource(sseUrl);
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500);
+
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+      ws.send(
+        JSON.stringify({
+          composeCycleId: layouts[0]!.composeCycleId,
+          sourceNodeId: 'input-bar',
+          emittedAt: new Date().toISOString(),
+          type: 'user-message',
+          sequence: 0,
+          payload: { text: 'hi' },
+        } satisfies InstructionEnvelope),
+      );
+      await waitFor(() => layouts.length >= 2, 2000);
+
+      expect(layouts[1]!.metadata?.quotaStatus).toBeUndefined();
+      ws.close();
+      sse.close();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('/health surfaces quotaProvider name + tier definitions when configured', async () => {
+    const provider = new InMemoryTierProvider({
+      defaultTier: 'free',
+      tiers: [
+        { id: 'free', label: 'Free', dailyRequests: 5 },
+        { id: 'pro', label: 'Pro', dailyRequests: 100 },
+      ],
+    });
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), quotaProvider: provider });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+      const body = (await res.json()) as { quotaProvider: string; quotaTiers?: Array<{ id: string }> };
+      expect(body.quotaProvider).toBe('in-memory-tier');
+      expect(body.quotaTiers?.map((t) => t.id)).toEqual(['free', 'pro']);
+    } finally {
+      await server.stop();
+    }
   });
 });

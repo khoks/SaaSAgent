@@ -17,6 +17,7 @@ export type {
   DataSource,
   MemoryQuery,
   EmitSpec,
+  QuotaStatus,
 } from './layout.js';
 export type { InstructionEnvelope, InstructionAck, EmitTransport } from './instruction.js';
 export {

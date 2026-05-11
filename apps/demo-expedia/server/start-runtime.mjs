@@ -18,7 +18,7 @@
  * this is up the planner can reach any of the registered Expedia capabilities.
  */
 
-import { Runtime } from '@saasagent/runtime';
+import { Runtime, InMemoryTierProvider } from '@saasagent/runtime';
 
 // ---------- In-memory Expedia inventory (mirrors apps/demo-expedia/src/data.ts) ----------
 
@@ -226,7 +226,22 @@ const TRIP_PLANNER_SUBAGENT = {
 // ---------- Boot ----------
 
 const port = Number(process.env.SAAS_AGENT_PORT ?? 8080);
-const runtime = new Runtime({ port });
+
+// Phase 7 / ADR-036: configure Expedia's end-user tier model. In a real
+// integration these limits would be sourced from Expedia's user DB; for the
+// demo we hard-code free (5/day) + pro (50/day) + concierge (unlimited).
+// A low default lets the demo hit the "X remaining" → quota-exceeded path
+// during a single user-test session without artificial bumps.
+const quotaProvider = new InMemoryTierProvider({
+  defaultTier: 'free',
+  tiers: [
+    { id: 'free', label: 'Free', dailyRequests: 5 },
+    { id: 'pro', label: 'Pro', dailyRequests: 50 },
+    { id: 'concierge', label: 'Concierge', dailyRequests: -1 },
+  ],
+});
+
+const runtime = new Runtime({ port, quotaProvider });
 
 // Register skills + their handlers BEFORE start() so the planner sees them
 // from the very first plan call.

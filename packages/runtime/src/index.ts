@@ -22,6 +22,7 @@ import { SkillExecutor, SubAgentExecutor, ToolExecutor } from './executor/index.
 import { KeyValueMemoryProvider, type MemoryProvider } from './memory/index.js';
 import { KeyValueEvalProvider, type EvalProvider } from './eval/index.js';
 import { type ChurnRiskCalculator, RuleBasedChurnCalculator } from './churn/index.js';
+import { type TierProvider } from './quota/index.js';
 import { AnthropicProvider } from './model/index.js';
 import { type Planner, SonnetPlanner, StubPlanner } from './planner/index.js';
 import {
@@ -209,6 +210,14 @@ export {
   type UsageMeteringProviderOptions,
   type UsageRollup,
 } from './metering/index.js';
+export {
+  NoQuotaProvider,
+  InMemoryTierProvider,
+  type TierProvider,
+  type TierDefinition,
+  type QuotaCheckResult,
+  type InMemoryTierProviderOptions,
+} from './quota/index.js';
 
 export interface RuntimeConfig {
   /** HTTP server port (default 8080). */
@@ -241,6 +250,13 @@ export interface RuntimeConfig {
   clickhouseUrl?: string;
   /** Neo4j URL. */
   neo4jUrl?: string;
+  /**
+   * End-user tier/quota provider (Phase 7 / ADR-036). When unset, the
+   * runtime uses NoQuotaProvider (unlimited; no quotaStatus in layouts).
+   * Host integrators construct an InMemoryTierProvider or their own
+   * TierProvider implementation and pass it here.
+   */
+  quotaProvider?: TierProvider;
 }
 
 export class Runtime {
@@ -336,6 +352,7 @@ export class Runtime {
       ...(this.config.rateLimitWsPerMinute !== undefined
         ? { rateLimitWsPerMinute: this.config.rateLimitWsPerMinute }
         : {}),
+      ...(this.config.quotaProvider ? { quotaProvider: this.config.quotaProvider } : {}),
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(
