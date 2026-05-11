@@ -1,8 +1,9 @@
 # EPIC-001 — Close Batch 3 grooming decisions
 
-- **Status:** in-progress
+- **Status:** done
 - **Created:** 2026-04-28
-- **Last updated:** 2026-04-28
+- **Last updated:** 2026-05-03
+- **Completed:** 2026-05-03
 - **Parent initiative:** [INIT-001 — Groom platform vision and requirements](../initiatives/INIT-001-groom-vision-and-requirements.md)
 
 ## Outcome
@@ -12,9 +13,9 @@ Six blocking architecture decisions answered, each yielding one ADR, completing 
 Batch 3 questions were posed at the end of the 2026-04-28 session but not answered. They gate concrete MVP implementation choices (compiler pipeline, render stack, stream processing, mobile strategy, proactive UX).
 
 ## Done when
-- All six Q3.x grooming questions have recorded answers.
-- Six corresponding ADRs committed to `docs/decisions/decision-log.md`.
-- INIT-001 Batch 3 section marked closed.
+- All six Q3.x grooming questions have recorded answers. ✅
+- Six corresponding ADRs committed to `docs/decisions/decision-log.md`. ✅ (ADR-013..019)
+- INIT-001 Batch 3 section marked closed. ✅
 
 ## Child stories
 - [STORY-001 — Decide Feature/Service NL→JSON compilation timing](../stories/STORY-001-feature-nl-compilation-timing.md)

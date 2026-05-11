@@ -1,8 +1,9 @@
 # STORY-006 — Define proactive engine confidence and attention-budget model
 
-- **Status:** backlog
+- **Status:** done
 - **Created:** 2026-04-28
-- **Last updated:** 2026-04-28
+- **Last updated:** 2026-05-03
+- **Completed:** 2026-05-03 (ADR-018: multi-signal scoring + combined attention budget; ADR-019: end-user tier/quota system)
 - **Parent epic:** [EPIC-001 — Close Batch 3 grooming decisions](../epics/EPIC-001-batch-3-grooming.md)
 
 ## User story

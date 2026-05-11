@@ -1,8 +1,8 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phase 0 started 2026-05-07)
+- **Status:** in-progress (Phase 0 done; Phase 1 gate satisfied — slices 1.1 + 1.2 done; remaining slices 1.3-1.5 in backlog)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-07
+- **Last updated:** 2026-05-03
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
 
 ## Why
@@ -27,26 +27,20 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 ## Phases & epics
 
-### Phase 0 — Foundation (in progress 2026-05-07)
-- **EPIC-002** Monorepo skeleton (pnpm + Turborepo, package layout, base tsconfig, root scripts)
-- **EPIC-003** Local infrastructure (Docker Compose with full polyglot stack, healthchecks, dev/test profiles)
-- **EPIC-004** CI baseline (GitHub Actions: install + build + lint + test)
-- **EPIC-005** Runtime package skeleton (`@saasagent/runtime`) with Claude Agent SDK substrate wiring stub
-- **EPIC-006** SDK-TS package skeleton (`@saasagent/sdk`) with placeholder federation interfaces
-- **EPIC-007** Web shell package skeleton (`@saasagent/web-shell`) with `<saas-agent />` custom element
-- **EPIC-008** CLI package skeleton (`@saasagent/cli`) with `agentsaas` binary entrypoint
+### Phase 0 — Foundation — **done** 2026-05-03
+- [EPIC-007 — Phase 0 Foundation](../epics/EPIC-007-phase-0-foundation.md) — **done** (monorepo skeleton, 4 package skeletons, CI, ADR-032–037)
 
-**Phase 0 gate:** `pnpm install && pnpm infra:up && pnpm build && pnpm test` succeeds end-to-end on a fresh clone.
+**Phase 0 gate:** `pnpm install && pnpm build && pnpm test` succeeds end-to-end on a fresh clone. ✅
 
-### Phase 1 — Composition
-- WC shell (side-panel render mode)
-- Atomic UI Components registry schema + storage + hot-reload
-- Theme tokens registry (DTCG canonical + Style Dictionary importer + CSS variable fallback)
-- UI Composer (Haiku + cached layout templates per intent + Sonnet fallback)
-- Bidirectional typed-JSON instruction protocol
-- Native-renderer escape hatch primitive
+### Phase 1 — Composition — **in-progress** (gate satisfied 2026-05-03)
+- [EPIC-008 — Phase 1 Composition](../epics/EPIC-008-phase-1-composition.md) — **in-progress** (gate ✅)
+  - ✅ **Slice 1.1** — `@saasagent/protocol` package, stub UIComposer, layout renderer skeleton, bidirectional loop validated in JSDOM (18 tests) — `5a4c97c`
+  - ✅ **Slice 1.2** — Real SSE + WebSocket transport; `/health`, `/sse`, `/ws` endpoints; 29 tests; full bidirectional loop over live network — `b796d02`
+  - Slice 1.3 — WC shell side-panel + atomic component registry *(backlog)*
+  - Slice 1.4 — Theme tokens registry *(backlog)*
+  - Slice 1.5 — Live UI Composer (Haiku + cached templates + Sonnet fallback) *(backlog)*
 
-**Phase 1 gate:** end-to-end composed artifact renders from a hand-crafted layout-tree input.
+**Phase 1 gate:** end-to-end composed artifact renders from a hand-crafted layout-tree input. ✅ **Satisfied 2026-05-03** — Composer → SSE → renderer → click → WS → re-compose → SSE → re-render proven over live network.
 
 ### Phase 2 — Planning *(MVP-of-MVP gate)*
 - Planner (Sonnet, on Claude Agent SDK)
@@ -153,3 +147,5 @@ Pure post-MVP:
 ## Child epics
 
 Owned + maintained by the work-management skill.
+
+- [EPIC-007 — Phase 0 Foundation](../epics/EPIC-007-phase-0-foundation.md) — done

@@ -1,8 +1,9 @@
 # INIT-002 — Define MVP slice and design-partner vertical
 
-- **Status:** accepted 2026-05-07 (Rahul approved scope; build phase begins)
+- **Status:** done (scope accepted 2026-05-03; build phase begun with INIT-003)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-07
+- **Last updated:** 2026-05-03
+- **Completed:** 2026-05-03
 - **Outcome:** A written MVP scope that proves the substrate is real for our anchor verticals, grounds the patent filings (ADR-035), and is realistically achievable by a 2-builder team (ADR-036).
 
 ## Why

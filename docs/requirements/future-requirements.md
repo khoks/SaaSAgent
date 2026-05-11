@@ -18,10 +18,10 @@ Each entry:
 **Category:** capability
 **Notes:** Future state — agent decides on its own when the user needs attention or when there is a next-best-action. Requires: continuous insight into host SaaS service catalog, attention-budget engine, confidence gating. To be groomed under FR-P.
 
-### [2026-04-26] Mobile app embedding (parity with web)
-**Source:** Initial vision dump from Rahul.
+### [2026-04-26 / clarified 2026-05-03] Mobile app embedding (parity with web)
+**Source:** Initial vision dump from Rahul; ADR-017 closed the MVP choice.
 **Category:** capability
-**Notes:** Adobe, Canva, Expedia, Best Buy, Walmart, Shopify all have native mobile apps. Platform must work in mobile contexts, not only web. Native SDK? React Native? WebView bridge? — open.
+**Notes:** Adobe, Canva, Expedia, Best Buy, Walmart, Shopify all have native mobile apps. Platform must work in mobile contexts, not only web. **MVP decision (ADR-017):** WebView bridge with mobile-context-aware composition. **v1.5:** native SDKs (React Native; iOS/Android) if demand. The WC shell is aware at composition time whether it is running in a mobile WebView vs. desktop/laptop/tablet and adapts layout composition accordingly.
 
 ### [2026-04-26] AI-native stores for time-windowed behavior queries
 **Source:** Initial vision dump from Rahul.
