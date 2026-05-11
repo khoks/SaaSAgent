@@ -1,8 +1,8 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phases 0–6 done 2026-05-06; Phases 7–9 remain)
+- **Status:** in-progress (Phases 0-2 + Buckets A/B/C done; Phase 3+ in backlog; patents in-progress)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-06
+- **Last updated:** 2026-05-10
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
 
 ## Why
@@ -146,9 +146,16 @@ Pure post-MVP:
 
 ## Child epics
 
-| Epic | Coverage | Status |
+Owned + maintained by the work-management skill.
+
+| Epic | Title | Status |
 |---|---|---|
-| [EPIC-002](../epics/EPIC-002-build-mvp-core-runtime-planning.md) | Phases 2.1–2.7 — planner, memory, VoC, churn, auth hardening | done |
-| [EPIC-003](../epics/EPIC-003-multimodal-shell-and-storage-providers.md) | Bucket A+B — mobile context, render modes, DOM observation, Sub-Agent SDK, CLI, demo verticals, storage providers | done |
-| [EPIC-004](../epics/EPIC-004-platform-hardening-bucket-c.md) | Bucket C — auth abstraction, telemetry, multi-tenant, ML training, E2E, metering | done |
-| [EPIC-005](../epics/EPIC-005-provisional-patent-disclosures-strategy.md) | Provisional patent disclosures + filing strategy (Phase 9 gate) | in-progress |
+| [EPIC-002](../epics/EPIC-002-phase-0-foundation.md) | Phase 0 Foundation skeleton | done |
+| [EPIC-003](../epics/EPIC-003-phase-1-composition.md) | Phase 1 Composition layer | done |
+| [EPIC-004](../epics/EPIC-004-phase-2-planning-core.md) | Phase 2 Planning core | done |
+| [EPIC-005](../epics/EPIC-005-phase-2-deferred-hardening.md) | Phase 2 deferred items + hardening | done |
+| [EPIC-006](../epics/EPIC-006-bucket-a-cross-cutting.md) | Bucket A cross-cutting capabilities | done |
+| [EPIC-007](../epics/EPIC-007-bucket-b-data-providers.md) | Bucket B data store providers | done |
+| [EPIC-008](../epics/EPIC-008-bucket-c-auth-telemetry-ml.md) | Bucket C auth, telemetry, ML, and E2E | done |
+| [EPIC-009](../epics/EPIC-009-patents-track.md) | Patents track — IP preparation | in-progress |
+| [EPIC-010](../epics/EPIC-010-expedia-demo-vertical.md) | Expedia demo vertical (Phase 8) | in-progress |
