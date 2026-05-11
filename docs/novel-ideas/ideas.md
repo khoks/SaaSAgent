@@ -160,6 +160,18 @@
 - **Patentability hint:** possible — system claim around tiered summarization stores indexed by temporal window with agent-driven tier selection at query time.
 - **Open questions:** Summarization cadence and trigger per tier? Privacy boundaries? Cross-tier consistency on backfill?
 
+### [2026-05-06] Behavioral negative eval signal inferred from re-ask timing (zero-effort quality labeling)
+- **Originator:** Claude (implemented during Phase 2.5.x; design confirmed by Rahul accepting the implementation)
+- **Source:** Phase 2.5.x implementation: "implicit re-ask inference (user-message within N seconds of a broadcast → `{ signal: 'negative', source: 'user-implicit' }`)" — from `adr/008-eval-and-churn-loop.md`.
+- **Description:** Rather than relying solely on explicit thumbs-up/thumbs-down feedback to label each layout's quality, the system automatically infers a negative quality signal when the user sends a new message within a short configurable window (`RASK_WINDOW_MS`, default 8 s) after a composed layout was broadcast. The logic: if the user immediately re-asks after receiving a response, the response was likely inadequate. This produces a continuous stream of `negative/user-implicit` `EvalSignal` records keyed to the prior `composeCycleId` — with zero additional user action. The implicit signals are weighted lower than explicit thumbs in the `WeightedFeatureChurnCalculator` to account for false positives (a quick follow-up question is not always dissatisfaction). System-error signals (planner failure, tool error) form a third signal source (`source: 'system'`), completing a three-source coverage model: explicit, implicit behavioral, and system.
+- **Prior-art assessment:**
+  - **Implicit feedback in recommender systems** (e.g., dwell time, scroll depth, skip signals) is well-established in web search + content personalization.
+  - **Re-ask as a negative signal in dialogue systems** is recognized in academic literature but rarely packaged as a first-class quality-labeling primitive with a configurable time window and explicit `composeCycleId` attribution.
+  - Combining re-ask timing with a per-compose-cycle-ID attribution (so the signal pinpoints exactly which layout failed) and feeding it directly into a session-level churn risk model in an embedded enterprise agent context — this specific packaging appears uncommon as a production primitive.
+- **Novelty signal:** low-medium — the individual components exist in the literature; the packaging as a named, configurable, per-cycle-attributed quality signal feeding a churn model is the non-obvious piece.
+- **Patentability hint:** none individually — too close to existing implicit-feedback art in recommender systems. The broader **unified active + deduced feedback substrate** (already captured as a separate entry) is the stronger claim.
+- **Open questions:** Optimal `RASK_WINDOW_MS` per vertical (conversational follow-up is faster in travel multi-step than in e-commerce single-action)? Should the window be adaptive (longer for complex multi-step layouts)? Should repeated re-asks in one session increase the implicit signal weight?
+
 ### [2026-04-26 / refined 2026-04-28] Feature/Service docs as agent-readable super-skill documents (no compilation)
 - **Originator:** Rahul (refined 2026-04-28 in Q3.1 answer; format choice in ADR-011, no-compilation choice in ADR-013)
 - **Source:** "app developers and domain developers within the enterprise can come and configure their own workflows in its system in the form of featured documents or service documents." + Q3.1 2026-04-28: "Do we really want the md format to be compiled to JSON? shouldn't the Agent platform just read it as a super skill doc and just execute it using its intelligence?"

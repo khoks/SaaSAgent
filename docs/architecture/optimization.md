@@ -28,28 +28,37 @@
 - How do we prevent a runaway proactive engine from blowing the cost budget?
 - Per-tenant cost caps + circuit breakers — design needed.
 
-## Implemented optimizations (Phase 1.x, confirmed 2026-05-08)
+## Validated optimization patterns (from MVP build phases 1–6, 2026-05-06)
 
-### CompositionCache — LRU keyed by canonical intent fingerprint
-**Source:** Phase 1.3 implementation (conversation 2026-05-08); design rationale in ADR-012.
+### Two-level composition cache (Phase 1.3)
+- **L1 — Application-level `CompositionCache`:** LRU keyed on canonical intent fingerprint (normalized user-text → hash). Stores the full typed-JSON `ComposedLayout` directly. Cache hit returns in <1ms with a fresh `composeCycleId`. Invalidation triggers: design-system version bump, theme-token change, Feature/Service doc edit.
+- **L2 — Anthropic prompt cache (`cache_control: {type: "ephemeral"}`):** Stable system prefix (atomic-component registry + theme tokens) marked cacheable. Saves 80–90% of input-token cost on the stable prefix on subsequent calls. Min cacheable prefix on `claude-haiku-4-5` is 4096 tokens — effectively activates once the component registry grows beyond ~50 entries.
+- **Combined effect:** warm e-commerce flows (product comparison, returns, cart review) should hit L1 and cost effectively zero per additional compose cycle.
 
-The application-level cache sits in front of every HaikuComposer call. Key = canonical intent fingerprint derived from conversation context; value = typed-JSON `ComposedLayout` (the full composed layout tree). Cache hit returns immediately with a fresh `composeCycleId` — no LLM call. Invalidation triggers: design-system version change (any registered component version bump), theme token change, Feature/Service doc edit.
+### Raw-JSON output + Zod validation for recursive schema (Phase 1.3)
+- `LayoutNode.children: LayoutNode[]` is a recursive type. Anthropic's structured-output surface (`output_config.format`) does not support recursive schemas.
+- Decision: raw JSON output steered by system prompt + `extractFirstJsonObject` helper + `Zod.safeParse` at runtime + one retry on validation failure. **No structured outputs used for composition.**
+- If Anthropic adds recursive-schema support, L2 cache-hit rate will increase slightly (more deterministic output format). Not blocking.
 
-This is the primary cost lever for common e-commerce flows (product comparison, cart review, returns, recommendations) which repeat across sessions and users.
+### DOM observation throttle + ring buffer (Phase A.3)
+- MutationObserver throttled to 200ms (default) and payload-bounded to 1KB per mutation. Prevents chatty host pages from creating a high-frequency event stream.
+- Per-WS ring buffer (20 entries, FIFO) at the runtime WS intercept layer. DOM envelopes populate the buffer but do NOT trigger a compose cycle. The planner reads the buffer on the next user-initiated or proactive turn.
+- **Result:** the host page can have highly interactive DOM (carousels, live price updates) without any impact on model call frequency.
 
-### Anthropic prompt cache — stable system prefix (cache_control: ephemeral)
-**Source:** Phase 1.3 implementation; ADR-012 cache design; Anthropic SDK min-cacheable-prefix note.
+### Token-bucket rate limiting per IP (Phase 2.7)
+- `RateLimiter` class: configurable `capacity` (default 60 tokens) and `refillRate` (default 1 token/second). Applied at the HTTP layer after auth.
+- Prevents any single client IP from exhausting the Anthropic API quota for the whole tenant.
+- Per-tenant cost caps + circuit breakers are still an open design question (see open questions above).
 
-The HaikuComposer sends a `SystemBlock[]` payload where the stable prefix (atomic-component registry dump + theme token block) carries `cache_control: {type: "ephemeral"}`. This prefix is cached at the Anthropic API level across calls from the same process. **Minimum cacheable prefix on `claude-haiku-4-5` is 4096 tokens** — the prompt cache won't reliably hit until Phase 1.4+ when the component registry and theme token block fill out to that threshold. Design accounts for this: the cache_control annotation is present from Phase 1.3 so it activates automatically as the registry grows.
+### Implicit eval signal — zero-cost quality labeling (Phase 2.5.x)
+- Re-ask within `RASK_WINDOW_MS` (default 8000ms) after a layout broadcast → automatic `negative/user-implicit` EvalSignal on the prior `composeCycleId`.
+- Delivers a consistent stream of quality labels without any user action.
+- False-positive rate (quick follow-up vs. frustrated re-ask) is mitigated by weighting implicit signals lower than explicit thumbs in `WeightedFeatureChurnCalculator`.
+- **Optimization implication:** eval coverage rate approaches 100% of conversations from day 1; no cold-start gap in the quality-signal pipeline.
 
-### SSE chunked-write compatibility
-**Source:** Phase 1.3.1 smoke-test finding (conversation 2026-05-08).
+### `WeightedFeatureChurnCalculator` warm-start training (Phase 2.6.x)
+- The calculator uses a sigmoid of a weighted linear combination of eval features. Initial weights are hand-tuned; `trainChurnWeights(labeledData, options)` performs gradient descent (configurable `epochs`, `learningRate`, L2 `lambda`) to replace them.
+- Deterministic seed (`sfc32` PRNG) ensures reproducible results in tests.
+- **Migration path to LightGBM (ADR-031):** once a tenant has ~1k labeled events, `trainChurnWeights()` produces weights that should closely match a logistic-regression baseline. Switch to LightGBM is a constructor-level swap.
 
-PowerShell's `HttpWebRequest` (and related Invoke-WebRequest patterns) buffers chunked SSE writes and does not surface individual events in real time. This is a client-side issue, not a runtime bug. The runtime's SSE implementation is correct. To test SSE outside a browser, use the `eventsource` npm package (same package used in integration tests) — not raw PowerShell HTTP.
-
-### Windows ANTHROPIC_API_KEY injection for spawned subprocesses
-**Source:** Phase 1.3.1 debug session (conversation 2026-05-08).
-
-When Claude Code is launched before a machine-level env var is set (or when the var is set only in an interactive shell), the env var does not propagate to subprocesses spawned by Claude Code's Bash tool. Workaround in `launch.json` wrapper scripts: read the key from the Windows machine env explicitly via a Node.js wrapper that calls `process.env` at startup time. Node's ESM loader on Windows also requires `file://` URL notation when importing local modules from a wrapper script (not a relative path).
-
-> The `extract-insights` skill appends entries as conversations surface them.
+> The `extract-insights` skill appends new entries as conversations surface them.

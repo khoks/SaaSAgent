@@ -171,37 +171,22 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
-### Closed in Phase build (2026-05-05)
-- ✅ Real-time transport — SSE (planner output) + WebSocket (bidirectional instruction emit); WebRTC reserved for voice [ADR-038]
-- ✅ Text input bar as required primary affordance — always-visible alongside composed interactive elements [ADR-039]
+### Closed in Phase 1.2 / Q6.3 (2026-05-08)
+- ✅ Real-time transport — SSE (planner output → shell) + WebSocket (bidirectional instruction emit); WebRTC reserved for voice (Phase 5) [ADR-038]
 
-### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
+### Closed during MVP build phases (2026-05-06)
+- ✅ Shell render modes — four postures: `side-panel` (default), `full-page`, `drawer`, `eject` (window.open popup re-using parent's custom-element registration) [ADR-039]
+- ✅ DOM observation ring buffer — per-WS 20-entry FIFO populated by MO/IO/semantic envelopes; consumed on next planner call; does NOT trigger compose cycles autonomously [ADR-040]
+- ✅ Runtime API auth — pluggable `AuthProvider` (NoAuth / Bearer / JWT HS256/RS256) with tenancy threading through principal to multi-tenant registries [ADR-041]
+- ✅ Implicit negative eval signal — re-ask within `RASK_WINDOW_MS` (default 8s) of a layout broadcast → `negative/user-implicit` EvalSignal on the prior `composeCycleId` [ADR-042]
+- ✅ Churn model stepping-stone — `WeightedFeatureChurnCalculator` (logistic-regression–shaped, warm-startable via `trainChurnWeights()`) bridges rule-based and LightGBM (ADR-031) [ADR-042]
+- ✅ Symmetric federation — `/federate` REST endpoint on any runtime lets it act as a sub-agent of another runtime; two-runtime live demo verified (parent 8080 → child 8081 → child's own tool). Any runtime is both orchestrator and delegate.
+
+### Still open (v2 details)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
 3. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
-
-## Phase 2 capability invocation layer (Phase 2.0c)
-
-Two executor types implement the Tools + Skills tiers of the three-tier capability model (ADR-021). Sub-Agents (the third tier) federate via gRPC+HTTP per ADR-028 — separate from these executors.
-
-```
-Planner calls executor.execute(name, input) — same interface for both tiers
-    │
-    ├─ SkillExecutor (in-process)
-    │   • Handlers registered separately from registry descriptors
-    │   • prompt-template kind → returns unsupported-kind (deferred to planner)
-    │   • sync + async handlers both await-wrapped
-    │   • Returns uniform ExecutionResult { ok, output, errorCode }
-    │
-    └─ ToolExecutor (HTTP API call)
-        • URL template substitution: {paramName} and {nested.key} patterns
-        • Auth modes: none | bearer-env | host-supplied
-        • AbortController-based timeout enforcement
-        • JSON + text response handling
-        • Returns uniform ExecutionResult { ok, output, errorCode }
-```
-
-REST endpoints: `POST /executor/skill/<name>` + `POST /executor/tool/<name>`. HTTP status mapping is exhaustiveness-checked: 404 (not found) / 400 (bad input) / 502 (tool HTTP error) / 504 (timeout).
+4. **`eject` render mode BroadcastChannel session sync** — popup and parent window currently share no state; deferred to Phase 6.x.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).
