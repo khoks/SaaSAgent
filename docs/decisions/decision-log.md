@@ -689,3 +689,26 @@
   - **Future CI gate:** reference integration E2E becomes the developer-onboarding regression test — a platform change that breaks the 30-line boilerplate flow must be caught before merge.
   - **Stub-mode discoverability pattern established:** `/health` now exposes `mode: 'stub'|'live'` and a `devHint` block (registeredSkills, example curl for each executor path) when in stub mode. All reference integrations should be testable without an API key; the stub-mode experience is a first-class concern.
 - **Source:** Session 2026-05-11 — "I'll set up a realistic Expedia integration: a 'expedia.com'-style host page, an Expedia-specific runtime configuration with flight/hotel tools + skills + a trip-planner sub-agent, then drive realistic scenarios end-to-end. This will simultaneously stress-test the developer-onboarding path." Five gaps surfaced and fixed; 449/449 tests pass; PR #30 (`a35530d`).
+
+## ADR-040 — Phase 7: Tier/Quota implementation — TierProvider abstraction, session-grain identity, fail-open policy, QuotaBanner
+- **Date:** 2026-05-11
+- **Status:** accepted (implements ADR-019; detailed spec in `docs/architecture/adr/036-end-user-tier-quota-model.md`)
+- **Context:** ADR-019 established that the platform supports configurable per-user request quotas visible via a "X requests remaining" affordance. Phase 7 had to resolve several implementation-level open questions before shipping: (1) what identifies "a user" for quota at the WS boundary, (2) what dimension is counted, (3) what happens when the provider errors, (4) what happens when the user hits the limit, and (5) where does the quota status flow to reach the shell.
+- **Options considered:**
+  - **Identity grain:** Principal (requires full auth threading — not yet available) vs. **sessionId** (one bucket per WS connection, trivially available now).
+  - **Metering dimension:** Token spend vs. compute cost vs. **request count** (one `user-message` envelope that triggers the planner).
+  - **Error policy:** Fail-closed (provider error blocks the request) vs. **fail-open** (provider error allows the request + stamps `reason: 'provider-error'`).
+  - **Status transport:** New WebSocket event type vs. **attachment to the composed layout's `metadata.quotaStatus`** (zero new protocol surface).
+  - **Planner behavior on exceeded:** Invoke planner anyway + warn vs. **skip planner entirely** (saves model spend; returns a `quota-exceeded` layout composed without planner call).
+- **Decision:** sessionId grain, request-count dimension, fail-open error policy, `metadata.quotaStatus` attachment, planner-skipped-on-exceeded.
+- **Consequences:**
+  - Closes MVP acceptance criterion: "visible 'X remaining' element renders, host-configured tier limits enforced."
+  - `NoQuotaProvider` (default) produces no `quotaStatus` — `QuotaBanner` stays hidden in open-source mode.
+  - `InMemoryTierProvider` supports free/pro/concierge tier definitions with UTC-day reset; does not survive runtime restart (acceptable at MVP — counter resets never harm users).
+  - Fail-open ensures a flaky billing dependency cannot break the agent UX.
+  - `metadata.quotaStatus` side-channel is reusable — future feature-flag or session-warning payloads can ride the same channel without protocol changes.
+  - SessionId-as-userId is a deliberate shortcut; hosts needing cross-session identity implement a custom `TierProvider` mapping their session store. Path is documented.
+  - `RedisTierProvider` (shared counter for multi-replica) deferred to v1.
+  - Token-budget metering (composing with `MeteringProvider`) deferred to v1.
+  - 465/465 tests pass (12 unit + 4 server-integration + 8 shell widget). Live-verified in Chrome: free/warning/exceeded states, planner skip on exceeded, evalSignalCount unchanged on rejected turn.
+- **Source:** Session 2026-05-11 — Phase 7 implementation: "QuotaBanner is visible: '4 of 5 requests remaining today (free tier).' … [cycling through] fine → amber warning → red exceeded … confirms the planner was NOT invoked on the rejected turn." PR #33 (`feat/phase-7-tier-quota`). Detailed spec: `docs/architecture/adr/036-end-user-tier-quota-model.md`.

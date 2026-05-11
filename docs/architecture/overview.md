@@ -174,6 +174,9 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 ### Closed in Batch 6 (2026-05-08)
 - ✅ Real-time transport — SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit; WebRTC reserved for voice (Phase 5) [ADR-038]
 
+### Closed in Phase 7 (2026-05-11)
+- ✅ End-user tier/quota implementation — `TierProvider` abstraction (`NoQuotaProvider` default + `InMemoryTierProvider`), `QuotaStatus` on `ComposedLayoutMetadata`, `QuotaBanner` shell widget (fine/warning/exceeded), fail-open error policy, session-grain identity [ADR-040]
+
 ### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.

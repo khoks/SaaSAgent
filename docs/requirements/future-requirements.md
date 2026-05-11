@@ -63,6 +63,16 @@ Each entry:
 **Category:** capability
 **Notes:** When a sub-agent is configured with StubPlanner (no LLM key), the current contract returns an empty `{output:{}}` because the planner issues no invocations. In dev/CI environments without an API key, developers cannot smoke-test end-to-end multi-agent flows at all. A future "deterministic stub mode" would allow sub-agents to declare a static response handler (or a registry of skill stub responses) used when the planner is a stub. This would let all five onboarding tiers (runtime → sub-agent → skill → tool → federate) be exercised without any cloud dependency, enabling CI testing and local onboarding with zero API cost.
 
+### [2026-05-11] RedisTierProvider for horizontally-scaled quota enforcement
+**Source:** Phase 7 ADR-036 (`docs/architecture/adr/036-end-user-tier-quota-model.md`): "**`(future) RedisTierProvider`** — same interface, Redis-backed counter for horizontally-scaled deployments. Deferred to v1."
+**Category:** infrastructure / capability
+**Notes:** The MVP `InMemoryTierProvider` stores per-user request counters in a `Map` — these do not survive a runtime restart and are not shared across runtime replicas. Production deployments with horizontal scaling require a shared counter store. A `RedisTierProvider` implementing the same `TierProvider` interface with Redis INCR + EXPIREAT for UTC-day reset would satisfy this. No code changes outside the provider; the runtime wires it via the same constructor injection.
+
+### [2026-05-11] Token-budget TierProvider composing with MeteringProvider
+**Source:** Phase 7 ADR-036: "What about model-token or compute cost? Deferred to v1. The `MeteringProvider` already records token usage; a future `TokenBudgetTierProvider` can compose with it."
+**Category:** capability / commercial
+**Notes:** The Phase 7 tier system counts **requests** (one user-message envelope). Production open-core pricing will likely want to limit by **token spend** or **compute cost** instead, or in addition. A `TokenBudgetTierProvider` that wraps `MeteringProvider`'s token-usage data and maps it to tier budget limits would allow per-user token-budget enforcement without changing the `TierProvider` interface or the runtime integration. Design: `TokenBudgetTierProvider` reads per-session token totals from `MeteringProvider`, compares against tier's `dailyTokenBudget` field, returns `allowed/denied` accordingly.
+
 ### [2026-05-10] Enterprise developer CLI scaffolding (`create-saas-agent-app`)
 **Source:** E2E Expedia testing session 2026-05-10 — the `apps/demo-expedia/` reference integration required ~30 lines of boilerplate across 2 server files; a CLI tool would eliminate even that friction.
 **Category:** capability / integration
