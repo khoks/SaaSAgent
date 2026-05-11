@@ -327,29 +327,47 @@ export class RuntimeServer {
     }
 
     if (url === '/health') {
+      // `mode` is the most useful single field for enterprise devs evaluating
+      // the platform: it tells them whether the LLM planner is wired up. In
+      // stub mode the agent panel echoes user messages and doesn't invoke
+      // skills, but the data plane is fully functional — surface the direct
+      // execution path so devs don't think it's broken.
+      const skillNames = Object.keys(this.skillRegistry.get().skills);
+      const mode: 'stub' | 'live' = this.planner.name === 'stub' ? 'stub' : 'live';
+      const body: Record<string, unknown> = {
+        status: 'ok',
+        mode,
+        plannerName: this.planner.name,
+        sseClients: this.sseClients.size,
+        componentRegistryVersion: this.componentRegistry.get().version,
+        componentCount: Object.keys(this.componentRegistry.get().components).length,
+        themeName: this.themeRegistry.get().name,
+        themeVersion: this.themeRegistry.get().version,
+        skillRegistryVersion: this.skillRegistry.get().version,
+        skillCount: skillNames.length,
+        toolRegistryVersion: this.toolRegistry.get().version,
+        toolCount: Object.keys(this.toolRegistry.get().tools).length,
+        featureRegistryVersion: this.featureRegistry.get().version,
+        featureCount: Object.keys(this.featureRegistry.get().features).length,
+        subAgentRegistryVersion: this.subAgentRegistry.get().version,
+        subAgentCount: Object.keys(this.subAgentRegistry.get().subAgents).length,
+        memoryProvider: this.memoryProvider.name,
+        evalProvider: this.evalProvider.name,
+        evalSignalCount: this.evalProvider.count(),
+        churnCalculator: this.churnCalculator.name,
+      };
+      if (mode === 'stub') {
+        body.devHint = {
+          message:
+            'StubPlanner is active (no ANTHROPIC_API_KEY). The UI shell still works for data-plane validation, but the planner will not invoke skills from natural language. Exercise skills directly via the executor endpoints below.',
+          callSkill: 'POST /executor/skill/<name>  body = input JSON',
+          callTool: 'POST /executor/tool/<name>  body = input JSON',
+          callSubAgent: 'POST /executor/subagent/<name>  body = { intent, payload? }',
+          registeredSkills: skillNames,
+        };
+      }
       res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          status: 'ok',
-          sseClients: this.sseClients.size,
-          componentRegistryVersion: this.componentRegistry.get().version,
-          componentCount: Object.keys(this.componentRegistry.get().components).length,
-          themeName: this.themeRegistry.get().name,
-          themeVersion: this.themeRegistry.get().version,
-          skillRegistryVersion: this.skillRegistry.get().version,
-          skillCount: Object.keys(this.skillRegistry.get().skills).length,
-          toolRegistryVersion: this.toolRegistry.get().version,
-          toolCount: Object.keys(this.toolRegistry.get().tools).length,
-          featureRegistryVersion: this.featureRegistry.get().version,
-          featureCount: Object.keys(this.featureRegistry.get().features).length,
-          subAgentRegistryVersion: this.subAgentRegistry.get().version,
-          subAgentCount: Object.keys(this.subAgentRegistry.get().subAgents).length,
-          memoryProvider: this.memoryProvider.name,
-          evalProvider: this.evalProvider.name,
-          evalSignalCount: this.evalProvider.count(),
-          churnCalculator: this.churnCalculator.name,
-        }),
-      );
+      res.end(JSON.stringify(body));
       return;
     }
 
@@ -479,7 +497,8 @@ export class RuntimeServer {
           context: this.buildContext(envelope.type).conversationContext,
           ...(body.sessionId ? { sessionId: body.sessionId } : {}),
         });
-        const fedResponse: FederationResponse = {};
+        const mode: 'stub' | 'live' = this.planner.name === 'stub' ? 'stub' : 'live';
+        const fedResponse: FederationResponse = { mode };
         if (planResult.narration) fedResponse.narration = planResult.narration;
         if (planResult.invocations.length > 0) {
           // Aggregate output: list every successful invocation's output, keyed by name+kind.
@@ -506,6 +525,13 @@ export class RuntimeServer {
               : { error: { code: i.result.error.code, message: i.result.error.message } }),
             durationMs: i.result.durationMs,
           }));
+        } else {
+          // Stub/no-invocation path: surface the sub-agent's skill names so the
+          // parent (or a test harness) can fall back to direct /executor/skill/<name>
+          // dispatch on this sub-agent's port. Without this an empty {} is
+          // ambiguous: "did nothing match?" vs "is the sub-agent unreachable?".
+          const skillNames = Object.keys(this.skillRegistry.get().skills);
+          if (skillNames.length > 0) fedResponse.availableSkills = skillNames;
         }
         res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
         res.end(JSON.stringify(fedResponse));
@@ -685,15 +711,33 @@ export class RuntimeServer {
       }
     }
 
-    // Executor endpoints — POST /executor/skill/<name> | /executor/tool/<name> | /executor/subagent/<name>.
-    // Body is the input args (JSON object). Response is the wire-form ExecutionResult.
-    // HTTP status maps to the error code so a basic curl/HTTP client can branch without parsing JSON.
-    const execMatch = /^\/executor\/(skill|tool|subagent)\//.exec(url);
+    // Executor endpoints. Canonical form:
+    //   POST /executor/skill/<name>  | /executor/tool/<name> | /executor/subagent/<name>
+    // For developer-experience parity with the discovery endpoints (/registry/skills,
+    // /registry/tools, /registry/subagents), we ALSO accept these aliases that mirror
+    // the more conventional REST shape:
+    //   POST /skills/<name>/execute  | /tools/<name>/execute | /subagents/<name>/execute
+    // Body is the input args (JSON object) for skills/tools, or { intent, payload? }
+    // for sub-agents. Response is the wire-form ExecutionResult.
+    const canonicalMatch = /^\/executor\/(skill|tool|subagent)\/(.*)$/.exec(url);
+    const aliasMatch = canonicalMatch
+      ? null
+      : /^\/(skills|tools|subagents)\/([^/?]+)\/execute(?:\?.*)?$/.exec(url);
+    const execMatch: { kind: 'skill' | 'tool' | 'subagent'; name: string } | null = canonicalMatch
+      ? { kind: canonicalMatch[1] as 'skill' | 'tool' | 'subagent', name: canonicalMatch[2] ?? '' }
+      : aliasMatch
+        ? {
+            kind: (aliasMatch[1] === 'skills'
+              ? 'skill'
+              : aliasMatch[1] === 'tools'
+                ? 'tool'
+                : 'subagent') as 'skill' | 'tool' | 'subagent',
+            name: aliasMatch[2] ?? '',
+          }
+        : null;
     if (execMatch) {
-      const kind = execMatch[1] as 'skill' | 'tool' | 'subagent';
-      const parsed = new URL(url, 'http://localhost');
-      const prefix = `/executor/${kind}/`;
-      const name = decodeURIComponent(parsed.pathname.slice(prefix.length));
+      const { kind } = execMatch;
+      const name = decodeURIComponent((execMatch.name.split('?')[0] ?? ''));
       if (!name) {
         res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: `name required: POST /executor/${kind}/<name>` }));
@@ -705,6 +749,33 @@ export class RuntimeServer {
         return;
       }
       const body = await readJsonBody(req);
+      // Diagnostic for the most common newcomer mistake: wrapping input as {input:...}.
+      // The runtime expects the JSON body to BE the input object (or the {intent,payload}
+      // for sub-agents). When we see exactly one `input` key with an object value, return
+      // a 400 with the correct curl example rather than silently treating {input:{...}}
+      // as the args (which would just trip the skill's own schema later).
+      if (
+        body &&
+        typeof body === 'object' &&
+        !Array.isArray(body) &&
+        Object.keys(body).length === 1 &&
+        'input' in (body as Record<string, unknown>) &&
+        typeof (body as { input: unknown }).input === 'object' &&
+        (body as { input: unknown }).input !== null
+      ) {
+        res.writeHead(400, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            error: 'unexpected input wrapping',
+            detail: `the JSON body must BE the ${kind} input, not {"input": ...}. Resend as the inner object.`,
+            example:
+              kind === 'subagent'
+                ? `POST /executor/subagent/${name}  body: {"intent":"...","payload":{"...":"..."}}`
+                : `POST /executor/${kind}/${name}  body: {"...your args..."}`,
+          }),
+        );
+        return;
+      }
       const input = body ?? {};
       let result: ExecutionResult;
       if (kind === 'skill') {
@@ -712,7 +783,6 @@ export class RuntimeServer {
       } else if (kind === 'tool') {
         result = await this.toolExecutor.execute(name, input);
       } else {
-        // sub-agent — input is a FederationRequest shape (typically { intent, payload? })
         const subInput = input as { intent?: string; payload?: Record<string, unknown> };
         const intent = typeof subInput.intent === 'string' ? subInput.intent : JSON.stringify(input);
         result = await this.subAgentExecutor.execute(name, {

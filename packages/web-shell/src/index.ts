@@ -61,6 +61,15 @@ export class SaaSAgentShell extends HTMLElement {
   private ejectedWindow: Window | null = null;
   private domObserver: DomObserver | null = null;
   private domSequence = 0;
+  /**
+   * Envelopes emitted before the first SSE layout arrives. The host page
+   * (its main.ts) frequently runs initial search rendering + semantic events
+   * synchronously on boot, faster than the SSE handshake. Without queuing
+   * these would reach the runtime tagged composeCycleId='no-cycle', breaking
+   * P-001 causality binding for early events. We queue + rebind to the first
+   * received cycle id so every client emit is causally attributable.
+   */
+  private pendingEmits: InstructionEnvelope[] = [];
 
   static get observedAttributes(): string[] {
     return ['mode', 'runtime'];
@@ -174,13 +183,13 @@ export class SaaSAgentShell extends HTMLElement {
 
     this.renderer = new LayoutRenderer({
       container: this.contentEl,
-      transport: { send: (env) => this.client?.send(env) },
+      transport: { send: (env) => this.emitOrQueue(env) },
     });
 
     // Phase 2.0a: persistent text-input affordance. Sits BELOW the rendered layout
     // and lets the user drive the conversation even when the layout has no buttons.
     this.inputBar = new InputBar({
-      transport: { send: (env) => this.client?.send(env) },
+      transport: { send: (env) => this.emitOrQueue(env) },
       getComposeCycleId: () => this.lastComposeCycleId,
       getSequence: () => this.inputSequence++,
     });
@@ -190,7 +199,7 @@ export class SaaSAgentShell extends HTMLElement {
     // Emits eval-feedback envelopes the runtime intercepts BEFORE the planner.
     if (this.feedbackAreaEl) {
       this.feedbackBar = new FeedbackBar({
-        transport: { send: (env) => this.client?.send(env) },
+        transport: { send: (env) => this.emitOrQueue(env) },
         getComposeCycleId: () => this.lastComposeCycleId,
         getSequence: () => this.feedbackSequence++,
       });
@@ -211,7 +220,7 @@ export class SaaSAgentShell extends HTMLElement {
         sequence: this.mobileSequence++,
         payload: ctx as unknown as Readonly<Record<string, unknown>>,
       };
-      this.client?.send(env);
+      this.emitOrQueue(env);
     };
 
     this.client = new RuntimeClient({
@@ -219,7 +228,9 @@ export class SaaSAgentShell extends HTMLElement {
       onLayout: (layout) => {
         // A successful layout supersedes any pending error display + re-enables input.
         if (this.errorAreaEl) clearErrorBanner(this.errorAreaEl);
+        const isFirstLayout = this.lastComposeCycleId === null;
         this.lastComposeCycleId = layout.composeCycleId;
+        if (isFirstLayout) this.flushPendingEmits(layout.composeCycleId);
         this.renderer?.render(layout);
         this.inputBar?.setBusy(false);
         this.feedbackBar?.resetForNewCycle(layout.composeCycleId);
@@ -257,10 +268,44 @@ export class SaaSAgentShell extends HTMLElement {
     // visibility, and document-level saasagent:event custom events.
     if (typeof document !== 'undefined') {
       this.domObserver = new DomObserver({
-        transport: { send: (env) => this.client?.send(env) },
+        transport: { send: (env) => this.emitOrQueue(env) },
         getComposeCycleId: () => this.lastComposeCycleId,
         getSequence: () => this.domSequence++,
       }).start();
+    }
+  }
+
+  /**
+   * Send if the first server layout has arrived (we have a real cycle id to
+   * bind against). Otherwise queue — the envelope's composeCycleId at this
+   * point is the 'no-cycle' sentinel from each emitter's getComposeCycleId()
+   * fallback, and flushPendingEmits will rebind it to the real id when the
+   * first layout lands.
+   *
+   * This fixes the gap where a host page that synchronously emits events on
+   * boot (e.g. initial search renders dispatching `dom-semantic` events)
+   * tagged those emits 'no-cycle', breaking P-001 causal attribution for
+   * everything that happens before the SSE handshake completes.
+   */
+  private emitOrQueue(env: InstructionEnvelope): void {
+    if (this.lastComposeCycleId !== null) {
+      this.client?.send(env);
+      return;
+    }
+    this.pendingEmits.push(env);
+  }
+
+  /**
+   * Drain the queue, rebinding each envelope's composeCycleId to the first
+   * received cycle id from the server. Idempotent — only the first layout
+   * triggers this; subsequent layouts are no-ops because pendingEmits is empty.
+   */
+  private flushPendingEmits(cycleId: string): void {
+    if (this.pendingEmits.length === 0) return;
+    const drained = this.pendingEmits;
+    this.pendingEmits = [];
+    for (const env of drained) {
+      this.client?.send({ ...env, composeCycleId: cycleId });
     }
   }
 }

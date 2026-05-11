@@ -532,6 +532,55 @@ describe('RuntimeServer executor REST endpoints', () => {
     expect(body.featureRegistryVersion).toBe('0.0.0');
     expect(body.featureCount).toBe(0);
   });
+
+  // Onboarding fixes (post-Expedia E2E review).
+
+  it('/health includes mode=stub + devHint with registered skill names when no LLM planner', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+    const body = (await res.json()) as {
+      mode: string;
+      plannerName: string;
+      devHint?: { message: string; callSkill: string; registeredSkills: string[] };
+    };
+    expect(body.mode).toBe('stub');
+    expect(body.plannerName).toBe('stub');
+    expect(body.devHint).toBeDefined();
+    expect(body.devHint!.callSkill).toContain('/executor/skill/');
+    expect(body.devHint!.registeredSkills).toEqual(expect.arrayContaining(['echo', 'orphan']));
+  });
+
+  it('POST /skills/<name>/execute (REST alias) works identically to /executor/skill/<name>', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/skills/echo/execute`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ msg: 'aliased' }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: true; output: { echoed: string } };
+    expect(body.ok).toBe(true);
+    expect(body.output.echoed).toBe('aliased');
+  });
+
+  it('POST /tools/<name>/execute (REST alias) reaches the tool executor', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/tools/get-product/execute`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ productId: 'tv-55' }),
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects {"input": {...}} wrapping with a 400 + actionable example', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/executor/skill/echo`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ input: { msg: 'hello' } }),
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string; detail: string; example: string };
+    expect(body.error).toBe('unexpected input wrapping');
+    expect(body.example).toContain('/executor/skill/echo');
+  });
 });
 
 /**
@@ -1068,6 +1117,78 @@ describe('RuntimeServer /federate endpoint', () => {
       const body = (await res.json()) as { error: { code: string; message: string } };
       expect(body.error.code).toBe('bad-request');
       expect(body.error.message).toMatch(/intent/);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('returns mode=stub + availableSkills when planner had no invocations (onboarding fix #2)', async () => {
+    const skillRegistry = new InMemorySkillRegistry();
+    skillRegistry.replace([
+      { name: 'build-itinerary', version: '1.0.0', description: 'x', whenToUse: 'x', kind: 'in-process' },
+      { name: 'cancel-trip', version: '1.0.0', description: 'x', whenToUse: 'x', kind: 'in-process' },
+    ]);
+    const planner: Planner = {
+      name: 'stub',
+      plan: async () => ({ intent: 'noop', invocations: [], narration: '' }),
+    };
+    const server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      planner,
+      skillRegistry,
+    });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/federate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ intent: 'plan me 4 days in Tokyo' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        mode: 'stub' | 'live';
+        availableSkills?: string[];
+        invocations?: unknown;
+      };
+      expect(body.mode).toBe('stub');
+      expect(body.availableSkills).toEqual(expect.arrayContaining(['build-itinerary', 'cancel-trip']));
+      expect(body.invocations).toBeUndefined();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('omits availableSkills when planner produced invocations (live-mode response)', async () => {
+    const planner: Planner = {
+      name: 'sonnet',
+      plan: async () => ({
+        intent: 'x',
+        invocations: [
+          {
+            name: 'noop',
+            kind: 'skill',
+            input: {},
+            result: { ok: true, output: { done: true }, durationMs: 1 },
+          },
+        ],
+        narration: 'did the thing',
+      }),
+    };
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer(), planner });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/federate`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ intent: 'do it' }),
+      });
+      const body = (await res.json()) as {
+        mode: 'stub' | 'live';
+        availableSkills?: string[];
+      };
+      expect(body.mode).toBe('live');
+      expect(body.availableSkills).toBeUndefined();
     } finally {
       await server.stop();
     }

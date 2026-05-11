@@ -1,0 +1,26 @@
+{
+  "name": "@saasagent/demo-expedia",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Expedia reference integration — flights + hotels + activities with SaaSAgent runtime, in-process skills, and a federated trip-planner sub-agent",
+  "type": "module",
+  "scripts": {
+    "predev": "pnpm --filter @saasagent/protocol --filter @saasagent/runtime --filter @saasagent/sdk-ts --filter @saasagent/web-shell build",
+    "dev": "vite",
+    "dev:runtime": "node server/start-runtime.mjs",
+    "dev:subagent": "node server/start-trip-planner.mjs",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@saasagent/protocol": "workspace:*",
+    "@saasagent/runtime": "workspace:*",
+    "@saasagent/sdk": "workspace:*",
+    "@saasagent/web-shell": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
