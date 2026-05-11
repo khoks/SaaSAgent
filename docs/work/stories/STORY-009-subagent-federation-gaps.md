@@ -1,26 +1,32 @@
 # STORY-009 — Resolve sub-agent federation onboarding gaps
 
-- **Status:** backlog
+- **Status:** done
+- **Completed:** 2026-05-10
 - **Created:** 2026-05-10
 - **Last updated:** 2026-05-10
 - **Parent epic:** [EPIC-010 — Expedia demo vertical (Phase 8)](../epics/EPIC-010-expedia-demo-vertical.md)
 
 ## Context
 
-Five concrete gaps were surfaced during the Expedia E2E session (2026-05-10). All are documented here as work to resolve before Phase 8 is declared done.
+Five concrete gaps were surfaced and fixed within the same Expedia E2E session (2026-05-10). 449/449 tests pass after all fixes. Each fix was verified live in Chrome.
 
-## Gaps
+## Gaps fixed
 
-| # | Gap | Observed |
-|---|---|---|
-| 1 | `/federate` returns `{}` when sub-agent planner is Stub (no LLM) | Sub-agent responds but no invocations fire; output empty |
-| 2 | Skill executor path mismatch | Dev docs implied `POST /executor/skill` body `{input:...}`; actual is `POST /executor/skill/<name>` with input as body root |
-| 3 | No explicit error/fallback message when LLM key missing in sub-agent | Silent stub fallback is confusing to developers expecting partial output |
-| 4 | Sub-agent registration discovery (host-side) not surfaced in `/health` | Enterprise dev must know the sub-agent port ahead of time |
-| 5 | Demo script timing dependency | Implicit re-ask path (8 s window) is brittle in automated test runs |
+| # | Gap | Fix | Task |
+|---|---|---|---|
+| 1 | `/federate` returns `{}` when sub-agent planner is Stub | Response now includes `availableSkills` list so caller knows what the sub-agent can do | [TASK-002](../tasks/TASK-002-federate-fallback-skills.md) |
+| 2 | Skill executor path mismatch (`{input:...}` wrapping) | Returns 400 with descriptive error message + correct `curl` example | [TASK-003](../tasks/TASK-003-bad-input-wrapping-400.md) |
+| 3 | No explicit signal when LLM key is missing | `/health` exposes `mode: 'stub'|'live'` + `devHint` block; boot logs prominent multi-line stub banner | [TASK-004](../tasks/TASK-004-health-devmode-discoverability.md) |
+| 4 | Sub-agent registration not visible in `/health` | `devHint.registeredSkills` includes sub-agent descriptors and example curl | [TASK-004](../tasks/TASK-004-health-devmode-discoverability.md) |
+| 5 | REST path ambiguity (`/executor/skill/<n>` undiscoverable) | `POST /skills/<n>/execute`, `/tools/<n>/execute`, `/subagents/<n>/execute` aliases added alongside canonical paths | [TASK-001](../tasks/TASK-001-rest-path-aliases.md) |
 
-## Done when
+## Child tasks
+- [TASK-001 — REST path aliases for executor endpoints](../tasks/TASK-001-rest-path-aliases.md)
+- [TASK-002 — /federate fallback includes available skills](../tasks/TASK-002-federate-fallback-skills.md)
+- [TASK-003 — Bad input wrapping returns 400 with example](../tasks/TASK-003-bad-input-wrapping-400.md)
+- [TASK-004 — /health dev-mode discoverability](../tasks/TASK-004-health-devmode-discoverability.md)
+- [TASK-005 — Web-shell pre-handshake event queue](../tasks/TASK-005-web-shell-prehandshake-queue.md)
 
-- Each gap has either a code fix or an explicit "accepted limitation" ADR note.
-- Developer quickstart guide updated to reflect correct skill executor path.
-- Automated integration test covers the `/federate` stub-fallback path explicitly.
+## Additional fix
+
+A sixth issue was discovered and fixed in the same session: pre-handshake events from the web-shell were dropped before the WebSocket connection was established. The shell now queues them and flushes on first connect, rebinding the cycle-id from the welcome layout. See [TASK-005](../tasks/TASK-005-web-shell-prehandshake-queue.md).

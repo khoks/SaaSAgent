@@ -12,4 +12,4 @@
 | STORY-006 | [Define proactive engine confidence and attention-budget model](STORY-006-proactive-engine-confidence.md) | EPIC-001 | done | 2026-04-28 | 2026-04-28 |
 | STORY-007 | [E2E browser smoke-test PASS](STORY-007-e2e-browser-smoke-test.md) | EPIC-010 | done | 2026-05-10 | 2026-05-10 |
 | STORY-008 | [Expedia enterprise-developer reference integration](STORY-008-expedia-reference-integration.md) | EPIC-010 | in-progress | 2026-05-10 | 2026-05-10 |
-| STORY-009 | [Resolve sub-agent federation onboarding gaps](STORY-009-subagent-federation-gaps.md) | EPIC-010 | backlog | 2026-05-10 | 2026-05-10 |
+| STORY-009 | [Resolve sub-agent federation onboarding gaps](STORY-009-subagent-federation-gaps.md) | EPIC-010 | done | 2026-05-10 | 2026-05-10 |
