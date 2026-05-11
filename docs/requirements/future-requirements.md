@@ -58,37 +58,12 @@ Each entry:
 **Category:** capability / optimization
 **Notes:** The UI Composer LLM step is per-turn. For recurring intents (e.g., "show product comparison"), the composed JSON layout tree should be cacheable and reused with new data wiring. Saves model spend and reduces latency.
 
-### [2026-05-07] Native iOS/Android SDKs (v1.5)
-**Source:** ADR-017 consequences: "v1.5: native SDKs (iOS / Android) for hosts who need full native UX."
+### [2026-05-10] Sub-agent stub-mode deterministic execution (LLM-less integration testing)
+**Source:** E2E Expedia testing session 2026-05-10 — when StubPlanner is active (no API key), `/federate` returns `{}` because no planner invocations fire; surfaced as a concrete developer-onboarding gap.
 **Category:** capability
-**Notes:** MVP uses WebView bridge + thin native shim (ADR-017). At v1.5, ship first-party native SDKs (iOS Swift + Android Kotlin) for hosts that require full native rendering performance, deep system integration (biometrics, push, camera), or app-store guidelines that restrict WebView usage.
+**Notes:** When a sub-agent is configured with StubPlanner (no LLM key), the current contract returns an empty `{output:{}}` because the planner issues no invocations. In dev/CI environments without an API key, developers cannot smoke-test end-to-end multi-agent flows at all. A future "deterministic stub mode" would allow sub-agents to declare a static response handler (or a registry of skill stub responses) used when the planner is a stub. This would let all five onboarding tiers (runtime → sub-agent → skill → tool → federate) be exercised without any cloud dependency, enabling CI testing and local onboarding with zero API cost.
 
-### [2026-05-07] Go Sub-Agent SDK (v1)
-**Source:** ADR-027: "Go added at v1 if enterprise demand emerges."
+### [2026-05-10] Enterprise developer CLI scaffolding (`create-saas-agent-app`)
+**Source:** E2E Expedia testing session 2026-05-10 — the `apps/demo-expedia/` reference integration required ~30 lines of boilerplate across 2 server files; a CLI tool would eliminate even that friction.
 **Category:** capability / integration
-**Notes:** MVP SDK covers TypeScript + Python (the two most common domain-team languages). Go is next-highest for backend-heavy enterprises. Shares the same gRPC proto definitions and federation protocol — SDK is a language binding, not a new protocol.
-
-### [2026-05-07] Observability exporters for existing ops stacks (v1)
-**Source:** ADR-030: "optional exporters at v1 to host's existing observability (Grafana, Datadog, Honeycomb)."
-**Category:** integration
-**Notes:** MVP ships a bundled eval SPA for quality visibility. At v1 add push exporters so eval signal + agent telemetry flows into the host's existing dashboards (Grafana, Datadog, Honeycomb). Hosts who have standardized observability do not want a second dashboard for agent-specific data.
-
-### [2026-05-07] Voice interface via WebRTC (Phase 5)
-**Source:** ADR-038: "WebRTC reserved for voice (Phase 5) when microphone capture and TTS narration land."
-**Category:** capability
-**Notes:** Current transport stack is SSE (planner→shell) + WebSocket (bidirectional instruction). Voice requires a third channel with different latency / codec characteristics. Phase 5 adds microphone capture, server-side ASR, TTS narration, and WebRTC as the voice-data transport. Multi-modal completion of the I/O surface (text + DOM + voice).
-
-### [2026-05-07] Figma Tokens import for design-system registration
-**Source:** ADR-025: "Future: Figma Tokens import."
-**Category:** capability / integration
-**Notes:** MVP design-system registration supports W3C DTCG canonical schema, Style Dictionary importer, and CSS variable fallback (ADR-025). Figma Tokens (exported from Figma Variables / design token plugins) is the highest-friction missing path — most design teams author tokens in Figma, not in code. Adding a Figma Tokens importer closes the onboarding gap for design-led teams.
-
-### [2026-05-07] WASM sandbox for adapter-supplied skill code (v1)
-**Source:** ADR-021 consequences: "Skills isolation — WASM at v1 for adapter-supplied skill code."
-**Category:** capability / security
-**Notes:** MVP runs skill handlers in-process (with process-level isolation as the safety boundary). For skills authored by enterprise adapter teams — not the platform's own code — WASM sandboxing at v1 provides a stronger isolation guarantee without requiring a separate process per skill. Prevents runaway adapter skills from affecting platform stability.
-
-### [2026-05-07] Public OSS release after provisional patent filing
-**Source:** ADR-035: "Process: file provisional patents when each component reaches working-prototype state … Then make repo public + publish under Apache 2.0."
-**Category:** other
-**Notes:** The repo is private until provisional applications are filed for the patentability-strong novel entries (ADR-005 UI composition, ADR-016 closed-loop VoC + churn, ADR-021 federated sub-agents, ADR-023 auto-eval). Public OSS release + Apache 2.0 is a Phase 9 (release) gate, not Phase 0–8. Budget ~$2–5k per filing via patent counsel.
+**Notes:** The Expedia reference integration demonstrated that the runtime onboarding is already minimal (~30 lines to register skills + sub-agents + start server). The logical next step is a `create-saas-agent-app` CLI (analogous to `create-react-app`, `create-next-app`) that scaffolds a new vertical integration with: pre-wired runtime server, example skills, a trip-planner-style sub-agent stub, a host HTML page with the WC shell, and mock API endpoints. Should read from a template in the repo (similar to `apps/demo-expedia/`) and personalize to the vertical (name, port, brand colors). This would reduce enterprise onboarding from "read 6 files to understand the pattern" to "one command + answer 3 prompts."
