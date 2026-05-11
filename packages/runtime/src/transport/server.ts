@@ -28,6 +28,7 @@ import type {
   FederationResponse,
   InstructionEnvelope,
   MobileContext,
+  QuotaStatus,
   UIComposer,
 } from '@saasagent/protocol';
 
@@ -65,6 +66,7 @@ import {
   type CapabilityEvalRunner,
   type CapabilityReport,
 } from '../capeval/index.js';
+import { NoQuotaProvider, type TierProvider, type QuotaCheckResult } from '../quota/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 import { renderDashboardHtml } from './dashboard.js';
@@ -163,6 +165,16 @@ export interface RuntimeServerOptions {
    * code 1008 (policy violation).
    */
   rateLimitWsPerMinute?: number;
+  /**
+   * End-user tier/quota provider (Phase 7 / ADR-019). Enforces per-user
+   * request limits — orthogonal to authToken (which authenticates the host
+   * caller, not the end-user) and rateLimit* (which is per-IP / per-WS for
+   * abuse protection). When configured, every user-message envelope counts
+   * against the user's daily quota; the user's resolved tier + remaining
+   * count is attached to each composed layout via metadata.quotaStatus.
+   * When unset, defaults to NoQuotaProvider (unlimited, no metadata attached).
+   */
+  quotaProvider?: TierProvider;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -198,6 +210,7 @@ export class RuntimeServer {
   private readonly evalProvider: EvalProvider;
   private readonly churnCalculator: ChurnRiskCalculator;
   private readonly capabilityEvalRunner: CapabilityEvalRunner;
+  private readonly quotaProvider: TierProvider;
   private readonly implicitReaskWindowMs: number;
   private readonly authToken: string | null;
   private readonly rateLimiter: RateLimiter | null;
@@ -252,6 +265,7 @@ export class RuntimeServer {
     this.evalProvider = options.evalProvider ?? new KeyValueEvalProvider();
     this.churnCalculator =
       options.churnCalculator ?? new RuleBasedChurnCalculator({ evalProvider: this.evalProvider });
+    this.quotaProvider = options.quotaProvider ?? new NoQuotaProvider();
     this.implicitReaskWindowMs = options.implicitReaskWindowMs ?? 8000;
     this.authToken = options.authToken ?? null;
     this.rateLimiter =
@@ -404,6 +418,10 @@ export class RuntimeServer {
         churnCalculator: this.churnCalculator.name,
         capabilityEvalRunner: this.capabilityEvalRunner.name,
         capabilityEvalCount: this.capabilityEvalRunner.reportAll().length,
+        quotaProvider: this.quotaProvider.name,
+        ...(this.quotaProvider.listTiers
+          ? { quotaTiers: this.quotaProvider.listTiers() }
+          : {}),
       };
       if (mode === 'stub') {
         body.devHint = {
@@ -1088,6 +1106,11 @@ export class RuntimeServer {
     // and thread into ComposeContext on subsequent plans so the composer can
     // adapt density / hover affordances / media weight to the device.
     let lastMobileContext: MobileContext | null = null;
+    // Phase 7 / ADR-019: per-WS quota status cache. Updated on each
+    // user-message consume() call; attached to every subsequent composed
+    // layout's metadata so the shell can render "X requests remaining"
+    // even on layouts that don't trigger a fresh consume (action emits).
+    let lastQuotaStatus: QuotaStatus | null = null;
     // Phase 5 (ADR-022): per-WS DOM signal ring buffer. Shell DomObserver
     // emits dom-mutation / dom-visibility / dom-semantic envelopes; we
     // intercept BEFORE the planner (no compose triggered) and keep the most
@@ -1097,7 +1120,7 @@ export class RuntimeServer {
     // Phase 2.7: per-connection WS message rate limiter.
     const wsLimiter =
       this.wsRateLimitPerMinute > 0 ? new RateLimiter(this.wsRateLimitPerMinute) : null;
-    ws.on('message', (raw: Buffer) => {
+    ws.on('message', async (raw: Buffer) => {
       if (wsLimiter && !wsLimiter.tryConsume('ws-conn')) {
         // 1008 = policy violation. Close the connection and bail.
         try {
@@ -1182,6 +1205,56 @@ export class RuntimeServer {
         return;
       }
 
+      // Phase 7: end-user quota check. Only user-message envelopes consume
+      // quota — action emits (button clicks etc.) are follow-ons within an
+      // already-allowed turn, and observability emits (dom-*, mobile-context,
+      // eval-feedback) are passive. When configured (non-Noop provider) the
+      // user identity used for quota is the sessionId — until full AuthProvider
+      // principal threading is wired, sessions ARE the per-user quota grain
+      // (each browser tab = its own quota). Hosts that need real user identity
+      // override quotaProvider with one that maps sessionId → userId via their
+      // own session store.
+      if (envelope.type === 'user-message' && this.quotaProvider.name !== 'noquota') {
+        try {
+          const result = await this.quotaProvider.consume(sessionId);
+          lastQuotaStatus = quotaCheckToStatus(result);
+          if (!result.allowed) {
+            // Compose a "quota-exceeded" notice layout instead of running the
+            // planner. The composer's intent='quota-exceeded' branch picks up
+            // a registered template; absent that, falls back to a generic
+            // status message. The quotaStatus is attached so the shell can
+            // render the visible "X requests remaining" affordance even on
+            // the rejection turn.
+            const baseCtx = this.buildContext('quota-exceeded');
+            const composeCtx: ComposeContext = {
+              ...baseCtx,
+              conversationContext: {
+                ...baseCtx.conversationContext,
+                intent: 'quota-exceeded',
+                narrative: `You've used ${result.used}/${result.limit} requests for today. Quota resets at ${result.resetAtUtc}.`,
+              },
+              ...(lastMobileContext ? { mobileContext: lastMobileContext } : {}),
+            };
+            const layout = await this.options.composer.compose('quota-exceeded', composeCtx);
+            const annotated: ComposedLayout = lastQuotaStatus
+              ? { ...layout, metadata: { ...(layout.metadata ?? {}), quotaStatus: lastQuotaStatus } }
+              : layout;
+            lastBroadcastCycleId = annotated.composeCycleId;
+            lastBroadcastAt = Date.now();
+            this.broadcastLayout(annotated);
+            return;
+          }
+        } catch (err) {
+          // Fail open per "quota must not block the user's experience under
+          // provider error" — log and proceed without consuming. Marks the
+          // status with reason='provider-error' so the shell can dim the
+          // quota indicator instead of acting on stale state.
+          // eslint-disable-next-line no-console
+          console.error('[runtime] quota consume failed; failing open:', err);
+          lastQuotaStatus = { allowed: true, tier: 'unknown', used: 0, limit: null, remaining: null, resetAtUtc: new Date().toISOString(), reason: 'provider-error' };
+        }
+      }
+
       // Phase 2.5.x: implicit re-ask negative signal.
       // If a user-message arrives within implicitReaskWindowMs of a previous
       // layout broadcast on this WS, infer the user re-asked because the prior
@@ -1234,10 +1307,15 @@ export class RuntimeServer {
             ...(lastMobileContext ? { mobileContext: lastMobileContext } : {}),
           };
           const layout = await this.options.composer.compose(planResult.intent, composeCtx);
+          // Phase 7: attach the latest quota state to the layout so the shell
+          // can render "X requests remaining" alongside every response.
+          const annotated: ComposedLayout = lastQuotaStatus
+            ? { ...layout, metadata: { ...(layout.metadata ?? {}), quotaStatus: lastQuotaStatus } }
+            : layout;
           // Track this broadcast for the next user-message's re-ask check.
-          lastBroadcastCycleId = layout.composeCycleId;
+          lastBroadcastCycleId = annotated.composeCycleId;
           lastBroadcastAt = Date.now();
-          this.broadcastLayout(layout);
+          this.broadcastLayout(annotated);
         })
         .catch((err: unknown) => {
           // eslint-disable-next-line no-console
@@ -1246,6 +1324,26 @@ export class RuntimeServer {
         });
     });
   }
+}
+
+/**
+ * Convert a quota provider's QuotaCheckResult (which uses Infinity for
+ * unlimited tiers) into the wire-safe QuotaStatus the shell consumes.
+ * JSON.stringify(Infinity) is `null`, so we explicitly normalize here so
+ * the shell never has to guess.
+ */
+function quotaCheckToStatus(r: QuotaCheckResult): QuotaStatus {
+  const limit = Number.isFinite(r.limit) ? r.limit : null;
+  const remaining = Number.isFinite(r.remaining) ? r.remaining : null;
+  return {
+    allowed: r.allowed,
+    tier: r.tier,
+    used: r.used,
+    limit,
+    remaining,
+    resetAtUtc: r.resetAtUtc,
+    ...(r.reason ? { reason: r.reason } : {}),
+  };
 }
 
 /**

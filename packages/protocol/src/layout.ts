@@ -81,4 +81,36 @@ export interface ComposedLayoutMetadata {
   modelUsed?: { planner?: string; composer?: string };
   /** Whether this layout came from cache (hit) or full composition (miss). */
   fromCache?: boolean;
+  /**
+   * End-user quota status at compose time (Phase 7 / ADR-019). When the host
+   * configures a TierProvider, the runtime attaches the consuming user's
+   * tier + remaining-requests state here so the shell can render a visible
+   * "X requests remaining" affordance. Null/undefined when no provider is
+   * configured (open-source / unlimited mode).
+   */
+  quotaStatus?: QuotaStatus;
+}
+
+/**
+ * Per-user quota snapshot delivered alongside a layout (Phase 7).
+ * Mirrors the runtime's QuotaCheckResult but lives in the protocol package
+ * so the shell can render it without a runtime import. `limit` and `remaining`
+ * are `null` for unlimited tiers (Infinity does not survive JSON.stringify).
+ */
+export interface QuotaStatus {
+  /** True when the latest user-message was allowed; false when this layout
+   * is the quota-exceeded rejection notice. */
+  allowed: boolean;
+  /** Tier id ('free' / 'pro' / etc.). */
+  tier: string;
+  /** Requests consumed in the current window. */
+  used: number;
+  /** Hard cap. Null means unlimited. */
+  limit: number | null;
+  /** Requests remaining in the window. Null = unlimited. */
+  remaining: number | null;
+  /** ISO-8601 timestamp of the next window reset. */
+  resetAtUtc: string;
+  /** Populated when allowed=false. Stable codes downstream UIs can switch on. */
+  reason?: 'quota-exceeded' | 'tier-not-found' | 'provider-error';
 }

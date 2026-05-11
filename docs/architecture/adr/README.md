@@ -20,4 +20,5 @@ to the one it replaces.
 | [009](./009-dom-observation-ambient-awareness.md) | DOM observation for ambient awareness | accepted |
 | [010](./010-mtls-vs-bearer-tokens.md) | Auth strategy: pluggable provider, Bearer + JWT defaults | accepted |
 | [035](./035-provisional-patents-before-oss-publish.md) | Provisional patents filed before OSS publish | accepted |
+| [036](./036-end-user-tier-quota-model.md) | End-user tier/quota model + TierProvider abstraction | accepted |
 | [037](./037-auto-generated-capability-eval.md) | Auto-generated per-capability eval pipeline | accepted |
