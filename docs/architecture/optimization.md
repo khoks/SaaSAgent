@@ -28,37 +28,34 @@
 - How do we prevent a runaway proactive engine from blowing the cost budget?
 - Per-tenant cost caps + circuit breakers — design needed.
 
-## Validated optimization patterns (from MVP build phases 1–6, 2026-05-06)
+---
 
-### Two-level composition cache (Phase 1.3)
-- **L1 — Application-level `CompositionCache`:** LRU keyed on canonical intent fingerprint (normalized user-text → hash). Stores the full typed-JSON `ComposedLayout` directly. Cache hit returns in <1ms with a fresh `composeCycleId`. Invalidation triggers: design-system version bump, theme-token change, Feature/Service doc edit.
-- **L2 — Anthropic prompt cache (`cache_control: {type: "ephemeral"}`):** Stable system prefix (atomic-component registry + theme tokens) marked cacheable. Saves 80–90% of input-token cost on the stable prefix on subsequent calls. Min cacheable prefix on `claude-haiku-4-5` is 4096 tokens — effectively activates once the component registry grows beyond ~50 entries.
-- **Combined effect:** warm e-commerce flows (product comparison, returns, cart review) should hit L1 and cost effectively zero per additional compose cycle.
+## Validated optimizations (from Phase 1–6 implementation, 2026-05-07)
 
-### Raw-JSON output + Zod validation for recursive schema (Phase 1.3)
-- `LayoutNode.children: LayoutNode[]` is a recursive type. Anthropic's structured-output surface (`output_config.format`) does not support recursive schemas.
-- Decision: raw JSON output steered by system prompt + `extractFirstJsonObject` helper + `Zod.safeParse` at runtime + one retry on validation failure. **No structured outputs used for composition.**
-- If Anthropic adds recursive-schema support, L2 cache-hit rate will increase slightly (more deterministic output format). Not blocking.
+### Anthropic prompt caching — minimum cacheable prefix
+- Haiku 4.5 requires a **minimum 4096-token prefix** to trigger API-level prompt caching (`cache_control: {type: "ephemeral"}`). The composer's stable system prefix (atomic-component registry + theme tokens) will not hit this threshold until Phase 1.4 when the registry fills out. Design for caching from Phase 1.3 but do not expect cache hits in dev/demo with sparse registries.
+- Sonnet 4.6 has the same minimum; the planner's system prompt with a full Feature/Service registry will exceed it in production.
+- **Render order for cache:** tools → system → messages. Place `cache_control` blocks at the boundary between stable prefix (registry, theme, feature docs) and variable suffix (conversation history, tool results).
+- **Source:** Phase 1.3 implementation + `claude-api` skill consultation 2026-05-08.
 
-### DOM observation throttle + ring buffer (Phase A.3)
-- MutationObserver throttled to 200ms (default) and payload-bounded to 1KB per mutation. Prevents chatty host pages from creating a high-frequency event stream.
-- Per-WS ring buffer (20 entries, FIFO) at the runtime WS intercept layer. DOM envelopes populate the buffer but do NOT trigger a compose cycle. The planner reads the buffer on the next user-initiated or proactive turn.
-- **Result:** the host page can have highly interactive DOM (carousels, live price updates) without any impact on model call frequency.
+### Application-level CompositionCache
+- **LRU cache keyed by canonical intent fingerprint** (hash of intent string + component-registry version + theme version).
+- Stores full typed-JSON `ComposedLayout` directly — cache hit returns a new `composeCycleId` on top of the cached layout.
+- **Invalidation triggers:** design-system version bump, theme token change, Feature/Service doc edit.
+- Cold-start (novel intent, cache miss) falls through to Haiku; still-novel intents fall through to Sonnet 4.6 fallback.
+- **Source:** ADR-012; validated in Phase 1.3 / 1.4.
 
-### Token-bucket rate limiting per IP (Phase 2.7)
-- `RateLimiter` class: configurable `capacity` (default 60 tokens) and `refillRate` (default 1 token/second). Applied at the HTTP layer after auth.
-- Prevents any single client IP from exhausting the Anthropic API quota for the whole tenant.
-- Per-tenant cost caps + circuit breakers are still an open design question (see open questions above).
+### Recursive schema constraint on Anthropic structured-outputs
+- `LayoutNode.children: LayoutNode[]` is recursive. Anthropic's structured-outputs surface (`output_config.format`) does **not** support recursive schemas.
+- **Workaround in use:** raw JSON output steered by system prompt + Zod-based runtime validation + retry on parse failure. Acceptable tradeoff; revisit if Anthropic adds recursive-schema support.
+- **Source:** ADR-012 refinement; Phase 1.3 implementation.
 
-### Implicit eval signal — zero-cost quality labeling (Phase 2.5.x)
-- Re-ask within `RASK_WINDOW_MS` (default 8000ms) after a layout broadcast → automatic `negative/user-implicit` EvalSignal on the prior `composeCycleId`.
-- Delivers a consistent stream of quality labels without any user action.
-- False-positive rate (quick follow-up vs. frustrated re-ask) is mitigated by weighting implicit signals lower than explicit thumbs in `WeightedFeatureChurnCalculator`.
-- **Optimization implication:** eval coverage rate approaches 100% of conversations from day 1; no cold-start gap in the quality-signal pipeline.
+### DOM observation ring-buffer per WS session
+- MutationObserver and IntersectionObserver events arrive at high frequency on complex host pages. To prevent flooding the planner, the runtime maintains a **ring-buffer per WS connection** for DOM events.
+- `dom-mutation`, `dom-intersection`, and `dom-semantic` envelopes are buffered; the planner is not invoked for every DOM event — only when a composition cycle is triggered by a user instruction or a proactive engine signal.
+- **Source:** Phase Bucket A / ADR-022 implementation.
 
-### `WeightedFeatureChurnCalculator` warm-start training (Phase 2.6.x)
-- The calculator uses a sigmoid of a weighted linear combination of eval features. Initial weights are hand-tuned; `trainChurnWeights(labeledData, options)` performs gradient descent (configurable `epochs`, `learningRate`, L2 `lambda`) to replace them.
-- Deterministic seed (`sfc32` PRNG) ensures reproducible results in tests.
-- **Migration path to LightGBM (ADR-031):** once a tenant has ~1k labeled events, `trainChurnWeights()` produces weights that should closely match a logistic-regression baseline. Switch to LightGBM is a constructor-level swap.
-
-> The `extract-insights` skill appends new entries as conversations surface them.
+### Prefix-discriminated routing — zero branching in dispatch
+- The SonnetPlanner exposes `skill__<name>`, `tool__<name>`, `subagent__<name>` tool names to the model. The `ToolMapper.classify()` function splits on `__` prefix and dispatches to the correct executor in O(1) — no conditional per-capability logic.
+- Adding a new tier in the future requires: (a) a new prefix constant, (b) a new executor class, (c) one new branch in `ToolMapper` — nothing else.
+- **Source:** Phase 2.1b / P-002 disclosure.

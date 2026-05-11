@@ -674,74 +674,18 @@
   - Native browser support for both is universal; no polyfills required.
 - **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).
 
-## ADR-039 — Shell render modes: side-panel, full-page, drawer, eject
-- **Date:** 2026-05-06
-- **Status:** accepted
-- **Context:** The WC shell (ADR-004) must embed gracefully into wildly different host layouts: narrow sidebars, full-page PWAs, mobile viewports, and power-users who want the agent detached from the host page entirely.
+## ADR-039 — Conversational text input is the primary user affordance alongside button interaction
+- **Date:** 2026-05-07
+- **Status:** accepted (validated during Phase 2.0a self-review and live browser testing)
+- **Context:** Phase 1.4 built a fully working bidirectional compose→click→re-compose loop. During Phase 2.0a self-review Claude identified that when the composer judges there is "no concrete intent" (e.g., a welcome layout), it emits zero interactive buttons — leaving the user with no way to initiate a conversation. The button-only interaction model is fragile for any open-ended flow.
 - **Options considered:**
-  - A. Single side-panel mode only — simple but does not cover full-page or mobile contexts.
-  - B. Side-panel + full-page — covers the common cases; leaves mobile overlay and detach unaddressed.
-  - C. **Four modes: `side-panel` (default), `full-page`, `drawer` (fixed overlay + backdrop), `eject` (window.open popup).**
-- **Decision:** C. Four modes, selectable via the `mode` attribute on `<saas-agent>`. Mode changes are reactive — mutating the attribute re-renders without re-connecting to the runtime.
+  - A. Buttons only — rely on the composer to always emit actionable elements.
+  - B. **Text input bar as a persistent first-class affordance**, alongside composed buttons. Users can always type; buttons are additive guidance.
+  - C. Text input only — eliminate button-driven shortcuts.
+- **Decision:** B. A persistent `InputBar` component is part of the shell's chrome — always visible regardless of what the composer emits. Composed buttons remain as accelerators and guided-flow affordances. User-typed text is routed through the same `InstructionEnvelope` protocol as button emits (type = `user-message`, payload = `{ text }`, `composeCycleId` = current layout's ID).
 - **Consequences:**
-  - One WC handles every embedding context without forking the codebase.
-  - **`eject` mode** is non-obvious: `window.open()` a popup that re-uses the parent's custom-element registration via `window.opener.customElements.get('saas-agent')`, so the same component code renders in the popup without a second script load.
-  - `drawer` mode covers host content — content beneath is inert until closed. Some hosts may want a non-modal slide-in; accepted trade-off.
-  - `eject` popup state sync (BroadcastChannel) deferred to Phase 6.x.
-  - All mode logic is shell-only; the runtime is completely unaware of the render mode.
-- **Source:** Phase A.2 implementation (Bucket A, 2026-05-06); implemented in `packages/web-shell/src/render-modes.ts`.
-
-## ADR-040 — DOM observation: ring buffer + throttle to prevent planner flooding
-- **Date:** 2026-05-06
-- **Status:** accepted
-- **Context:** MutationObserver + IntersectionObserver + custom semantic events (ADR-022) can emit at very high frequency on interactive pages. Feeding every DOM event directly to the planner would trigger a compose cycle on every mouse movement, destroying UX and exploding model cost.
-- **Options considered:**
-  - A. Debounce all observations — loses intermediate signals on fast interactions.
-  - B. Forward all events and let the planner decide — flood risk; planner prompt size unbounded.
-  - C. **Per-WS ring buffer (20 entries, FIFO) populated at the runtime intercept layer, consumed by the planner on next `plan()` call; MutationObserver throttled at 200ms; payload bounded at 1KB per mutation.**
-- **Decision:** C. DOM envelopes (`dom-mutation`, `dom-visibility`, `dom-semantic`) are intercepted at the WS handler BEFORE the planner and written into the ring buffer. They do NOT themselves trigger a compose cycle — they are read as context on the next user-initiated or proactive plan.
-- **Consequences:**
-  - Planner always sees bounded, bounded-age context (ring wraps oldest first).
-  - Semantic events dispatched via `document.dispatchEvent(new CustomEvent('saasagent:event', {...}))` give hosts a zero-code-change ambient-signal path.
-  - MO throttle + payload bound means bursts produce a coarsened view — acceptable since the planner cares about state transitions, not micro-animations.
-  - 200ms/1KB defaults are `RuntimeConfig`-tunable by the host.
-- **Source:** Phase A.3 implementation (Bucket A, 2026-05-06); implemented in `packages/web-shell/src/dom-observer.ts` + runtime intercept in `transport/server.ts`.
-
-## ADR-041 — Runtime API auth: pluggable AuthProvider (NoAuth / Bearer / JWT HS256/RS256)
-- **Date:** 2026-05-06
-- **Status:** accepted
-- **Context:** The runtime exposes REST endpoints (registry, eval, churn, memory, executor) and a WebSocket. In production both need an auth gate. Different tenants have different policies: some are mTLS-only by policy, some use JWTs with their own IdP, some just need a quick shared secret for dev/demo. This is distinct from end-user auth (host SSO, ADR-006 derivative) — this is machine-to-machine auth for the runtime's API surface.
-- **Options considered:**
-  - A. mTLS only — strong but requires cert provisioning for every API client.
-  - B. Single shared bearer token — simple; no per-user attribution; awkward rotation.
-  - C. JWT HS256/RS256 — per-principal attribution, standard expiry, broad library support.
-  - D. **Pluggable `AuthProvider` interface with three default implementations: NoAuth, Bearer, JWT.**
-- **Decision:** D. `AuthProvider.authenticate(input) → AuthPrincipal | null` is called once per HTTP request and once per WS upgrade. Three built-in implementations ship: `NoAuthProvider` (dev/test), `BearerTokenAuthProvider` (constant-time compare), `JWTAuthProvider` (HS256/RS256, optional audience + issuer + clock-skew, pure `node:crypto` — no jsonwebtoken dep). Hosts needing OIDC or mTLS implement the interface themselves.
-- **Consequences:**
-  - Single seam, multiple implementations — swap without runtime changes.
-  - **Tenancy flows through the principal:** `JWTAuthProvider` extracts `claims.tenant` → `AuthPrincipal.tenantId` → multi-tenant registry isolation (Phase C.3).
-  - JWT verification adds ~1ms per request — acceptable.
-  - Rate limiting (token-bucket per IP, Phase 2.7) runs after auth — principals with a valid token still get rate-limited at the IP layer.
-  - Per-request principals (not just connection-time) compose with audit logging and future per-tenant cost caps.
-- **Source:** Phase C.1 implementation (Bucket C, 2026-05-06); `adr/010-mtls-vs-bearer-tokens.md`; implemented in `packages/runtime/src/auth/`.
-
-## ADR-042 — Implicit negative eval signal from re-ask timing; WeightedFeatureChurnCalculator as ML stepping-stone
-- **Date:** 2026-05-06
-- **Status:** accepted
-- **Context:** Two related decisions were made together during Phase 2.5.x and 2.6.x: (1) how to infer quality failure without requiring explicit user feedback; (2) what form the churn model takes before labeled training data accumulates.
-- **Options considered (implicit signal):**
-  - A. Only explicit thumbs up/down signals — clean data, low coverage.
-  - B. **Re-ask within N seconds of layout broadcast → emit `{ signal: 'negative', source: 'user-implicit' }`** — behavioral inference, higher coverage, some false positives (quick follow-up vs. frustrated re-ask).
-  - C. Combination of A + B + system-error signals.
-- **Decision (implicit signal):** C. The WS handler tracks `lastBroadcastAt` per session. When a `user-message` envelope arrives within `RASK_WINDOW_MS` (default 8000ms, configurable) of the last broadcast, it auto-emits a `negative/user-implicit` EvalSignal for the prior `composeCycleId`. Implicit signals are weighted as weaker than explicit ones in the churn model.
-- **Options considered (churn model):**
-  - A. Rule-based only — `RuleBasedChurnCalculator`: explicit hand-tuned thresholds. Simple, fully explainable, no training.
-  - B. **`WeightedFeatureChurnCalculator`**: same architecture as a logistic regression (weighted linear combination of features → sigmoid → [0,1]). Weights are hand-tuned at init; `trainChurnWeights()` replaces them with gradient-descent–fitted weights once labeled data accumulates. Warm-startable, deterministic seed for reproducible tests.
-  - C. Jump straight to LightGBM (ADR-031) — requires sufficient labeled data to avoid overfit.
-- **Decision (churn model):** Both A and B ship. `RuleBasedChurnCalculator` is the default for tenants with no history. `WeightedFeatureChurnCalculator` is the recommended migration path before a tenant has enough data for ADR-031's LightGBM. Every score includes a `factors[]` list — explainability is non-negotiable.
-- **Consequences:**
-  - Implicit signals fire with zero user effort — the eval coverage rate is high from day 1.
-  - False-positive rate for implicit signals is mitigated by lower weight in the churn model.
-  - `trainChurnWeights()` is the migration seam to real ML: same `WeightedFeatureChurnCalculator`, same interface, trained weights from accumulated labeled data.
-  - Both calculators expose `factors[]` so retention teams understand why a session is flagged.
-- **Source:** Phase 2.5.x + 2.6.x implementation (2026-05-06); `adr/008-eval-and-churn-loop.md`; implemented in `packages/runtime/src/eval/` and `packages/runtime/src/churn/`.
+  - Closes the zero-button dead-end UX gap — users can always move the conversation forward.
+  - The `InstructionEnvelope` protocol is already the right abstraction — text input is just another instruction type; no protocol changes required.
+  - Shell must manage focus correctly (text input should not steal focus from host page unless agent is expanded).
+  - "Build muscle memory" (ADR-034) depends on this: users learn to type to the agent over time; button shortcuts are training wheels.
+- **Source:** Conversation 2026-05-07 — Phase 2.0a self-review finding: "The welcome layout has zero buttons (composer correctly judged 'no concrete intent → no interactive elements'), which means the user has no way to drive the conversation forward. The whole loop is button-only — there's no text input. This is the critical UX gap." Rahul accepted with "you do the comprehensive testing in chrome yourself and proceed."
