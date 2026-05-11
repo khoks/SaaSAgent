@@ -171,58 +171,33 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 - ✅ Eval dashboard — bundled SPA at MVP + optional exporters at v1 [ADR-030]
 - ✅ Customer Churn ML Model — LightGBM + pluggable adapter + generic-prior cold-start [ADR-031]
 
-### Closed in Phase 1.2 / Q6.3 (2026-05-08)
-- ✅ Real-time transport — SSE (planner output → shell) + WebSocket (bidirectional instruction emit); WebRTC reserved for voice (Phase 5) [ADR-038]
+### Closed in Batch 6 (2026-05-08)
+- ✅ Real-time transport — SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit; WebRTC reserved for voice (Phase 5) [ADR-038]
 
-### Closed during MVP build phases (2026-05-06)
-- ✅ Shell render modes — four postures: `side-panel` (default), `full-page`, `drawer`, `eject` (window.open popup re-using parent's custom-element registration) [ADR-039]
-- ✅ DOM observation ring buffer — per-WS 20-entry FIFO populated by MO/IO/semantic envelopes; consumed on next planner call; does NOT trigger compose cycles autonomously [ADR-040]
-- ✅ Runtime API auth — pluggable `AuthProvider` (NoAuth / Bearer / JWT HS256/RS256) with tenancy threading through principal to multi-tenant registries [ADR-041]
-- ✅ Implicit negative eval signal — re-ask within `RASK_WINDOW_MS` (default 8s) of a layout broadcast → `negative/user-implicit` EvalSignal on the prior `composeCycleId` [ADR-042]
-- ✅ Churn model stepping-stone — `WeightedFeatureChurnCalculator` (logistic-regression–shaped, warm-startable via `trainChurnWeights()`) bridges rule-based and LightGBM (ADR-031) [ADR-042]
-- ✅ Symmetric federation — `/federate` REST endpoint on any runtime lets it act as a sub-agent of another runtime; two-runtime live demo verified (parent 8080 → child 8081 → child's own tool). Any runtime is both orchestrator and delegate.
-
-### Still open (v2 details)
+### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.
 3. **Adapters registry transport** — how host event bus → platform Redpanda topic (webhook / direct integration / SDK adapter library).
-4. **`eject` render mode BroadcastChannel session sync** — popup and parent window currently share no state; deferred to Phase 6.x.
 
-## Enterprise integration reference pattern (`apps/demo-expedia/`)
+## Developer onboarding contract (validated 2026-05-11)
 
-Established 2026-05-10 during the Expedia E2E validation session. The canonical enterprise onboarding footprint:
+The Expedia reference integration (`apps/demo-expedia/`) established the following validated developer-onboarding contract:
 
-```
-apps/demo-expedia/
-  server/start-runtime.mjs       ← ~30 lines: import @saasagent/runtime, register skills + sub-agent descriptor, start()
-  server/start-trip-planner.mjs  ← ~30 lines: defineSubAgent(), register skills, start() on port 8082
-  public/api/                    ← mock REST endpoints (flights, hotels, activities)
-  index.html + src/host.ts       ← host page: imports <saas-agent-shell>, registers features/tools via postMessage
-  vite.config.ts                 ← standard Vite config for the host SPA
-```
-
-Key verified properties:
-- **Skills registration**: 5 Expedia-domain skills registered in-process at runtime init; discoverable at `GET /skills`.
-- **Sub-agent federation**: trip-planner on port 8082 registered as a descriptor; platform federates to it via `POST /federate`.
-- **Semantic DOM events**: host page emits `saasagent:event { kind: "flight-shortlisted", payload: {...} }` — runtime receives + tags with `composeCycleId`.
-- **Graceful stub fallback**: all functionality above (capability registry, REST endpoints, WS/SSE, DOM observation, eval signals) works without `ANTHROPIC_API_KEY`; Planner + Composer fall back to Stub implementations. `/health` exposes `mode: "stub"` + `devHint` block with curl examples + registered-skill list.
-- **Pre-handshake event queue**: WS events emitted before the handshake completes are queued; flushed on first layout broadcast with `composeCycleId` rebound. Prevents data loss on fast-loading host pages.
-
-## REST endpoint surface (as of 2026-05-10)
-
-Executor endpoints — all accept POST, body = flat input object (NOT `{input:{...}}`):
-
-| Path | Alias(es) | Description |
+| Step | What the enterprise dev does | LoC |
 |---|---|---|
-| `POST /executor/skill/<name>` | `/skills/<name>/execute` | Run a registered skill directly |
-| `POST /executor/tool/<name>` | `/tools/<name>/execute` | Run a registered tool directly |
-| `POST /federate` | `/agents/<name>/federate` | Invoke the sub-agent federation path |
-| `GET /skills` | — | List registered skills + descriptors |
-| `GET /tools` | — | List registered tools |
-| `GET /subagents` | — | List registered sub-agent descriptors |
-| `GET /health` | — | Runtime health; includes `mode`, `devHint` block in stub mode |
+| 1. Start runtime | `import { createRuntime } from '@saasagent/runtime'` → register skills + sub-agent descriptor → `runtime.start(8080)` | ~30 |
+| 2. Start sub-agent | `import { defineSubAgent } from '@saasagent/sdk'` → declare skill → `subagent.serve(8082)` | ~20 |
+| 3. Embed shell | Add `<saas-agent>` WC to host page; on boot POST `feature.md` + tool descriptors to `/registry` via REST | ~20 |
+| 4. Verify in stub mode | `GET /health` → `{mode:"stub", devHint:{registeredSkills:[...], callSkill:"curl ..."}}` | 0 |
+| 5. Exercise skills | `POST /executor/skill/<name>` or REST alias `POST /skills/<name>/execute` with skill input as body root | 0 |
 
-Invalid input wrapping (`{input:{...}}`) now returns HTTP 400 with `{error, detail, example}` showing the correct curl shape.
+**Key invariants enforced by this contract:**
+- All custom semantic events dispatched synchronously during host-page boot are queued by the web-shell until the first SSE layout (cycle id assigned on flush) — no `cycle=no-cycle` events.
+- `/health` always exposes `mode: 'stub'|'live'`; stub mode includes `devHint` with registered skill names and example executor curl.
+- `/federate` always returns `mode` and, when the sub-agent planner is stub, includes `availableSkills` so callers can fall back to direct dispatch.
+- Skill input goes in the JSON body root (not wrapped in `{input:{...}}`); bad input returns 400 with an actionable error + example.
+
+**Reference integrations per vertical:** see `apps/demo-expedia/` (travel vertical); e-commerce reference TBD.
 
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).
