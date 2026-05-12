@@ -60,8 +60,14 @@ import { type Planner, StubPlanner, type ToolInvocation } from '../planner/index
 import { KeyValueMemoryProvider, type MemoryProvider } from '../memory/index.js';
 import { KeyValueEvalProvider, type EvalProvider } from '../eval/index.js';
 import { type ChurnRiskCalculator, RuleBasedChurnCalculator } from '../churn/index.js';
+import {
+  InMemoryCapabilityEvalRunner,
+  type CapabilityEvalRunner,
+  type CapabilityReport,
+} from '../capeval/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
+import { renderDashboardHtml } from './dashboard.js';
 
 export interface RuntimeServerOptions {
   /** Port to listen on. 0 = OS-assigned (useful for tests). */
@@ -128,6 +134,14 @@ export interface RuntimeServerOptions {
    */
   churnCalculator?: ChurnRiskCalculator;
   /**
+   * CapabilityEvalRunner (Phase 6 / ADR-023 / ADR-037). Auto-generated
+   * per-capability quality metrics derived from invocation records emitted
+   * by the three executors. When unset, an InMemoryCapabilityEvalRunner is
+   * constructed; pass a custom instance to override the heuristic suite
+   * or back the runner with durable storage.
+   */
+  capabilityEvalRunner?: CapabilityEvalRunner;
+  /**
    * Bearer token required on REST + WS requests (Phase 2.7).
    * When set, all requests must include `Authorization: Bearer <token>`
    * (or ?token=<token> on the WS upgrade URL since browsers can't set
@@ -183,6 +197,7 @@ export class RuntimeServer {
   private readonly memoryProvider: MemoryProvider;
   private readonly evalProvider: EvalProvider;
   private readonly churnCalculator: ChurnRiskCalculator;
+  private readonly capabilityEvalRunner: CapabilityEvalRunner;
   private readonly implicitReaskWindowMs: number;
   private readonly authToken: string | null;
   private readonly rateLimiter: RateLimiter | null;
@@ -196,10 +211,42 @@ export class RuntimeServer {
     this.toolRegistry = options.toolRegistry ?? new InMemoryToolRegistry();
     this.featureRegistry = options.featureRegistry ?? new InMemoryFeatureRegistry();
     this.subAgentRegistry = options.subAgentRegistry ?? new InMemorySubAgentRegistry();
-    this.skillExecutor = options.skillExecutor ?? new SkillExecutor({ registry: this.skillRegistry });
-    this.toolExecutor = options.toolExecutor ?? new ToolExecutor({ registry: this.toolRegistry });
+    this.capabilityEvalRunner =
+      options.capabilityEvalRunner ?? new InMemoryCapabilityEvalRunner();
+    // Phase 6: wire the eval runner into each executor's onInvocation hook,
+    // unless the host passed an executor that already has its own hook
+    // configured. We only attach to executors we own (didn't receive from
+    // options) so host-overridden executors keep their host-configured hooks.
+    const attachHook = (
+      ctor: () => SkillExecutor | ToolExecutor | SubAgentExecutor,
+    ): SkillExecutor | ToolExecutor | SubAgentExecutor => {
+      const x = ctor();
+      // Re-emit via the runner. We avoid mutating the host's executor; if the
+      // host passed one in, we don't have a guaranteed way to attach. Hosts
+      // who want eval on a custom executor should construct it with
+      // onInvocation: runner.recordInvocation.bind(runner).
+      return x;
+    };
+    this.skillExecutor =
+      options.skillExecutor ??
+      new SkillExecutor({
+        registry: this.skillRegistry,
+        onInvocation: (rec) => this.capabilityEvalRunner.recordInvocation(rec),
+      });
+    this.toolExecutor =
+      options.toolExecutor ??
+      new ToolExecutor({
+        registry: this.toolRegistry,
+        onInvocation: (rec) => this.capabilityEvalRunner.recordInvocation(rec),
+      });
     this.subAgentExecutor =
-      options.subAgentExecutor ?? new SubAgentExecutor({ registry: this.subAgentRegistry });
+      options.subAgentExecutor ??
+      new SubAgentExecutor({
+        registry: this.subAgentRegistry,
+        onInvocation: (rec) => this.capabilityEvalRunner.recordInvocation(rec),
+      });
+    // Silence unused — kept for future host-executor extension.
+    void attachHook;
     this.planner = options.planner ?? new StubPlanner();
     this.memoryProvider = options.memoryProvider ?? new KeyValueMemoryProvider();
     this.evalProvider = options.evalProvider ?? new KeyValueEvalProvider();
@@ -355,6 +402,8 @@ export class RuntimeServer {
         evalProvider: this.evalProvider.name,
         evalSignalCount: this.evalProvider.count(),
         churnCalculator: this.churnCalculator.name,
+        capabilityEvalRunner: this.capabilityEvalRunner.name,
+        capabilityEvalCount: this.capabilityEvalRunner.reportAll().length,
       };
       if (mode === 'stub') {
         body.devHint = {
@@ -401,6 +450,44 @@ export class RuntimeServer {
         res.end(JSON.stringify(score));
         return;
       }
+    }
+
+    // Capability eval endpoints (Phase 6 / ADR-037).
+    // GET /evals/capabilities          → { reports: CapabilityReport[] }, worst-first
+    // GET /evals/capabilities/<name>   → CapabilityReport (404 if never seen)
+    if (url === '/evals/capabilities' && req.method === 'GET') {
+      const reports: readonly CapabilityReport[] = this.capabilityEvalRunner.reportAll();
+      res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ reports, runner: this.capabilityEvalRunner.name }));
+      return;
+    }
+    if (url.startsWith('/evals/capabilities/')) {
+      const parsed = new URL(url, 'http://localhost');
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      // ['evals', 'capabilities', '<name>'] when fully matched
+      if (segments.length === 3 && req.method === 'GET') {
+        const name = decodeURIComponent(segments[2]!);
+        const report = this.capabilityEvalRunner.reportFor(name);
+        if (!report) {
+          res.writeHead(404, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ name, error: 'no invocations recorded for this capability' }));
+          return;
+        }
+        res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(report));
+        return;
+      }
+    }
+
+    // Bundled eval dashboard (Phase 6). Vanilla-JS SPA that polls
+    // /evals/capabilities every 3 seconds; no build step, no React in the
+    // runtime package. Served at GET /dashboard. The richer production SPA
+    // grows out of this in v1.
+    if (url === '/dashboard' && req.method === 'GET') {
+      const origin = `http://${req.headers.host ?? `localhost:${this.actualPort}`}`;
+      res.writeHead(200, { ...CORS_HEADERS, 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(renderDashboardHtml(origin));
+      return;
     }
 
     // Eval REST endpoints (Phase 2.5).

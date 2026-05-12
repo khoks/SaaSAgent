@@ -22,6 +22,10 @@ import { SkillExecutor, SubAgentExecutor, ToolExecutor } from './executor/index.
 import { KeyValueMemoryProvider, type MemoryProvider } from './memory/index.js';
 import { KeyValueEvalProvider, type EvalProvider } from './eval/index.js';
 import { type ChurnRiskCalculator, RuleBasedChurnCalculator } from './churn/index.js';
+import {
+  InMemoryCapabilityEvalRunner,
+  type CapabilityEvalRunner,
+} from './capeval/index.js';
 import { AnthropicProvider } from './model/index.js';
 import { type Planner, SonnetPlanner, StubPlanner } from './planner/index.js';
 import {
@@ -209,6 +213,21 @@ export {
   type UsageMeteringProviderOptions,
   type UsageRollup,
 } from './metering/index.js';
+export {
+  InMemoryCapabilityEvalRunner,
+  outcomeSuccessCheck,
+  outputNonEmptyCheck,
+  makeLatencyBudgetCheck,
+  defaultHeuristicSuite,
+  type CapabilityEvalRunner,
+  type CapabilityInvocationRecord,
+  type CapabilityKind,
+  type CapabilityReport,
+  type HeuristicCheck,
+  type HeuristicCheckResult,
+  type InMemoryCapabilityEvalRunnerOptions,
+  type LatencyBudgetCheckOptions,
+} from './capeval/index.js';
 
 export interface RuntimeConfig {
   /** HTTP server port (default 8080). */
@@ -264,18 +283,32 @@ export class Runtime {
    */
   readonly subAgentRegistry: SubAgentRegistryStore = new InMemorySubAgentRegistry();
   /**
+   * Public capability-eval runner (Phase 6 / ADR-037). Must be initialized
+   * BEFORE the three executors so we can pass the recordInvocation hook into
+   * each executor's constructor — field initializers run top-to-bottom.
+   */
+  readonly capabilityEvalRunner: CapabilityEvalRunner = new InMemoryCapabilityEvalRunner();
+  /**
    * SkillExecutor (Phase 2.0c). Public so host code can `runtime.skillExecutor.registerHandler('foo', fn)`
    * after construction. Bound to the same skillRegistry instance used by REST + the planner.
+   * The onInvocation hook feeds the capabilityEvalRunner (Phase 6).
    */
-  readonly skillExecutor: SkillExecutor = new SkillExecutor({ registry: this.skillRegistry });
+  readonly skillExecutor: SkillExecutor = new SkillExecutor({
+    registry: this.skillRegistry,
+    onInvocation: (rec): void => this.capabilityEvalRunner.recordInvocation(rec),
+  });
   /** ToolExecutor (Phase 2.0c) — uses globalThis.fetch + process.env unless replaced. */
-  readonly toolExecutor: ToolExecutor = new ToolExecutor({ registry: this.toolRegistry });
+  readonly toolExecutor: ToolExecutor = new ToolExecutor({
+    registry: this.toolRegistry,
+    onInvocation: (rec): void => this.capabilityEvalRunner.recordInvocation(rec),
+  });
   /**
    * SubAgentExecutor (Phase 2.4). Posts JSON FederationRequests to registered
    * sub-agents over HTTP; SonnetPlanner dispatches subagent__ tool calls here.
    */
   readonly subAgentExecutor: SubAgentExecutor = new SubAgentExecutor({
     registry: this.subAgentRegistry,
+    onInvocation: (rec): void => this.capabilityEvalRunner.recordInvocation(rec),
   });
   /**
    * MemoryProvider (Phase 2.3 default: KeyValueMemoryProvider — in-process
@@ -329,6 +362,7 @@ export class Runtime {
       memoryProvider: this.memoryProvider,
       evalProvider: this.evalProvider,
       churnCalculator: this.churnCalculator,
+      capabilityEvalRunner: this.capabilityEvalRunner,
       ...(this.config.authToken ? { authToken: this.config.authToken } : {}),
       ...(this.config.rateLimitRestPerMinute !== undefined
         ? { rateLimitRestPerMinute: this.config.rateLimitRestPerMinute }

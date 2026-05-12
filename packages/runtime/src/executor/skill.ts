@@ -19,6 +19,7 @@
  * (host wraps a static value as `() => value` if needed).
  */
 
+import type { CapabilityInvocationRecord } from '../capeval/types.js';
 import type { SkillRegistryStore } from '../registry/skills.js';
 import type { ExecutionContext, ExecutionResult } from './types.js';
 
@@ -29,6 +30,12 @@ export type SkillHandler<I = unknown, O = unknown> = (
 
 export interface SkillExecutorOptions {
   registry: SkillRegistryStore;
+  /**
+   * Phase 6 capability-eval hook. Fires after every execute() returns,
+   * regardless of success or failure. Must not throw (errors are swallowed
+   * to keep the executor's hot path uninterrupted).
+   */
+  onInvocation?: (record: CapabilityInvocationRecord) => void;
 }
 
 export class SkillExecutor {
@@ -61,49 +68,87 @@ export class SkillExecutor {
     input: I,
     ctx: ExecutionContext = {},
   ): Promise<ExecutionResult<O>> {
-    const start = Date.now();
-    const descriptor = this.options.registry.get().skills[name];
-    if (!descriptor) {
-      return {
-        ok: false,
-        error: { code: 'unknown-skill', message: `No skill registered with name "${name}"` },
-        durationMs: Date.now() - start,
-      };
-    }
-    if (descriptor.kind === 'prompt-template') {
-      return {
-        ok: false,
-        error: {
-          code: 'unsupported-kind',
-          message: `Skill "${name}" has kind=prompt-template; the executor does not invoke these directly. The planner (Phase 2.1) will handle prompt-template skills.`,
-        },
-        durationMs: Date.now() - start,
-      };
-    }
-    const handler = this.handlers.get(name);
-    if (!handler) {
-      return {
-        ok: false,
-        error: {
-          code: 'no-handler',
-          message: `Skill "${name}" (kind=${descriptor.kind}) has a descriptor but no registered handler. Call SkillExecutor.registerHandler() at startup.`,
-        },
-        durationMs: Date.now() - start,
-      };
-    }
-    try {
-      const output = await Promise.resolve(handler(input, ctx));
-      return { ok: true, output: output as O, durationMs: Date.now() - start };
-    } catch (err) {
-      return {
-        ok: false,
-        error: {
-          code: 'handler-threw',
-          message: err instanceof Error ? err.message : String(err),
-          cause: err,
-        },
-        durationMs: Date.now() - start,
-      };
-    }
+    const at = new Date().toISOString();
+    const result = await (async (): Promise<ExecutionResult<O>> => {
+      const start = Date.now();
+      const descriptor = this.options.registry.get().skills[name];
+      if (!descriptor) {
+        return {
+          ok: false,
+          error: { code: 'unknown-skill', message: `No skill registered with name "${name}"` },
+          durationMs: Date.now() - start,
+        };
+      }
+      if (descriptor.kind === 'prompt-template') {
+        return {
+          ok: false,
+          error: {
+            code: 'unsupported-kind',
+            message: `Skill "${name}" has kind=prompt-template; the executor does not invoke these directly. The planner (Phase 2.1) will handle prompt-template skills.`,
+          },
+          durationMs: Date.now() - start,
+        };
+      }
+      const handler = this.handlers.get(name);
+      if (!handler) {
+        return {
+          ok: false,
+          error: {
+            code: 'no-handler',
+            message: `Skill "${name}" (kind=${descriptor.kind}) has a descriptor but no registered handler. Call SkillExecutor.registerHandler() at startup.`,
+          },
+          durationMs: Date.now() - start,
+        };
+      }
+      try {
+        const output = await Promise.resolve(handler(input, ctx));
+        return { ok: true, output: output as O, durationMs: Date.now() - start };
+      } catch (err) {
+        return {
+          ok: false,
+          error: {
+            code: 'handler-threw',
+            message: err instanceof Error ? err.message : String(err),
+            cause: err,
+          },
+          durationMs: Date.now() - start,
+        };
+      }
+    })();
+    fireOnInvocation(this.options.onInvocation, 'skill', name, input, ctx, at, result);
+    return result;
+  }
+}
+
+/**
+ * Build a CapabilityInvocationRecord from the executor's result + context and
+ * invoke the hook, swallowing any error so a misbehaving recorder cannot
+ * break the executor's hot path.
+ */
+export function fireOnInvocation(
+  hook: ((record: CapabilityInvocationRecord) => void) | undefined,
+  kind: CapabilityInvocationRecord['kind'],
+  name: string,
+  input: unknown,
+  ctx: ExecutionContext | undefined,
+  at: string,
+  result: ExecutionResult,
+): void {
+  if (!hook) return;
+  const record: CapabilityInvocationRecord = {
+    name,
+    kind,
+    at,
+    ok: result.ok,
+    durationMs: result.durationMs,
+    input,
+    ...(result.ok ? { output: result.output } : { errorCode: result.error.code, errorMessage: result.error.message }),
+    ...(ctx?.composeCycleId ? { composeCycleId: ctx.composeCycleId } : {}),
+    ...(ctx?.sessionId ? { sessionId: ctx.sessionId } : {}),
+  };
+  try {
+    hook(record);
+  } catch {
+    /* swallow */
   }
 }

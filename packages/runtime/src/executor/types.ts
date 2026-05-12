@@ -22,6 +22,12 @@ export interface ExecutionContext {
   hostHeaders?: Readonly<Record<string, string>>;
   /** Compose cycle id for trace correlation. */
   composeCycleId?: string;
+  /**
+   * Per-connection session id. Carried into ExecutionContext so the
+   * capability-eval runner (Phase 6) can attribute invocations to a
+   * conversation when the planner dispatches them.
+   */
+  sessionId?: string;
   /** Owner of the request (for downstream audit). */
   userId?: string;
 }
