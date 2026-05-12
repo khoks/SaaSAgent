@@ -24,7 +24,9 @@
  * default to global Node 20 built-ins.
  */
 
+import type { CapabilityInvocationRecord } from '../capeval/types.js';
 import type { ToolRegistryStore } from '../registry/tools.js';
+import { fireOnInvocation } from './skill.js';
 import type { ExecutionContext, ExecutionResult } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -66,6 +68,8 @@ export interface ToolExecutorOptions {
   env?: (name: string) => string | undefined;
   /** Default timeout if descriptor doesn't specify. Default 5000ms. */
   defaultTimeoutMs?: number;
+  /** Phase 6: capability-eval hook; fires after every execute() returns. */
+  onInvocation?: (record: CapabilityInvocationRecord) => void;
 }
 
 export class ToolExecutor {
@@ -80,6 +84,17 @@ export class ToolExecutor {
   }
 
   async execute<I = unknown, O = unknown>(
+    name: string,
+    input: I,
+    ctx: ExecutionContext = {},
+  ): Promise<ExecutionResult<O>> {
+    const at = new Date().toISOString();
+    const result = await this._execute<I, O>(name, input, ctx);
+    fireOnInvocation(this.options.onInvocation, 'tool', name, input, ctx, at, result);
+    return result;
+  }
+
+  private async _execute<I = unknown, O = unknown>(
     name: string,
     input: I,
     ctx: ExecutionContext = {},

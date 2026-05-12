@@ -1934,3 +1934,136 @@ describe('RuntimeServer /churn endpoints', () => {
     expect(body.churnCalculator).toBe('rule-based-v0');
   });
 });
+
+/**
+ * Phase 6 / ADR-037 — auto-generated per-capability eval surfaced at
+ * GET /evals/capabilities + /evals/capabilities/<name> + /dashboard.
+ */
+describe('RuntimeServer /evals/capabilities + /dashboard (Phase 6)', () => {
+  let skillRegistry: InMemorySkillRegistry;
+  let skillExecutor: SkillExecutor;
+  let server: RuntimeServer;
+
+  beforeEach(async () => {
+    skillRegistry = new InMemorySkillRegistry();
+    skillRegistry.replace([
+      {
+        name: 'fast-skill',
+        version: '1.0.0',
+        description: 'fast',
+        whenToUse: 'when testing',
+        kind: 'in-process',
+      },
+      {
+        name: 'broken-skill',
+        version: '1.0.0',
+        description: 'broken',
+        whenToUse: 'when testing failure path',
+        kind: 'in-process',
+      },
+    ]);
+    skillExecutor = new SkillExecutor({ registry: skillRegistry });
+    skillExecutor.registerHandler('fast-skill', () => ({ ok: 'yes' }));
+    skillExecutor.registerHandler('broken-skill', () => {
+      throw new Error('intentional');
+    });
+
+    server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      skillRegistry,
+      // NOTE: not passing skillExecutor — server constructs its own with the
+      // capeval onInvocation hook attached. The test executor above is used
+      // to drive REST /executor/skill/<name>... wait, that wouldn't share the
+      // runner. So we DO pass it in, and we attach the runner manually below.
+    });
+    await server.start();
+  });
+
+  afterEach(async () => {
+    await server.stop();
+  });
+
+  async function drive(name: string, body: unknown = {}): Promise<void> {
+    await fetch(`http://127.0.0.1:${server.port}/executor/skill/${name}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('records invocations from REST executor calls and surfaces them at /evals/capabilities', async () => {
+    // We pre-registered descriptors but the server's auto-constructed executor
+    // doesn't have handlers. Register them on the server's executor.
+    (server as unknown as { skillExecutor: SkillExecutor }).skillExecutor.registerHandler(
+      'fast-skill',
+      () => ({ ok: 'yes' }),
+    );
+    (server as unknown as { skillExecutor: SkillExecutor }).skillExecutor.registerHandler(
+      'broken-skill',
+      () => {
+        throw new Error('intentional');
+      },
+    );
+    // Drive 3 successful + 2 failing invocations.
+    for (let i = 0; i < 3; i++) await drive('fast-skill');
+    for (let i = 0; i < 2; i++) await drive('broken-skill');
+
+    const res = await fetch(`http://127.0.0.1:${server.port}/evals/capabilities`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      runner: string;
+      reports: Array<{
+        name: string;
+        kind: string;
+        totalInvocations: number;
+        successRate: number;
+        overallScore: number | null;
+        perCheck: Record<string, { mean: number; sampleSize: number }>;
+      }>;
+    };
+    expect(body.runner).toBe('in-memory-capability-eval');
+    expect(body.reports).toHaveLength(2);
+    // Worst-first ordering — broken-skill should be first.
+    expect(body.reports[0]!.name).toBe('broken-skill');
+    expect(body.reports[0]!.successRate).toBe(0);
+    expect(body.reports[1]!.name).toBe('fast-skill');
+    expect(body.reports[1]!.successRate).toBe(1);
+    expect(body.reports[1]!.perCheck['outcome-success']!.mean).toBe(1);
+  });
+
+  it('GET /evals/capabilities/<name> returns 404 for unseen capabilities', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/evals/capabilities/nothing-here`);
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /evals/capabilities/<name> returns the single capability report after invocations', async () => {
+    (server as unknown as { skillExecutor: SkillExecutor }).skillExecutor.registerHandler(
+      'fast-skill',
+      () => ({ ok: 'yes' }),
+    );
+    await drive('fast-skill');
+    const res = await fetch(`http://127.0.0.1:${server.port}/evals/capabilities/fast-skill`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { name: string; totalInvocations: number; successRate: number };
+    expect(body.name).toBe('fast-skill');
+    expect(body.totalInvocations).toBe(1);
+    expect(body.successRate).toBe(1);
+  });
+
+  it('GET /dashboard returns the bundled HTML page', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/dashboard`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    const body = await res.text();
+    expect(body).toContain('Eval dashboard');
+    expect(body).toContain('/evals/capabilities');
+  });
+
+  it('/health includes capabilityEvalRunner name + count', async () => {
+    const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+    const body = (await res.json()) as { capabilityEvalRunner: string; capabilityEvalCount: number };
+    expect(body.capabilityEvalRunner).toBe('in-memory-capability-eval');
+    expect(typeof body.capabilityEvalCount).toBe('number');
+  });
+});

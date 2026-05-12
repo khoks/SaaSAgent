@@ -22,7 +22,9 @@ import type {
   SubAgentDescriptor,
 } from '@saasagent/protocol';
 
+import type { CapabilityInvocationRecord } from '../capeval/types.js';
 import type { SubAgentRegistryStore } from '../registry/subagents.js';
+import { fireOnInvocation } from './skill.js';
 import type { ExecutionContext, ExecutionResult } from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 15000;
@@ -35,6 +37,8 @@ export interface SubAgentExecutorOptions {
   env?: (name: string) => string | undefined;
   /** Default timeout if descriptor doesn't specify. Default 15000ms (sub-agents may take longer than tools). */
   defaultTimeoutMs?: number;
+  /** Phase 6: capability-eval hook; fires after every execute() returns. */
+  onInvocation?: (record: CapabilityInvocationRecord) => void;
 }
 
 export interface SubAgentInvokeRequest extends FederationRequest {
@@ -53,6 +57,17 @@ export class SubAgentExecutor {
   }
 
   async execute<O extends FederationResponse = FederationResponse>(
+    name: string,
+    input: SubAgentInvokeRequest,
+    ctx: ExecutionContext = {},
+  ): Promise<ExecutionResult<O>> {
+    const at = new Date().toISOString();
+    const result = await this._execute<O>(name, input, ctx);
+    fireOnInvocation(this.options.onInvocation, 'subagent', name, input, ctx, at, result);
+    return result;
+  }
+
+  private async _execute<O extends FederationResponse = FederationResponse>(
     name: string,
     input: SubAgentInvokeRequest,
     ctx: ExecutionContext = {},
