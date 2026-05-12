@@ -22,3 +22,4 @@ to the one it replaces.
 | [035](./035-provisional-patents-before-oss-publish.md) | Provisional patents filed before OSS publish | accepted |
 | [036](./036-end-user-tier-quota-model.md) | End-user tier/quota model + TierProvider abstraction | accepted |
 | [037](./037-auto-generated-capability-eval.md) | Auto-generated per-capability eval pipeline | accepted |
+| [038](./038-proactive-engine.md) | Proactive engine — multi-signal scoring + attention budget | accepted |

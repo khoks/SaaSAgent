@@ -21,6 +21,10 @@ import { KeyValueMemoryProvider, NullMemoryProvider } from '../memory/index.js';
 import { KeyValueEvalProvider } from '../eval/index.js';
 import type { Planner } from '../planner/index.js';
 import { InMemoryTierProvider } from '../quota/index.js';
+import {
+  DefaultProactiveEngine,
+  InMemoryAttentionBudget,
+} from '../proactive/index.js';
 import { RuntimeServer } from './server.js';
 
 /**
@@ -2243,4 +2247,97 @@ describe('RuntimeServer end-user tier/quota enforcement', () => {
       await server.stop();
     }
   });
+});
+
+/**
+ * Phase 5 / ADR-038: proactive engine — per-WS idle-tick fires a proactive
+ * layout when the scorer crosses threshold + budget grants.
+ */
+describe('RuntimeServer proactive engine (Phase 5)', () => {
+  it('/health reports proactiveEngine + threshold + budget when configured', async () => {
+    const engine = new DefaultProactiveEngine({
+      threshold: 0.3,
+      budget: new InMemoryAttentionBudget({ perSessionMax: 2 }),
+    });
+    const server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      proactiveEngine: engine,
+      proactiveTickMs: 0, // disable the tick — we only want /health surfacing here
+    });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+      const body = (await res.json()) as {
+        proactiveEngine: string;
+        proactiveThreshold: number;
+        proactiveBudgetPerSession: number;
+        proactiveTickMs: number;
+      };
+      expect(body.proactiveEngine).toBe('default-proactive-engine-v0');
+      expect(body.proactiveThreshold).toBe(0.3);
+      expect(body.proactiveBudgetPerSession).toBe(2);
+      expect(body.proactiveTickMs).toBe(0);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('/health reports proactiveEngine=off when not configured', async () => {
+    const server = new RuntimeServer({ port: 0, composer: new StubComposer() });
+    await server.start();
+    try {
+      const res = await fetch(`http://127.0.0.1:${server.port}/health`);
+      const body = (await res.json()) as {
+        proactiveEngine: string;
+        proactiveThreshold?: number;
+      };
+      expect(body.proactiveEngine).toBe('off');
+      expect(body.proactiveThreshold).toBeUndefined();
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('idle tick fires a proactive layout that gets broadcast over SSE', async () => {
+    // Threshold low + tick interval short → first tick after WS open fires.
+    const engine = new DefaultProactiveEngine({
+      threshold: 0.2,
+      budget: new InMemoryAttentionBudget({ perSessionMax: 5 }),
+      suggestedIntent: 'expedia:bundle-savings-nudge',
+    });
+    const server = new RuntimeServer({
+      port: 0,
+      composer: new StubComposer(),
+      proactiveEngine: engine,
+      proactiveTickMs: 200, // 200ms ticks
+    });
+    await server.start();
+    try {
+      const sseUrl = `http://127.0.0.1:${server.port}/sse`;
+      const layouts: ComposedLayout[] = [];
+      const sse = new EventSource(sseUrl);
+      sse.addEventListener('layout', (e) => {
+        layouts.push(JSON.parse((e as MessageEvent).data) as ComposedLayout);
+      });
+      await waitFor(() => layouts.length >= 1, 1500); // welcome layout
+      // Open WS so per-WS proactive tick starts.
+      const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws`);
+      await new Promise<void>((resolve) => ws.once('open', () => resolve()));
+      // Cooldown is 8s from "last user message"; we initialize lastUserMessageAt
+      // to connect time → the first proactive tick must wait 8s. To keep the
+      // test fast, send a fake user-message and then wait longer than 8s? No —
+      // instead, ARM the test by waiting > 8s with a short tick.
+      // The default cooldown makes a sub-8s test impossible; reduce cooldown:
+      // since 8s is hard-coded in the server (Phase 2.5.x), we wait it out.
+      await waitFor(() => layouts.length >= 2, 10_000);
+      const proactiveLayout = layouts[layouts.length - 1]!;
+      expect(proactiveLayout.metadata?.intent).toBe('expedia:bundle-savings-nudge');
+
+      ws.close();
+      sse.close();
+    } finally {
+      await server.stop();
+    }
+  }, 12_000);
 });

@@ -18,7 +18,12 @@
  * this is up the planner can reach any of the registered Expedia capabilities.
  */
 
-import { Runtime, InMemoryTierProvider } from '@saasagent/runtime';
+import {
+  Runtime,
+  InMemoryTierProvider,
+  DefaultProactiveEngine,
+  InMemoryAttentionBudget,
+} from '@saasagent/runtime';
 
 // ---------- In-memory Expedia inventory (mirrors apps/demo-expedia/src/data.ts) ----------
 
@@ -241,7 +246,21 @@ const quotaProvider = new InMemoryTierProvider({
   ],
 });
 
-const runtime = new Runtime({ port, quotaProvider });
+// Phase 5 / ADR-038: configure Expedia's proactive engine. Low threshold +
+// short tick so the demo surfaces a proactive nudge within ~10s of an idle
+// session (after the 8s cooldown). Budget=2 so the demo doesn't spam.
+const proactiveEngine = new DefaultProactiveEngine({
+  threshold: 0.3,
+  budget: new InMemoryAttentionBudget({ perSessionMax: 2 }),
+  suggestedIntent: 'expedia:bundle-savings-nudge',
+});
+
+const runtime = new Runtime({
+  port,
+  quotaProvider,
+  proactiveEngine,
+  proactiveTickMs: 3000,
+});
 
 // Register skills + their handlers BEFORE start() so the planner sees them
 // from the very first plan call.
