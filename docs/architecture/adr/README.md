@@ -23,3 +23,4 @@ to the one it replaces.
 | [036](./036-end-user-tier-quota-model.md) | End-user tier/quota model + TierProvider abstraction | accepted |
 | [037](./037-auto-generated-capability-eval.md) | Auto-generated per-capability eval pipeline | accepted |
 | [038](./038-proactive-engine.md) | Proactive engine — multi-signal scoring + attention budget | accepted |
+| [039](./039-oss-publish-gate.md) | OSS publish gate | accepted |
