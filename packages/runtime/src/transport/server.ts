@@ -67,6 +67,7 @@ import {
   type CapabilityReport,
 } from '../capeval/index.js';
 import { NoQuotaProvider, type TierProvider, type QuotaCheckResult } from '../quota/index.js';
+import type { ProactiveContext, ProactiveEngine } from '../proactive/index.js';
 
 import { formatSSEMessage, SSE_HEADERS, SSE_PREAMBLE } from './sse.js';
 import { renderDashboardHtml } from './dashboard.js';
@@ -175,6 +176,21 @@ export interface RuntimeServerOptions {
    * When unset, defaults to NoQuotaProvider (unlimited, no metadata attached).
    */
   quotaProvider?: TierProvider;
+  /**
+   * Proactive engine (Phase 5 / ADR-018 / ADR-038). When configured, the
+   * runtime runs a per-WS idle-tick loop, derives the 5-signal context from
+   * per-WS state (broadcast recency, dom-signal volume, etc.), calls
+   * engine.evaluate(), and broadcasts a proactive layout when the engine
+   * fires. When undefined, no proactive surfacings — the agent stays
+   * strictly reactive.
+   */
+  proactiveEngine?: ProactiveEngine;
+  /**
+   * Idle-tick interval in milliseconds. Default 5000. Set 0 to disable the
+   * tick loop entirely even when proactiveEngine is configured (useful for
+   * unit tests that want to evaluate manually).
+   */
+  proactiveTickMs?: number;
   /** Hook for tests / observability. */
   onInstruction?: (envelope: InstructionEnvelope) => void;
   /** Hook for tests / observability. */
@@ -211,6 +227,8 @@ export class RuntimeServer {
   private readonly churnCalculator: ChurnRiskCalculator;
   private readonly capabilityEvalRunner: CapabilityEvalRunner;
   private readonly quotaProvider: TierProvider;
+  private readonly proactiveEngine: ProactiveEngine | null;
+  private readonly proactiveTickMs: number;
   private readonly implicitReaskWindowMs: number;
   private readonly authToken: string | null;
   private readonly rateLimiter: RateLimiter | null;
@@ -266,6 +284,8 @@ export class RuntimeServer {
     this.churnCalculator =
       options.churnCalculator ?? new RuleBasedChurnCalculator({ evalProvider: this.evalProvider });
     this.quotaProvider = options.quotaProvider ?? new NoQuotaProvider();
+    this.proactiveEngine = options.proactiveEngine ?? null;
+    this.proactiveTickMs = options.proactiveTickMs ?? 5000;
     this.implicitReaskWindowMs = options.implicitReaskWindowMs ?? 8000;
     this.authToken = options.authToken ?? null;
     this.rateLimiter =
@@ -421,6 +441,14 @@ export class RuntimeServer {
         quotaProvider: this.quotaProvider.name,
         ...(this.quotaProvider.listTiers
           ? { quotaTiers: this.quotaProvider.listTiers() }
+          : {}),
+        proactiveEngine: this.proactiveEngine?.name ?? 'off',
+        ...(this.proactiveEngine
+          ? {
+              proactiveThreshold: this.proactiveEngine.threshold,
+              proactiveBudgetPerSession: this.proactiveEngine.budget.perSessionMax,
+              proactiveTickMs: this.proactiveTickMs,
+            }
           : {}),
       };
       if (mode === 'stub') {
@@ -1005,6 +1033,72 @@ export class RuntimeServer {
   }
 
   /**
+   * One proactive-engine tick. Derives the 5-signal ProactiveContext from
+   * per-WS state, asks the engine, and broadcasts a composed proactive
+   * layout when the engine fires. Errors are logged and swallowed so a
+   * misbehaving engine cannot break the WS connection.
+   *
+   * Signal derivation (Phase 5 — heuristic, ML model lands later):
+   *   • timeSinceLastTouch — normalized by a 60s reference window
+   *   • domRelevance       — proxy: did we see any dom-semantic events
+   *                          in the buffer? (non-zero → 0.6)
+   *   • workflowContinuity — proxy: time since last user-message,
+   *                          normalized by 30s (longer = more "stuck")
+   *   • plannerConfidence  — 0.5 default (full implementation requires
+   *                          planner introspection; landed in v1 with
+   *                          SonnetPlanner.lastConfidence)
+   *   • memoryMatch        — 0 default (requires per-session memory
+   *                          recall integration; lands in v1)
+   */
+  private async runProactiveTick(input: {
+    sessionId: string;
+    lastBroadcastAt: number;
+    lastUserMessageAt: number;
+    domSignalsCount: number;
+  }): Promise<void> {
+    if (!this.proactiveEngine) return;
+    const now = Date.now();
+    // Cooldown: don't fire within 8s of a user message (Phase 2.5.x window).
+    if (now - input.lastUserMessageAt < 8000) return;
+    const ctx: ProactiveContext = {
+      sessionId: input.sessionId,
+      at: new Date(now).toISOString(),
+      signals: {
+        plannerConfidence: 0.5,
+        memoryMatch: 0,
+        workflowContinuity: Math.min(1, (now - input.lastUserMessageAt) / 30000),
+        domRelevance: input.domSignalsCount > 0 ? 0.6 : 0,
+        timeSinceLastTouch: Math.min(1, (now - input.lastBroadcastAt) / 60000),
+      },
+    };
+    const decision = this.proactiveEngine.evaluate(ctx);
+    if (!decision.fire) return;
+    // eslint-disable-next-line no-console
+    console.log(
+      `[runtime] proactive fire: score=${decision.score.score} rationale=${decision.score.rationale}`,
+    );
+    const composeCtx: ComposeContext = {
+      ...this.buildContext(decision.suggestedIntent),
+      conversationContext: {
+        intent: decision.suggestedIntent,
+        narrative: `Just checking in — based on what you've been doing here, a useful nudge: ${decision.score.rationale}`,
+      },
+    };
+    const layout = await this.options.composer.compose(decision.suggestedIntent, composeCtx);
+    const annotated: ComposedLayout = {
+      ...layout,
+      metadata: {
+        ...(layout.metadata ?? {}),
+        // Tag this layout as proactive so the shell can render the nudge
+        // differently (e.g. dismissable, lower-prominence) and so eval signals
+        // attribute back to a proactive turn correctly.
+        intent: decision.suggestedIntent,
+      },
+    };
+    this.broadcastLayout(annotated);
+  }
+
+  /**
    * Handle PUT /registry/theme for the supported import formats.
    * Returns the updated theme on success, or `null` after writing a 4xx response on bad input.
    */
@@ -1120,6 +1214,36 @@ export class RuntimeServer {
     // Phase 2.7: per-connection WS message rate limiter.
     const wsLimiter =
       this.wsRateLimitPerMinute > 0 ? new RateLimiter(this.wsRateLimitPerMinute) : null;
+
+    // Phase 5 / ADR-038: per-WS idle-tick loop for proactive surfacings.
+    // Runs every proactiveTickMs while no user-message has arrived in the
+    // window. On each tick, derives the 5-signal ProactiveContext from per-WS
+    // state and asks the engine. If engine fires, runtime composes a
+    // 'proactive-nudge' layout and broadcasts it. Tick stops on ws close.
+    let proactiveTimer: ReturnType<typeof setInterval> | null = null;
+    let lastUserMessageAt = Date.now();
+    const startProactiveTick = (): void => {
+      if (!this.proactiveEngine || this.proactiveTickMs <= 0) return;
+      proactiveTimer = setInterval(() => {
+        void this.runProactiveTick({
+          sessionId,
+          lastBroadcastAt,
+          lastUserMessageAt,
+          domSignalsCount: domSignals.length,
+        }).catch((err: unknown) => {
+          // eslint-disable-next-line no-console
+          console.error('[runtime] proactive tick failed:', err);
+        });
+      }, this.proactiveTickMs);
+    };
+    startProactiveTick();
+    ws.on('close', () => {
+      if (proactiveTimer) {
+        clearInterval(proactiveTimer);
+        proactiveTimer = null;
+      }
+    });
+
     ws.on('message', async (raw: Buffer) => {
       if (wsLimiter && !wsLimiter.tryConsume('ws-conn')) {
         // 1008 = policy violation. Close the connection and bail.
@@ -1214,6 +1338,9 @@ export class RuntimeServer {
       // (each browser tab = its own quota). Hosts that need real user identity
       // override quotaProvider with one that maps sessionId → userId via their
       // own session store.
+      // Phase 5: stamp user-message arrival so the proactive idle-tick can
+      // skip ticks within the cooldown after a user-driven turn.
+      if (envelope.type === 'user-message') lastUserMessageAt = Date.now();
       if (envelope.type === 'user-message' && this.quotaProvider.name !== 'noquota') {
         try {
           const result = await this.quotaProvider.consume(sessionId);

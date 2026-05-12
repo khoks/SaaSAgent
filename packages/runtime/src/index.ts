@@ -27,6 +27,7 @@ import {
   type CapabilityEvalRunner,
 } from './capeval/index.js';
 import { type TierProvider } from './quota/index.js';
+import { type ProactiveEngine } from './proactive/index.js';
 import { AnthropicProvider } from './model/index.js';
 import { type Planner, SonnetPlanner, StubPlanner } from './planner/index.js';
 import {
@@ -237,6 +238,23 @@ export {
   type QuotaCheckResult,
   type InMemoryTierProviderOptions,
 } from './quota/index.js';
+export {
+  DefaultProactiveScorer,
+  DefaultProactiveEngine,
+  InMemoryAttentionBudget,
+  DEFAULT_PROACTIVE_WEIGHTS,
+  type ProactiveScorer,
+  type ProactiveEngine,
+  type AttentionBudget,
+  type ProactiveContext,
+  type ProactiveScore,
+  type ProactiveDecision,
+  type ProactiveSignalName,
+  type ProactiveWeights,
+  type DefaultProactiveScorerOptions,
+  type DefaultProactiveEngineOptions,
+  type InMemoryAttentionBudgetOptions,
+} from './proactive/index.js';
 
 export interface RuntimeConfig {
   /** HTTP server port (default 8080). */
@@ -276,6 +294,15 @@ export interface RuntimeConfig {
    * TierProvider implementation and pass it here.
    */
   quotaProvider?: TierProvider;
+  /**
+   * Proactive engine (Phase 5 / ADR-038). When configured, the runtime
+   * runs a per-WS idle-tick loop that may emit a proactive layout when
+   * the engine's score crosses threshold and the attention budget allows.
+   * Default: undefined (no proactive surfacings — strictly reactive).
+   */
+  proactiveEngine?: ProactiveEngine;
+  /** Idle-tick interval (ms). Default 5000. 0 disables. */
+  proactiveTickMs?: number;
 }
 
 export class Runtime {
@@ -387,6 +414,10 @@ export class Runtime {
         ? { rateLimitWsPerMinute: this.config.rateLimitWsPerMinute }
         : {}),
       ...(this.config.quotaProvider ? { quotaProvider: this.config.quotaProvider } : {}),
+      ...(this.config.proactiveEngine ? { proactiveEngine: this.config.proactiveEngine } : {}),
+      ...(this.config.proactiveTickMs !== undefined
+        ? { proactiveTickMs: this.config.proactiveTickMs }
+        : {}),
       onInstruction: (env) => {
         // eslint-disable-next-line no-console
         console.log(
