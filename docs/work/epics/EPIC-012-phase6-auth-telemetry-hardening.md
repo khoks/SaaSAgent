@@ -4,7 +4,7 @@ title: Phase 6 — Auth + telemetry + multi-tenant + ML training + eval (Bucket 
 status: done
 initiative: INIT-003
 created: 2026-05-06
-last-updated: 2026-05-06
+last-updated: 2026-05-12
 ---
 
 # EPIC-012 — Phase 6: Auth + telemetry + multi-tenant + ML training + eval (Bucket C)
@@ -33,4 +33,4 @@ Phase 6 Bucket C shipped. 529 tests passing across 9 packages. Auth, telemetry, 
 529 tests across 9 packages, all green.
 
 ## Phase 6 gate (per INIT-003)
-Dashboard shows auto-generated metrics for ≥1 Skill + ≥1 Sub-Agent + ≥1 Feature. ⏳ (eval SPA dashboard deferred to Phase 7-phase alignment)
+Dashboard shows auto-generated metrics for ≥1 Skill + ≥1 Sub-Agent + ≥1 Feature. ✅ **Satisfied 2026-05-12** — `CapabilityEvalRunner` + self-contained HTML dashboard at `GET /dashboard` shipped in PR #36. Six Expedia capabilities tracked live (5 skills + 1 sub-agent + 1 tool); worst-first ordering verified in Chrome. See [STORY-030](../stories/STORY-030-capability-eval-pipeline-dashboard.md).

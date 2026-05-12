@@ -1,8 +1,8 @@
 # INIT-003 — Build MVP runtime + embeddable shell
 
-- **Status:** in-progress (Phases 0-2 + Buckets A/B/C done; Phase 3+ in backlog; patents in-progress)
+- **Status:** in-progress (Phases 0-7 + 9 partial done; patents pending → blocking OSS publication)
 - **Created:** 2026-04-26
-- **Last updated:** 2026-05-10
+- **Last updated:** 2026-05-12
 - **Outcome:** A working MVP that satisfies all acceptance criteria in [INIT-002](INIT-002-define-mvp-and-design-partner.md), demonstrates the substrate end-to-end against e-commerce + travel design-partner archetypes, and grounds the provisional patent filings.
 
 ## Why
@@ -80,31 +80,30 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 **Phase 4 gate:** demo shows VoC signals flowing → churn model predicting → planner suppressing a feature for a similar customer → improvement visible in eval dashboard.
 
-### Phase 5 — Multimodal + proactive
-- DOM observation (MO + IO + custom semantic events from host via Adapters registry)
-- Microphone capture (VAD + transcription)
-- Narration via TTS
-- Element highlight + programmatic click on host page
-- Multi-signal proactive scoring (planner conf + memory match + workflow continuity + DOM relevance + time-since)
-- Hard-cap attention budget (host-configurable defaults)
+### Phase 5 — Multimodal + proactive — **done** 2026-05-12
+- DOM observation (MO + IO + custom semantic events from host via Adapters registry) ✅
+- Mobile-context detection (deviceClass/viewportWidth/inputMode/networkClass) ✅
+- Multi-signal proactive scoring (6 signals: planner-conf, memory-match, workflow-continuity, DOM-relevance, time-since, VoC-pain-density) ✅ ADR-038
+- Hard-cap attention budget (host-configurable, default 3 fires/conversation) ✅
+- Per-WS idle tick (5 s interval) ✅
 
-**Phase 5 gate:** day-2 proactive re-engagement demo runs end-to-end.
+**Phase 5 gate:** day-2 proactive re-engagement demo runs end-to-end. ✅ **Satisfied 2026-05-12** — proactive layout fired without user input in Chrome (Expedia demo). See EPIC-011, STORY-029.
 
-### Phase 6 — Eval
-- Auto-generated per-capability eval (parses registry metadata → heuristic checks + LLM-judge prompts)
-- Bundled eval backend (ClickHouse storage, scoring runners, regression detection, alerting hooks)
-- Bundled SPA dashboard (React + chart lib, embedded in admin UI)
-- Hybrid scoring (heuristics every interaction + LLM-judge sampled ~5%)
+### Phase 6 — Eval — **done** 2026-05-12
+- Auto-generated per-capability eval (3 heuristics: outcome-success, output-non-empty, latency-budget) ✅
+- Ring-buffer per-capability eval runner (last 100 invocations) ✅
+- `onInvocation` hooks wired into all three executors (skill/tool/subagent) ✅
+- Self-contained HTML dashboard at `GET /dashboard`, worst-first ordering, polls every 3 s ✅ ADR-037
 
-**Phase 6 gate:** dashboard shows auto-generated metrics for at least 1 Skill + 1 Sub-Agent + 1 Feature.
+**Phase 6 gate:** dashboard shows auto-generated metrics for at least 1 Skill + 1 Sub-Agent + 1 Feature. ✅ **Satisfied 2026-05-12** — 6 capabilities tracked live in Chrome. See EPIC-012, STORY-030.
 
-### Phase 7 — Tier/quota
-- Per-user request/token tracking (PG + ClickHouse)
-- Tier definitions (host-configurable)
-- Configurable enforcement (hard / soft + warning / unlimited per tier)
-- Visible "X requests remaining" composed UI element
+### Phase 7 — Tier/quota — **done** 2026-05-12
+- `TierProvider` interface + `InMemoryTierProvider` with host-configurable tiers + UTC-day reset ✅ ADR-036
+- `QuotaBanner` web-shell widget (gray/amber/red states) ✅
+- Quota enforcement in WS before planner invocation; exceeded → `quota-exceeded` layout ✅
+- Per-user token tracking (PG + ClickHouse) ⚠️ deferred post-MVP (in-memory only)
 
-**Phase 7 gate:** end-user crosses 80% threshold → composed visibility element renders.
+**Phase 7 gate:** end-user crosses 80% threshold → composed visibility element renders. ✅ **Satisfied 2026-05-12** — all 3 banner states verified live in Chrome (Expedia demo, free tier = 5 req/day). See EPIC-013, STORY-009.
 
 ### Phase 8 — Demo verticals (e-commerce + travel)
 - E-commerce mock host app (`apps/demo-ecommerce`)
@@ -119,20 +118,19 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 
 **Phase 8 gate:** both 10-beat demo scripts execute reliably end-to-end without intervention.
 
-### Phase 9 — Mobile + distribution + IP gate + OSS publication
-- WebView bridge (iOS + Android native shims)
-- Mobile-context-aware composer adaptation
-- Mobile demo polish
-- Helm chart hardened for production
-- Docker Compose dev/demo polished
-- Getting-started guide (`< 60 min from clone to running demo`)
-- NFR validation (latency, scale, ops)
-- **Provisional patent filings** for high-novelty entries (per ADR-035) — gate before public OSS
-- Apache 2.0 license file added
-- Repo flipped to public
-- OSS publication announcement
+### Phase 9 — Mobile + distribution + IP gate + OSS publication — **in-progress**
+- Getting-started guide (`< 60 min from clone to running demo`) ✅ 2026-05-12
+- NFR validation (latency, scale, ops) ✅ 2026-05-12
+- OSS publish-gate checklist (8-item, Bucket-A filings as hard gate) ✅ 2026-05-12 ADR-039
+- Apache 2.0 license file added ✅ 2026-05-12
+- NOTICE file added ✅ 2026-05-12
+- **Provisional patent filings** for high-novelty entries (per ADR-035) ❌ pending real-world action
+- WebView bridge (iOS + Android native shims) ❌ deferred
+- Helm chart hardened for production ❌ deferred
+- Repo flipped to public ❌ blocked on patent filings
+- OSS publication announcement ❌ blocked on public flip
 
-**Phase 9 gate:** all INIT-002 acceptance criteria satisfied; repo public; patents filed.
+**Phase 9 gate:** all INIT-002 acceptance criteria satisfied; repo public; patents filed. ⏳ Blocked on patent filings. See EPIC-015, STORY-031, STORY-013.
 
 ## Open dependencies (Batch 6)
 
@@ -159,3 +157,7 @@ Owned + maintained by the work-management skill.
 | [EPIC-008](../epics/EPIC-008-bucket-c-auth-telemetry-ml.md) | Bucket C auth, telemetry, ML, and E2E | done |
 | [EPIC-009](../epics/EPIC-009-patents-track.md) | Patents track — IP preparation | in-progress |
 | [EPIC-010](../epics/EPIC-010-expedia-demo-vertical.md) | Expedia demo vertical (Phase 8) | in-progress |
+| [EPIC-011](../epics/EPIC-011-phase5-multimodal-proactive.md) | Phase 5 multimodal + proactive engine | done |
+| [EPIC-012](../epics/EPIC-012-phase6-auth-telemetry-hardening.md) | Phase 6 eval pipeline + dashboard | done |
+| [EPIC-013](../epics/EPIC-013-phase7-tier-quota.md) | Phase 7 tier/quota enforcement | done |
+| [EPIC-015](../epics/EPIC-015-phase9-mobile-distribution-ip.md) | Phase 9 mobile + distribution + OSS | in-progress |

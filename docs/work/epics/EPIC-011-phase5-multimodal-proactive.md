@@ -4,7 +4,7 @@ title: Phase 5 — Multimodal + proactive + Sub-Agent SDK + providers (Bucket A+
 status: done
 initiative: INIT-003
 created: 2026-05-06
-last-updated: 2026-05-06
+last-updated: 2026-05-12
 ---
 
 # EPIC-011 — Phase 5: Multimodal + proactive + Sub-Agent SDK + providers (Bucket A+B)
@@ -28,5 +28,16 @@ Phase 5 Bucket A+B shipped. Mobile-context detection, render modes, Sub-Agent SD
 | — | Demo verticals — e-commerce + travel atomic primitives, themes, feature docs | included |
 | **032** | Qdrant / ClickHouse / Kafka / Neo4j provider implementations | included |
 
+## Additional deliverables (PR #39, 2026-05-12)
+
+| ADR | Capability | Tests |
+|---|---|---|
+| **038** | `ProactiveEngine` + `InMemoryProactiveEngine`: 6-signal scoring (planner-conf, memory-match, workflow-continuity, DOM-relevance, time-since, VoC-pain-density) | 13 unit |
+| — | Per-WS idle tick (5 s interval) — fires `engine.evaluate()` per connected user | 3 server-integration |
+| — | Attention budget (host-configurable, default 3 fires/conversation); hard cap prevents spam | included |
+| — | `runProactiveTick` wired in WS connect handler; lastUserMessageAt tracked per WS | included |
+
+**Live verification:** proactive layout fired without user input after ~8 s idle on Expedia demo in Chrome — layout showed `"You asked: expedia:bundle-savings-nudge"`. Engine log showed 2 fires respecting the budget cap.
+
 ## Phase 5 gate
-Day-2 proactive re-engagement demo runs end-to-end. ✅ (mobile-context + DOM observation + render modes shipped)
+Day-2 proactive re-engagement demo runs end-to-end. ✅ **2026-05-12 — multi-signal scoring engine verified live in Chrome with Expedia demo.** See [STORY-029](../stories/STORY-029-proactive-engine-implementation.md).
