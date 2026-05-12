@@ -689,3 +689,38 @@
   - **Future CI gate:** reference integration E2E becomes the developer-onboarding regression test — a platform change that breaks the 30-line boilerplate flow must be caught before merge.
   - **Stub-mode discoverability pattern established:** `/health` now exposes `mode: 'stub'|'live'` and a `devHint` block (registeredSkills, example curl for each executor path) when in stub mode. All reference integrations should be testable without an API key; the stub-mode experience is a first-class concern.
 - **Source:** Session 2026-05-11 — "I'll set up a realistic Expedia integration: a 'expedia.com'-style host page, an Expedia-specific runtime configuration with flight/hotel tools + skills + a trip-planner sub-agent, then drive realistic scenarios end-to-end. This will simultaneously stress-test the developer-onboarding path." Five gaps surfaced and fixed; 449/449 tests pass; PR #30 (`a35530d`).
+
+## ADR-040 — TierProvider: quota gate before planner invocation (Phase 7)
+- **Date:** 2026-05-11
+- **Status:** accepted
+- **Context:** ADR-019 specified a configurable end-user tier/quota system with a visible "X requests remaining" surface. Phase 7 implements it. The critical architectural question is: where in the per-turn pipeline should quota be checked — before or after planner invocation?
+- **Options considered:**
+  - A. Check quota after planner invocation (inside the compose loop) — simpler wiring but wastes LLM API cost on turns that will be rejected.
+  - B. **Check quota before planner invocation** — rejects the turn at the WS `user-message` handler level, short-circuits to a quota-exceeded `ComposedLayout`, zero LLM cost incurred.
+  - C. Check quota inside the planner as a tool-call guard — fragile; planner can still emit tokens before hitting the check.
+- **Decision:** B. `TierProvider` is initialized as a peer to `MeteringProvider` in the `Runtime` constructor and checked at the very top of the WS user-message handler path, before the planner is invoked.
+- **Consequences:**
+  - Quota-rejected turns never reach the planner — no Anthropic API cost.
+  - The rejection response is a fully formed `ComposedLayout` (not a raw HTTP error) — visually consistent with normal agent responses.
+  - `QuotaBanner` web component in the WC shell reads `quotaStatus` from every incoming SSE layout and cycles through three visual states: fine (gray, above warning threshold), warning (amber, configurable threshold, default ≥ 20% remaining), exceeded (red, shows reset-at timestamp in locale time).
+  - `/health` exposes `quota: { tier, remaining, resetAt, mode }` — visible to dev tooling without instrumenting the UI.
+  - 461/461 tests pass; 12 new quota-specific tests added (unit + server-integration).
+- **Source:** Session 2026-05-11 — "Plan locked: pick up Phase 7 — Tier/quota as the next slice…it closes an MVP acceptance criterion ('visible X remaining element renders, host-configured tier limits enforced') [and] has commercial leverage (enables open-core pricing)." QuotaBanner live-verified in Expedia demo: fine → "4 of 5 requests remaining today (free tier)"; warning → "1 of 5 remaining"; exceeded → "Quota exceeded. You've used 5/5 requests today on the free tier."
+
+## ADR-042 — CapabilityEvalRunner: non-invasive onInvocation hooks for auto-generated per-capability eval (Phase 6)
+- **Date:** 2026-05-11
+- **Status:** accepted
+- **Context:** ADR-023 specified hybrid eval scoring (heuristics + LLM-judge sampled at ~5%) and auto-generated per-capability eval from registry metadata with a bundled dashboard. Phase 6 implements the auto-generated per-capability eval layer. The key design question is how to instrument the three executor tiers (skill, tool, subagent) without coupling eval logic into their bodies.
+- **Options considered:**
+  - A. Inline eval logic inside each executor body — tightly coupled; executor tests and eval tests interleave.
+  - B. **Non-invasive `onInvocation` callback hooks** — each executor accepts an optional hook fired at completion; `CapabilityEvalRunner` is injected at `Runtime` construction time and attaches hooks; executor bodies and tests unchanged.
+  - C. Middleware proxy wrapping each executor — indirection overhead; harder to type-check.
+- **Decision:** B. Each executor (`SkillExecutor`, `ToolExecutor`, `SubAgentExecutor`) calls an optional `onInvocation(record)` hook with `{ capabilityName, tier, durationMs, outcome, outputNonEmpty }`. The `InMemoryCapabilityEvalRunner` applies three heuristics per record: (1) `outcome-success` (did execution succeed?), (2) `output-non-empty` (did the capability return non-empty output?), (3) `latency-budget` (did it complete within the configured SLA?). Results stored in a per-capability in-memory ring buffer (configurable size, default 100 records). `getCapabilityStats()` returns rows sorted worst-first by success rate.
+- **Consequences:**
+  - All three executor tiers share one runner instance; zero code duplication in executors.
+  - Existing executor tests require no changes — hooks are optional; hooks absent → no-op.
+  - REST endpoints: `GET /evals/capabilities` (JSON report) + `GET /dashboard` (bundled HTML SPA).
+  - Dashboard worst-first ordering surfaces real failure modes first — in the Expedia demo, `trip-planner` (sub-agent, 33% success — sub-agent server down) and `expedia-fetch-flight` (tool, 33% — Vite host not running) immediately visible as red rows.
+  - In-memory ring buffer at MVP (no persistence); upgrade path to ClickHouse at v1 per ADR-023.
+  - 472/472 tests pass; 5 new eval runner tests + 4 server-integration quota tests added.
+- **Source:** Session 2026-05-11 — Phase 6 gate check: "6 capabilities tracked (5 skills + 1 sub-agent + 1 tool). The dashboard caught real failure modes — the tool/sub-agent calls failed because their backend services weren't running, giving us a real diagnostic surface." PR #36 (`feat/phase-6-eval-pipeline`, 12 files, ~1.4k lines).

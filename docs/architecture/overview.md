@@ -199,5 +199,37 @@ The Expedia reference integration (`apps/demo-expedia/`) established the followi
 
 **Reference integrations per vertical:** see `apps/demo-expedia/` (travel vertical); e-commerce reference TBD.
 
+## Phase 7 — TierProvider / QuotaBanner (implemented 2026-05-11, ADR-040)
+
+`TierProvider` sits as a peer to `MeteringProvider` inside the `Runtime` class. The quota check fires at the top of the WS `user-message` handler — before the planner is constructed — so rejected turns incur zero LLM cost. On a quota-exceeded turn the runtime composes and sends a `ComposedLayout` directly, maintaining visual consistency with normal responses.
+
+`QuotaBanner` is a web component wired into the `SaaSAgentShell`. It reads `quotaStatus` from every incoming SSE layout and renders three visual states:
+- **fine** (gray): "N of M requests remaining today (free tier)"
+- **warning** (amber): triggers when remaining ≤ configured threshold (default 20%)
+- **exceeded** (red): "Quota exceeded. You've used M/M requests today on the free tier. Resets at <locale time>."
+
+The banner is stateless between layouts — each new layout carries the current quota snapshot.
+
+`/health` exposes `quota: { tier, remaining, resetAt, mode }` — dev tooling and monitoring can observe quota state without touching the shell.
+
+## Phase 6 — CapabilityEvalRunner / eval pipeline (implemented 2026-05-11, ADR-042)
+
+`CapabilityEvalRunner` (interface) + `InMemoryCapabilityEvalRunner` (implementation) provide an auto-generated per-capability eval layer. Each executor (skill, tool, subagent) accepts an optional `onInvocation` callback hook; the runner is injected at `Runtime` construction time and attaches a hook to all three. Executor bodies are unchanged.
+
+**Per-invocation record fields:** `capabilityName`, `tier` (skill/tool/subagent), `durationMs`, `outcome` (success/error), `outputNonEmpty`.
+
+**Three built-in heuristics** (applied immediately, no LLM call):
+1. `outcome-success` — did the executor return without error?
+2. `output-non-empty` — did the capability return non-empty output?
+3. `latency-budget` — did it complete within the configured SLA?
+
+Results stored in a **per-capability in-memory ring buffer** (configurable size, default 100 records). `getCapabilityStats()` returns rows sorted worst-first by success rate — surfaces real failure modes first in the dashboard.
+
+**REST surface:**
+- `GET /evals/capabilities` — JSON report of all tracked capabilities with aggregate stats
+- `GET /dashboard` — bundled HTML dashboard (rendered server-side, no external SPA framework)
+
+Upgrade path at v1: persist ring-buffer records to ClickHouse per ADR-023 bundled eval backend.
+
 ## Tech-stack decisions
 See [tech-stack.md](tech-stack.md).

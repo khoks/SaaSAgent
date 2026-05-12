@@ -59,3 +59,9 @@
 - The SonnetPlanner exposes `skill__<name>`, `tool__<name>`, `subagent__<name>` tool names to the model. The `ToolMapper.classify()` function splits on `__` prefix and dispatches to the correct executor in O(1) — no conditional per-capability logic.
 - Adding a new tier in the future requires: (a) a new prefix constant, (b) a new executor class, (c) one new branch in `ToolMapper` — nothing else.
 - **Source:** Phase 2.1b / P-002 disclosure.
+
+### Pre-LLM quota gate (Phase 7 / ADR-040)
+- `TierProvider.checkQuota()` is called at the top of the WS `user-message` handler, before the planner is constructed or invoked.
+- Quota-exceeded turns return a pre-formed `ComposedLayout` directly — zero Anthropic API tokens consumed on rejected turns.
+- At default free-tier settings (5 requests/day), a high-abuse pattern (e.g., automated scripted sends) generates zero LLM cost after the threshold is hit.
+- **Source:** Phase 7 implementation 2026-05-11 — "quota check before planner invocation saves LLM cost on rejected turns."
