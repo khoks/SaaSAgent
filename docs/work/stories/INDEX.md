@@ -12,3 +12,5 @@
 | STORY-006 | [Define proactive engine confidence and attention-budget model](STORY-006-proactive-engine-confidence.md) | EPIC-001 | backlog | 2026-04-28 | 2026-04-28 |
 | STORY-007 | [Build Expedia reference integration](STORY-007-expedia-reference-integration.md) | EPIC-002 | in-review | 2026-05-11 | 2026-05-11 |
 | STORY-008 | [Close 5 enterprise-onboarding gaps](STORY-008-close-onboarding-gaps.md) | EPIC-002 | in-review | 2026-05-11 | 2026-05-11 |
+| STORY-029 | [Per-capability eval pipeline + bundled dashboard](STORY-029-capability-eval-pipeline-dashboard.md) | EPIC-012 | in-review | 2026-05-11 | 2026-05-11 |
+| STORY-030 | [TierProvider quota enforcement + QuotaBanner UI](STORY-030-tier-quota-enforcement-banner.md) | EPIC-013 | in-review | 2026-05-11 | 2026-05-11 |
