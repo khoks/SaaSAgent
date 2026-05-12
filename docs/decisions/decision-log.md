@@ -674,7 +674,7 @@
   - Native browser support for both is universal; no polyfills required.
 - **Source:** Conversation 2026-05-08 (Rahul Q6.3 confirmation of MVP default proposal).
 
-## ADR-039 — Reference enterprise integration demo as the primary developer-onboarding validation pattern
+## ADR-040 — Reference enterprise integration demo as the primary developer-onboarding validation pattern
 - **Date:** 2026-05-11
 - **Status:** accepted
 - **Context:** The platform needed a way to validate the developer-onboarding path (what it actually takes for an enterprise dev to drop SaaSAgent into their product) AND to surface implementation gaps before design partners engage. Options: (a) write docs + tutorial and rely on review for gap-finding, or (b) build and actually run a self-contained reference integration against a real enterprise scenario, driven E2E through Chrome.
@@ -689,3 +689,71 @@
   - **Future CI gate:** reference integration E2E becomes the developer-onboarding regression test — a platform change that breaks the 30-line boilerplate flow must be caught before merge.
   - **Stub-mode discoverability pattern established:** `/health` now exposes `mode: 'stub'|'live'` and a `devHint` block (registeredSkills, example curl for each executor path) when in stub mode. All reference integrations should be testable without an API key; the stub-mode experience is a first-class concern.
 - **Source:** Session 2026-05-11 — "I'll set up a realistic Expedia integration: a 'expedia.com'-style host page, an Expedia-specific runtime configuration with flight/hotel tools + skills + a trip-planner sub-agent, then drive realistic scenarios end-to-end. This will simultaneously stress-test the developer-onboarding path." Five gaps surfaced and fixed; 449/449 tests pass; PR #30 (`a35530d`).
+
+## ADR-041 — End-user tier/quota model: TierProvider interface + sessionId-as-userId MVP grain + QuotaBanner 3-state shell widget
+- **Date:** 2026-05-12
+- **Status:** accepted (implements ADR-019)
+- **Context:** ADR-019 established that the platform supports per-user tier/quota and a visible "X remaining" affordance. Phase 7 fixed the concrete implementation shape: what identifies a user, what dimension is limited, what happens at the limit, and how the shell renders the three states.
+- **Options considered:**
+  - A. Full AuthProvider principal threading to WS — correct identity, high integration cost at MVP.
+  - B. **SessionId as userId grain at MVP** — one quota bucket per WS connection; hosts that need cross-session identity override TierProvider with their own session-store mapping.
+  - C. Fixed hard-stop on limit — simplest enforcement, worst UX.
+  - D. **Three enforcement modes: fine / warning (≤20% remaining) / exceeded** — progressive disclosure, no surprise cutoff.
+- **Decision:** B + D. SessionId-as-userId for MVP grain; `TierProvider` interface with `NoQuotaProvider` (default, no chrome in OSS mode), `InMemoryTierProvider` (host-configured tier definitions + per-WS counters). Limit dimension = per-user request count per UTC day (one user-message envelope that invokes the planner; action emits excluded). Fail-open on provider error. Runtime composes a `quota-exceeded` layout before invoking the planner when limit is hit (saves model spend). QuotaBanner web-shell widget reads `ComposedLayoutMetadata.quotaStatus` on each `onLayout` and renders fine / warning / exceeded states.
+- **Consequences:**
+  - Closes MVP acceptance criterion: visible "X remaining" element renders, tier limits enforced.
+  - `NoQuotaProvider` as default means OSS installs have zero quota chrome — hosts opt-in by injecting a real TierProvider.
+  - In-memory counters reset on runtime restart (acceptable for MVP). `RedisTierProvider` lands at v1 for distributed deployments.
+  - `metadata.quotaStatus` mechanism is reusable for future "session warning" or "feature-flag" payloads without protocol churn.
+  - Commercial leverage: gives hosts a free, working enforcement primitive they can extend toward the open-core paid tiers (ADR-020).
+- **Source:** Session 2026-05-12, Phase 7 implementation — "All three visual states verified live: Fine (gray): '4 of 5 requests remaining today (free tier)' / Warning (amber): '1 of 5 requests remaining today (free tier)' / Exceeded (red): 'Quota exceeded. You've used 5/5 requests today on the free tier.'" PR #33 (`feat/phase-7-tier-quota`). Detailed spec: `docs/architecture/adr/036-end-user-tier-quota-model.md`.
+
+## ADR-042 — Per-capability eval pipeline: CapabilityEvalRunner + ring buffer + 3 heuristics + worst-first REST + vanilla-JS dashboard
+- **Date:** 2026-05-12
+- **Status:** accepted (implements ADR-023)
+- **Context:** ADR-023 established auto-generated per-capability eval from registry metadata. Phase 6 fixed the implementation shape: what heuristics run, where the runner hooks in, how results are stored and queried, and what the MVP dashboard tech looks like.
+- **Options considered:**
+  - A. Hook into Executor at the call site — tight coupling; executor code grows.
+  - B. **Optional `onInvocation(record)` callback per executor** — non-invasive; host-authored executors can attach their own hooks; misbehaving recorder cannot break the hot path.
+  - C. React + chart-lib dashboard (per ADR-030 target) — correct long-term, adds build step to the runtime package at MVP.
+  - D. **Self-contained vanilla-JS HTML page at `GET /dashboard`** — no build step, polls every 3 seconds, meets Phase 6 gate immediately; grows into ADR-030 SPA at v1.
+- **Decision:** B + D. `CapabilityEvalRunner` abstraction; `InMemoryCapabilityEvalRunner` with per-capability ring buffer (default 200 invocations). Three built-in heuristics: `outcome-success` (executor ok=true?), `output-non-empty` (payload not null/empty?), `latency-budget` (linear score from 1.0 at ≤target to 0.0 at 4×target, default target 1000ms). `reportAll()` sorts worst-first by `overallScore`. `GET /evals/capabilities` + `GET /evals/capabilities/<name>` REST surface. `/health` exposes `capabilityEvalRunner` name + count. Hook fires after executor returns, errors swallowed.
+- **Consequences:**
+  - Every registered capability gets a quality scorecard automatically at the moment of registration — zero per-capability eval-authoring work.
+  - Dashboard surfaced failing capabilities (trip-planner sub-agent, Expedia tool) ahead of user-feedback pile-up during live Expedia E2E test.
+  - MVP ring buffer is volatile (restart wipes). ClickHouse-backed v1 runner uses same interface.
+  - LLM-judge (~5% sampled) — the second hybrid-eval half from ADR-023 — is deferred to v1.
+  - Patent angle: auto-generating eval from registry metadata (P-006 companion disclosure flagged).
+- **Source:** Session 2026-05-12, Phase 6 implementation — "6 capabilities tracked (5 skills + 1 sub-agent + 1 tool). Dashboard rendered … Worst-first ordering puts the failing ones at the top." PR #36 (`feat/phase-6-eval-pipeline`). Detailed spec: `docs/architecture/adr/037-auto-generated-capability-eval.md`.
+
+## ADR-043 — Proactive engine implementation: per-WS idle tick + linear weighted scorer + InMemoryAttentionBudget
+- **Date:** 2026-05-12
+- **Status:** accepted (implements ADR-018)
+- **Context:** ADR-018 established multi-signal scoring + combined attention budget for proactive surfacing. Phase 5 fixed the implementation shape: signal derivation from per-WS server state, scoring function, trigger model, cooldown, budget interaction.
+- **Options considered:**
+  - A. ML model (LightGBM) from day one — correct long-term, no training data yet.
+  - B. **Linear weighted sum of 5 server-side signals** (plannerConfidence, memoryMatch, workflowContinuity, domRelevance, timeSinceLastTouch) — explainable, tunable, same per-signal `factors` pattern as P-005 churn calculator.
+  - C. Time-only trigger (fire after N seconds of silence) — simple, high false-positive rate.
+- **Decision:** B. `DefaultProactiveScorer` computes `sum(weight_i × signal_i)` capped at 1.0. Default weights: plannerConfidence 0.35, workflowContinuity 0.25, domRelevance 0.20, memoryMatch 0.10, timeSinceLastTouch 0.10. Threshold 0.6. `InMemoryAttentionBudget` enforces 3 fires per session (atomic `tryConsume`). Per-WS idle tick via `setInterval` at 5000ms, started on WS open, cleared on WS close. 8000ms cooldown after last user-message (reuses Phase 2.5.x re-ask window). Budget consumed only on fire (not on below-threshold ticks). Shell identifies proactive layouts via `ComposedLayoutMetadata.intent` (`'proactive-nudge'` default, overridable per-deployment). All knobs host-configurable via `RuntimeServerOptions`.
+- **Consequences:**
+  - Closes Phase 5 gate: day-2 proactive re-engagement demonstrable end-to-end (idle → tick → score → fire → SSE broadcast). Verified live: Expedia demo fired `expedia:bundle-savings-nudge` unprompted.
+  - Phase 5 signals use stubs (plannerConfidence = 0.5, memoryMatch = 0); engine fires more on domRelevance + workflowContinuity than intended. Full signals land in v1 when planner + memory introspection wired.
+  - Per-signal `factors` array enables the same per-signal explainability as P-005 (churn) — surfaceable in the dashboard.
+  - P-006 patent candidate flagged: multi-signal scoring + attention budget contract.
+  - In-memory budget resets on restart; Redis-backed v1 for distributed deployments.
+- **Source:** Session 2026-05-12, Phase 5 implementation — "Phase 5 verified live! The agent panel rendered 'You asked: expedia:bundle-savings-nudge' — the user typed nothing. The runtime's proactive engine fired on its own… Engine logged 2 fires (matching the budget=2 cap) with full per-signal explainability." PR #39 (`feat/phase-5-proactive-engine`). Detailed spec: `docs/architecture/adr/038-proactive-engine.md`.
+
+## ADR-044 — OSS publish gate: documented checklist with code + functional + legal + operability/comms tracks
+- **Date:** 2026-05-12
+- **Status:** accepted
+- **Context:** Phase 9 (OSS-readiness) needed a documented gate to prevent premature repo publication — which would destroy international patentability for non-US jurisdictions (ADR-035). The gate must be auditable and separate mechanical CI items from real-world legal actions.
+- **Options considered:**
+  - A. Informal "we know when it's ready" — no audit trail; patent risk.
+  - B. **Explicit multi-track checklist**: code (CI-verifiable), functional (acceptance criteria from INIT-002), legal (real-world action required), operability + comms (manual).
+- **Decision:** B. Gate requires ALL of the following: (code) `pnpm build` + `pnpm test` pass from fresh clone; LICENSE + NOTICE + README + getting-started at repo root; (functional) Expedia E2E runs, dashboard live, quota enforced, proactive fires; (legal) Bucket A provisional patents filed (P-001, P-004) via outside counsel BEFORE public push; P-006 disclosure decision with counsel; P-002/P-003/P-005 defensively published via OSS repo disclosures; (operability) NFR validation report committed; (comms) launch announcement + design-partner sign-off. Mobile WebView demo and user-test gate (≥7/10) deferred to v1/design-partner. Helm chart hardened on k8s deferred to v1.
+- **Consequences:**
+  - At ADR authoring: all code + functional + OSS-readiness items complete. Three legal items block (Bucket A filings + P-006 disclosure). Two comms items (launch draft + partner sign-off).
+  - Legal block is strict-serial: Bucket A filings MUST precede public push (EPO/JP/KR/CN absolute-novelty clock).
+  - Omitting user-test gate from OSS gate is intentional: OSS release is "here's the substrate, build with it"; production-readiness claim is v1.
+  - OSS release under Apache 2.0 (ADR-035) with explicit patent grant.
+- **Source:** Session 2026-05-12, Phase 9 implementation — "MVP feature-complete. All four PRs from this session merged to main." PR #40 (`feat/phase-9-oss-readiness`). Checklist: `docs/architecture/adr/039-oss-publish-gate.md`; filing steps: `docs/patents/FILING-CHECKLIST.md`.

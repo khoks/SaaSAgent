@@ -174,6 +174,12 @@ See dedicated doc: [memory.md](memory.md). Polyglot, phased — Postgres + Qdran
 ### Closed in Batch 6 (2026-05-08)
 - ✅ Real-time transport — SSE for streaming planner output to shell + WebSocket for bidirectional instruction emit; WebRTC reserved for voice (Phase 5) [ADR-038]
 
+### Closed in Batch 7 (2026-05-12, Phase 5/6/7/9 implementations)
+- ✅ End-user tier/quota model implementation — `TierProvider` interface + sessionId-as-userId MVP grain + `QuotaBanner` 3-state shell widget; fail-open on provider error [ADR-041, `docs/architecture/adr/036-end-user-tier-quota-model.md`]
+- ✅ Per-capability eval pipeline implementation — `CapabilityEvalRunner` + 200-invocation ring buffer + 3 heuristics (outcome-success / output-non-empty / latency-budget) + worst-first REST + vanilla-JS dashboard at `/dashboard` [ADR-042, `docs/architecture/adr/037-auto-generated-capability-eval.md`]
+- ✅ Proactive engine implementation — per-WS idle tick (5s interval + 8s cooldown), linear weighted sum scorer (5 signals), atomic `InMemoryAttentionBudget` (3/session), host-configurable threshold (0.6) and intent label [ADR-043, `docs/architecture/adr/038-proactive-engine.md`]
+- ✅ OSS publish gate — multi-track checklist (code/functional/legal/operability+comms); all code+functional items complete; legal block awaiting Bucket A patent filings (P-001, P-004) + P-006 disclosure [ADR-044, `docs/architecture/adr/039-oss-publish-gate.md`]
+
 ### Still open (Batch 6 — implementation/v2 details, can groom in parallel with MVP build)
 1. **Cross-store consistency failure-recovery semantics**.
 2. **Federated cross-enterprise learning (v2)** — opt-in mechanism design.

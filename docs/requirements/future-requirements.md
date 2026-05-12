@@ -67,3 +67,33 @@ Each entry:
 **Source:** E2E Expedia testing session 2026-05-10 — the `apps/demo-expedia/` reference integration required ~30 lines of boilerplate across 2 server files; a CLI tool would eliminate even that friction.
 **Category:** capability / integration
 **Notes:** The Expedia reference integration demonstrated that the runtime onboarding is already minimal (~30 lines to register skills + sub-agents + start server). The logical next step is a `create-saas-agent-app` CLI (analogous to `create-react-app`, `create-next-app`) that scaffolds a new vertical integration with: pre-wired runtime server, example skills, a trip-planner-style sub-agent stub, a host HTML page with the WC shell, and mock API endpoints. Should read from a template in the repo (similar to `apps/demo-expedia/`) and personalize to the vertical (name, port, brand colors). This would reduce enterprise onboarding from "read 6 files to understand the pattern" to "one command + answer 3 prompts."
+
+### [2026-05-12] RedisTierProvider for horizontally-scaled per-user quota enforcement
+**Source:** ADR-041 (Phase 7): "In-memory counters do not survive a runtime restart. Acceptable for MVP (counters reset → users get more quota → no harm done). RedisTierProvider fixes this at v1."
+**Category:** capability / infrastructure
+**Notes:** `InMemoryTierProvider` uses a per-WS `Map` for quota counters; these reset on runtime restart and cannot be shared across multiple runtime instances. V1 requires a `RedisTierProvider` implementing the same `TierProvider` interface, backed by Redis atomic INCR + TTL-keyed per (userId, UTC-date). Enables horizontal scaling of the runtime without quota drift. The sessionId→userId mapping (currently identity at MVP) should also be wired to a real AuthProvider by v1.
+
+### [2026-05-12] TokenBudgetTierProvider composable with MeteringProvider (v1)
+**Source:** ADR-041 (Phase 7): "Per-user request count per UTC day for MVP. Model-token or compute cost deferred to v1. The MeteringProvider already records token usage; a future TokenBudgetTierProvider can compose with it."
+**Category:** capability
+**Notes:** Phase 7 limits on request count (coarse). V1 should also support token-budget tiers (hosts want to give "free tier = 10k tokens/day"). The `MeteringProvider` (Phase 2.x) already records token usage per session. A composable `TokenBudgetTierProvider` wraps `MeteringProvider` + `TierProvider` to enforce token limits alongside (or instead of) request limits. Opens up more granular pricing models for host enterprises.
+
+### [2026-05-12] Redis-backed InMemoryAttentionBudget for distributed proactive engine deployments
+**Source:** ADR-043 (Phase 5): "In-memory budget: a runtime restart resets per-session budgets. Acceptable for Phase 5; Redis-backed variant lands in v1 for horizontally-scaled deployments."
+**Category:** capability / infrastructure
+**Notes:** `InMemoryAttentionBudget` stores per-session fire counts in a `Map`. In a load-balanced deployment with multiple runtime instances, a session may be routed to different instances, causing budget to be counted independently per instance. V1 needs a Redis-backed `AttentionBudget` with atomic `INCR` + per-session TTL, implementing the same `AttentionBudget` interface.
+
+### [2026-05-12] LLM-judge capability eval (sampled ~5%) for quality beyond heuristics
+**Source:** ADR-042 (Phase 6): "LLM-judge deferred. The hybrid scoring promised in ADR-023 (heuristics every interaction + LLM-judge sampled ~5%) extends naturally — add a second `evaluateAsync(invocation, descriptor)` interface."
+**Category:** capability
+**Notes:** Phase 6 ships 3 heuristic checks (outcome-success, output-non-empty, latency-budget). These answer "did it work?" but not "was it good?". The ADR-023 hybrid eval requires a second scoring pass: for ~5% of invocations, send the input + output + capability descriptor to an LLM judge (Haiku or Sonnet) with a rubric derived from the capability's `whenToUse` + success-criteria fields in the registry. This provides richer quality assessment but requires model spend per sample. The `CapabilityEvalRunner` interface accommodates an async `evaluateAsync` extension without breaking existing heuristic path.
+
+### [2026-05-12] Full AuthProvider principal threading at the WebSocket boundary (v1)
+**Source:** ADR-041 (Phase 7): "What identifies 'a user' for quota? Without full AuthProvider principal threading at the WS boundary (deferred), the MVP grain is sessionId."
+**Category:** capability / infrastructure
+**Notes:** The MVP uses `sessionId` as the quota userId grain — one bucket per WS connection. This breaks when the same logged-in user opens multiple browser tabs (each gets its own budget) or crosses sessions. V1 needs AuthProvider threading: the WS handshake extracts a principal from the host's SSO token (already required on the initial connect per ADR-038), and this principal is propagated through `TierProvider`, `MeteringProvider`, `ProactiveEngine.budget`, and `EvalProvider` so all per-user tracking is identity-consistent.
+
+### [2026-05-12] ML-driven proactive scoring to replace linear weighted sum (v1)
+**Source:** ADR-043 (Phase 5): "These are tunable; the proper ML model in v1 replaces them with learned signals." and "Hosts that want ML scoring (LightGBM etc.) implement `ProactiveScorer` and swap in via configuration."
+**Category:** capability / research
+**Notes:** Phase 5 uses a linear weighted sum of 5 server-side signals with hand-tuned weights (plannerConfidence 0.35, workflowContinuity 0.25, domRelevance 0.20, memoryMatch 0.10, timeSinceLastTouch 0.10). Two signals (plannerConfidence, memoryMatch) are stubs pending planner/memory introspection. V1 upgrade: (1) wire real plannerConfidence from SonnetPlanner's logit-level signal, (2) wire memoryMatch from per-session memory recall scoring, (3) train a LightGBM `ProactiveScorer` on accept/dismiss feedback signals from `InMemoryAttentionBudget.tryConsume` outcomes, transitioning from hand-tuned to data-driven weights. The `ProactiveScorer` interface is already pluggable.
