@@ -31,6 +31,7 @@ export { detectMobileContext, watchMobileContext } from './mobile-context.js';
 export { styleFor, openEjectedWindow } from './render-modes.js';
 export type { RenderMode } from './render-modes-types.js';
 export { DomObserver, type DomObserverOptions } from './dom-observer.js';
+export { QuotaBanner, type QuotaBannerOptions } from './quota-banner.js';
 
 import { LayoutRenderer } from './renderer.js';
 import { RuntimeClient } from './transport/index.js';
@@ -41,6 +42,7 @@ import { detectMobileContext, watchMobileContext } from './mobile-context.js';
 import { styleFor, openEjectedWindow } from './render-modes.js';
 import type { RenderMode } from './render-modes-types.js';
 import { DomObserver } from './dom-observer.js';
+import { QuotaBanner } from './quota-banner.js';
 
 import type { InstructionEnvelope } from '@saasagent/protocol';
 
@@ -49,10 +51,12 @@ export class SaaSAgentShell extends HTMLElement {
   private renderer: LayoutRenderer | null = null;
   private inputBar: InputBar | null = null;
   private feedbackBar: FeedbackBar | null = null;
+  private quotaBanner: QuotaBanner | null = null;
   private contentEl: HTMLDivElement | null = null;
   private errorAreaEl: HTMLDivElement | null = null;
   private inputAreaEl: HTMLDivElement | null = null;
   private feedbackAreaEl: HTMLDivElement | null = null;
+  private quotaAreaEl: HTMLDivElement | null = null;
   private lastComposeCycleId: string | null = null;
   private inputSequence = 0;
   private feedbackSequence = 0;
@@ -86,10 +90,12 @@ export class SaaSAgentShell extends HTMLElement {
     this.renderer = null;
     this.inputBar = null;
     this.feedbackBar = null;
+    this.quotaBanner = null;
     this.contentEl = null;
     this.errorAreaEl = null;
     this.inputAreaEl = null;
     this.feedbackAreaEl = null;
+    this.quotaAreaEl = null;
     this.mobileWatchDispose?.();
     this.mobileWatchDispose = null;
     try {
@@ -129,6 +135,7 @@ export class SaaSAgentShell extends HTMLElement {
     this.innerHTML = `
       <div data-saas-agent-shell="${mode}" style="${style}">
         <div style="font-size: 12px; color: #999; margin-bottom: 4px;">SaaSAgent shell v${VERSION} — Phase 5 (mode: ${mode})</div>
+        <div data-saas-agent-quota-area></div>
         <div data-saas-agent-error-area></div>
         <div data-saas-agent-content data-mode="${mode}" style="flex: 1; min-height: 0;"></div>
         <div data-saas-agent-feedback-area></div>
@@ -139,6 +146,7 @@ export class SaaSAgentShell extends HTMLElement {
     this.errorAreaEl = this.querySelector('[data-saas-agent-error-area]') as HTMLDivElement;
     this.feedbackAreaEl = this.querySelector('[data-saas-agent-feedback-area]') as HTMLDivElement;
     this.inputAreaEl = this.querySelector('[data-saas-agent-input-area]') as HTMLDivElement;
+    this.quotaAreaEl = this.querySelector('[data-saas-agent-quota-area]') as HTMLDivElement;
   }
 
   /**
@@ -206,6 +214,14 @@ export class SaaSAgentShell extends HTMLElement {
       this.feedbackAreaEl.appendChild(this.feedbackBar.element);
     }
 
+    // Phase 7 / ADR-019: quota banner. Reads metadata.quotaStatus off each
+    // composed layout and renders "X requests remaining" at the top of the
+    // shell. Hidden when status is null (no TierProvider configured).
+    if (this.quotaAreaEl) {
+      this.quotaBanner = new QuotaBanner();
+      this.quotaAreaEl.appendChild(this.quotaBanner.element);
+    }
+
     // Phase 5 (ADR-017): emit a mobile-context envelope on connect + on
     // viewport changes. Runtime stashes on per-WS state and threads into
     // ComposeContext.mobileContext on subsequent plans.
@@ -234,6 +250,10 @@ export class SaaSAgentShell extends HTMLElement {
         this.renderer?.render(layout);
         this.inputBar?.setBusy(false);
         this.feedbackBar?.resetForNewCycle(layout.composeCycleId);
+        // Phase 7: surface the user's quota state. The runtime attaches
+        // QuotaStatus to every composed layout when a TierProvider is
+        // configured; otherwise the banner stays hidden.
+        this.quotaBanner?.update(layout.metadata?.quotaStatus ?? null);
       },
       onServerError: (envelope) => {
         // Render visible error banner above the (possibly stale) layout, re-enable input.
