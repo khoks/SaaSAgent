@@ -689,3 +689,65 @@
   - **Future CI gate:** reference integration E2E becomes the developer-onboarding regression test — a platform change that breaks the 30-line boilerplate flow must be caught before merge.
   - **Stub-mode discoverability pattern established:** `/health` now exposes `mode: 'stub'|'live'` and a `devHint` block (registeredSkills, example curl for each executor path) when in stub mode. All reference integrations should be testable without an API key; the stub-mode experience is a first-class concern.
 - **Source:** Session 2026-05-11 — "I'll set up a realistic Expedia integration: a 'expedia.com'-style host page, an Expedia-specific runtime configuration with flight/hotel tools + skills + a trip-planner sub-agent, then drive realistic scenarios end-to-end. This will simultaneously stress-test the developer-onboarding path." Five gaps surfaced and fixed; 449/449 tests pass; PR #30 (`a35530d`).
+
+## ADR-040 — Capability eval pipeline: in-memory ring buffer + 3 auto-heuristics + self-contained HTML dashboard (implements ADR-023; narrows ADR-030 for MVP)
+- **Date:** 2026-05-12
+- **Status:** accepted
+- **Context:** ADR-023 specified a bundled eval backend + dashboard. ADR-030 said "React + chart lib (Tremor or Recharts)" for the dashboard SPA. Phase 6 implementation needed to be deliverable without a full React SPA build step, and ClickHouse is not yet wired at MVP.
+- **Options considered:**
+  - A. React SPA as specified in ADR-030 — correct long-term target; significant bundler overhead for a monitoring-only surface.
+  - B. **Self-contained HTML string with vanilla JS + auto-fetch** — served directly from `GET /dashboard` as a response body string; zero dependencies; no separate build step.
+  - C. Write eval data to ClickHouse at MVP — correct for production; ClickHouse integration is post-MVP.
+- **Decision:** B for the dashboard. Eval data stored in an **in-memory ring buffer** (`InMemoryCapabilityEvalRunner`, 100-entry FIFO per capability by default). Three heuristics auto-generated for every registered capability at invocation time: (1) `outcome-success` — no thrown exception / error envelope, (2) `output-non-empty` — result.output is non-null and non-empty, (3) `latency-budget` — p95 latency < configurable threshold (2 s default). Dashboard served at `GET /dashboard` as inline HTML+JS; auto-polls `GET /evals/capabilities` every 3 s; sorts worst-first by success rate to surface failing capabilities immediately.
+- **Consequences:**
+  - Dashboard is immediately usable in any browser with zero build overhead or ClickHouse dependency.
+  - MVP eval is heuristic-only; LLM-judge sampling (ADR-023) and ClickHouse persistence (ADR-008) are wired when ClickHouse is operational (v1).
+  - Ring buffer is intentionally lossy — only last N invocations per capability. Accepted tradeoff: avoids unbounded memory in a long-running server; sufficient for real-time quality monitoring.
+  - Worst-first ordering is the primary UX affordance — operators see failing capabilities first without needing filters.
+  - React SPA (ADR-030) remains the v1 target when the full ClickHouse-backed store is in place; this ADR narrows ADR-030's scope to v1, not MVP.
+- **Source:** Phase 6 session 2026-05-12 — "**Dashboard rendered, Phase 6 gate exceeded.** All six capabilities are visible with their auto-generated metrics … Worst-first ordering puts the failing ones at the top — exactly the diagnostic UX a Reviewer wants." PR #36.
+
+## ADR-041 — End-user quota visibility: persistent QuotaBanner shell widget + server-side enforcement before planner invocation (implements ADR-019)
+- **Date:** 2026-05-12
+- **Status:** accepted
+- **Context:** ADR-019 specified "a composed UI element ('X requests remaining this period') rendered using host's atomic primitives." Phase 7 needed a concrete rendering model that avoids a planner round-trip just to display a counter.
+- **Options considered:**
+  - A. Composed layout element emitted by the UI Composer — requires a planner/composer round-trip on every turn to render the remaining-count; adds latency and model cost to routine interactions.
+  - B. **First-class `QuotaBanner` WC shell component** — always-visible persistent widget in the shell that reads `quotaStatus` directly from the SSE layout event payload; zero extra round-trips.
+- **Decision:** B. `QuotaBanner` is a persistent web-shell component (lives in `packages/web-shell/src/components/`) updated in-place on every incoming SSE layout. The runtime attaches `quotaStatus: { remaining, limit, tier, resetsAt, state }` to every outgoing layout event; the shell parses it without involving the composer. Three visual states: `fine` (gray, "N of M requests remaining today (tier)"), `warning` (amber, ≤ 20% remaining), `exceeded` (red, "Quota exceeded. … Resets at \<timestamp\>."). When a request arrives with quota already exceeded, the planner is **not invoked** — the server returns a synthetic `quota-exceeded` layout immediately, preventing model spend on blocked turns.
+- **Consequences:**
+  - Quota display has zero planner/composer overhead — purely shell-side state update.
+  - Enforcement is server-side in the WS user-message handler path (`packages/runtime/src/transport/server.ts`), before planner invocation — prevents any model cost on exceeded turns.
+  - Host configures tiers via `TierProvider` registered with the runtime; default tiers: free (5/day), pro (100/day), enterprise (unlimited). All values host-overridable.
+  - Three-state visual encoding (fine/warning/exceeded) is sufficient for end-user feedback without requiring custom composer layouts.
+- **Source:** Phase 7 session 2026-05-12 — "**All three visual states verified live**: Fine (gray): '4 of 5 requests remaining today (free tier)' / Warning (amber): '1 of 5 requests remaining today (free tier)' / Exceeded (red): 'Quota exceeded. You've used 5/5 requests today on the free tier. Resets at May 11, 05:00 PM.'" PR #33, 465/465 tests pass.
+
+## ADR-042 — Proactive engine wiring: per-WS idle tick with 6-signal scoring (implements ADR-018)
+- **Date:** 2026-05-12
+- **Status:** accepted
+- **Context:** ADR-018 specified multi-signal confidence scoring + combined attention budget for proactive triggers. Phase 5 needed a concrete wiring model — specifically, where the tick lives and how it accesses per-session state.
+- **Options considered:**
+  - A. Global cron-style interval on the server — has to query all active WS sessions; loses direct state access; cleanup on disconnect is indirect.
+  - B. **Per-WS `setInterval` spawned at WS connect time** — has direct closure over per-session state (lastUserMessageAt, evalSignalCount, domEventCount, sessionDepth, etc.); clears on WS disconnect automatically.
+- **Decision:** B. Each WS connection spawns a 5-second proactive tick (`setInterval` in `packages/runtime/src/transport/server.ts`). The tick derives 6 signals from per-WS state: `idle_time` (ms since last user message), `eval_signal_count` (negative signal accumulation for session), `dom_event_count` (DOM activity volume), `session_depth` (total message turns), `message_gap` (structured complement to idle_time), `explicit_attention_request` (host-emitted semantic event flag). Signals are scored and summed; if total ≥ configured threshold AND attention budget is not exhausted (default: max 2 fires/session, max 5/day, 30 s inter-fire cooldown), the proactive engine fires: it composes and broadcasts a layout with the configured proactive intent (e.g., `"expedia:bundle-savings-nudge"`). The interval is cleared on WS close.
+- **Consequences:**
+  - Per-session semantics are clean — no global state; interval lifetime matches WS lifetime.
+  - 6-signal scoring is transparent and tunable by the host (each signal weight is configurable).
+  - Verified live: with idle > 8 s and budget=2, the engine fired exactly 2 times and logged the full per-signal breakdown — explainability-first design.
+  - Attention budget (cap + cooldown) is both per-session AND per-day; per-day tracking requires a persistent store (ClickHouse) for production; at MVP it resets with server restart. Production persistence is a v1 item.
+- **Source:** Phase 5 session 2026-05-12 — "**Phase 5 verified live!** The agent panel rendered 'You asked: expedia:bundle-savings-nudge' — the user typed nothing. … Engine logged 2 fires (matching the budget=2 cap) with full per-signal explainability — exactly the patentable contract." PR #39.
+
+## ADR-043 — OSS publish gate: required artifacts checklist before repo goes public (implements ADR-035)
+- **Date:** 2026-05-12
+- **Status:** accepted
+- **Context:** ADR-035 established the Apache 2.0 license choice and the sequencing rule (provisional patents first, then public). Phase 9 defined the complete gate list so the "go public" decision is auditable.
+- **Options considered:**
+  - A. Informal checklist in CLAUDE.md — discoverable only to contributors; easy to overlook.
+  - B. **Formal gate document** (`docs/release/oss-publish-gate.md`) with binary pass/fail items — referenced from README; the publish step is blocked until all items are checked.
+- **Decision:** B. The OSS publish gate requires ALL of: (1) `LICENSE` (Apache 2.0) committed at repo root, (2) `NOTICE` file with third-party attributions, (3) `README.md` with quickstart (< 5 min to running agent), (4) `docs/getting-started/` guide covering first integration end-to-end, (5) NFR validation (OWASP dependency audit, license scan, performance baseline: p95 compose latency < 2 s in stub mode), (6) patent filing checklist — all Bucket A patents filed (not just disclosed) with attorney-issued application numbers recorded, (7) `CONTRIBUTING.md`, (8) `SECURITY.md` (disclosure policy + contact). Gate document lives at `docs/release/oss-publish-gate.md`.
+- **Consequences:**
+  - Publish decision is auditable — each item has a binary status and responsible owner.
+  - Patent filing is a hard gate: Bucket A items (P-001 compose-cycle-id causality, and any others promoted to Bucket A) must have attorney-filed application numbers, not just internal disclosures.
+  - NFR validation baseline is recorded so regressions are detectable post-publish.
+  - The gate enforces that the getting-started guide and reference integration (`apps/demo-expedia/`) are validated working before any external developer encounters them.
+- **Source:** Phase 9 session 2026-05-12 — OSS-readiness phase implementing ADR-035's sequencing rule. PR #40 (`feat/phase-9-oss-readiness`): LICENSE + NOTICE + getting-started guide + NFR doc + patent checklist + developer guide committed to main.
