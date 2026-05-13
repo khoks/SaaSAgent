@@ -9,24 +9,41 @@ A universal, embeddable agentic harness for any SaaS enterprise.
 > enforcement, proactive engine with attention-budget cap.
 > Read [PLOT.md](PLOT.md) for the one-page narrative.
 
-## Quick start — under 10 minutes
+## Quick start — one command
 
 ```bash
 # Prereqs: Node 20+, pnpm 9+
-pnpm install                                          # install workspace deps
-pnpm build                                            # build all packages
+pnpm install
+pnpm demo
+```
 
-# Terminal 1: start the Expedia reference integration (5 skills + 1 sub-agent)
+That's it. `pnpm demo` builds the required packages, starts all three
+services (runtime + sub-agent + host page), waits for them to be
+healthy, then opens Chrome to the embedded agent in the mock Expedia
+host page. **Press Ctrl-C** to tear everything down — the launcher kills
+the full process tree, so no orphaned Vite or Node processes are left
+behind.
+
+Useful URLs after launch:
+
+- `http://localhost:5175/`          — the embedded agent in a host site
+- `http://localhost:8080/dashboard` — auto-generated eval metrics per capability
+- `http://localhost:8080/health`    — runtime config + mode + dev hints
+
+Flags:
+
+```bash
+pnpm demo --no-build    # skip the up-front build (if you just ran pnpm build)
+pnpm demo --no-open     # don't auto-launch Chrome (URLs are still printed)
+pnpm demo --port-runtime 9000 --port-host 5500    # override default ports
+```
+
+The three services individually, if you prefer separate terminals:
+
+```bash
 node apps/demo-expedia/server/start-runtime.mjs       # :8080
-# Terminal 2: trip-planner sub-agent
 node apps/demo-expedia/server/start-trip-planner.mjs  # :8082
-# Terminal 3: host page (mock Expedia.com)
 pnpm --filter @saasagent/demo-expedia dev             # :5175
-
-# Then open:
-# • http://localhost:5175/   — the embedded agent in a host site
-# • http://localhost:8080/dashboard — auto-generated eval metrics per capability
-# • http://localhost:8080/health    — runtime config + mode
 ```
 
 Without an `ANTHROPIC_API_KEY` the runtime falls back to `StubPlanner` —

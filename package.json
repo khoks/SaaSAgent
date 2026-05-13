@@ -16,6 +16,9 @@
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "infra:logs": "docker compose -f infra/docker-compose.yml logs -f",
     "infra:reset": "docker compose -f infra/docker-compose.yml down -v",
+    "demo": "node scripts/demo.mjs",
+    "demo:no-build": "node scripts/demo.mjs --no-build",
+    "demo:no-open": "node scripts/demo.mjs --no-open",
     "demo:host": "pnpm --filter @saasagent/demo-host dev",
     "demo:runtime": "pnpm --filter @saasagent/runtime build && node packages/runtime/dist/index.js"
   },
