@@ -751,3 +751,22 @@
   - NFR validation baseline is recorded so regressions are detectable post-publish.
   - The gate enforces that the getting-started guide and reference integration (`apps/demo-expedia/`) are validated working before any external developer encounters them.
 - **Source:** Phase 9 session 2026-05-12 — OSS-readiness phase implementing ADR-035's sequencing rule. PR #40 (`feat/phase-9-oss-readiness`): LICENSE + NOTICE + getting-started guide + NFR doc + patent checklist + developer guide committed to main.
+
+## ADR-044 — One-command demo launcher: Node.js orchestrator script with cascade teardown (`pnpm demo`)
+- **Date:** 2026-05-13
+- **Status:** accepted
+- **Context:** Running the SaaSAgent demo required starting three separate processes (runtime :8080, sub-agent :8082, Vite host :5175) in separate terminals and cleaning them up manually. After the Expedia reference integration validated the 30-line onboarding contract, a single entry-point for first impressions became important for design-partner pitches and contributor onboarding.
+- **Options considered:**
+  - A. **npm/pnpm scripts with `concurrently`** — simple, but no health-check ordering, no cascade teardown on child death, leaks orphan processes if the parent is killed via `taskkill /F`.
+  - B. **Makefile** — familiar in open-source repos; no cross-platform Windows support for process management.
+  - C. **Docker Compose** — correct for production (`apps/demo-expedia/` will eventually get a `compose.yml`); requires Docker daemon; too heavy for a "first run in 10 seconds" demo entry point.
+  - D. **Custom Node.js launcher script (`scripts/demo.mjs`)** — spawns each service with `stdio: 'inherit'`, performs sequential health-check polling (`/health` endpoints), opens Chrome after all three are ready, monitors child `on('exit')` events and performs cascade teardown on any unexpected death. Uses `shell: false` with explicit binary resolution to avoid `DEP0190` deprecation warnings on Windows.
+- **Decision:** D. `scripts/demo.mjs` is the canonical demo launcher, invoked via `pnpm demo` in the root `package.json`. It accepts `--no-build` to skip the pre-flight build step.
+- **Consequences:**
+  - **Single command UX:** `pnpm install && pnpm demo` takes a fresh clone to a running demo with Chrome open — the primary demo entry point documented in `README.md`.
+  - **Cascade teardown:** if any child process dies unexpectedly, the launcher's `on('exit')` handler fires `shutdown(1)`, cleaning up the remaining processes in reverse-start order. Verified on Windows via both SIGINT (Ctrl-C in terminal) and `taskkill` on the host process.
+  - **Health-check gating:** services are started sequentially (runtime → sub-agent → Vite); each must pass `/health` polling before the next starts. Eliminates race conditions from parallel startup.
+  - **`--no-build` flag:** skips `pnpm build` (the pre-flight step) to speed up re-runs during development. Useful when only host-page code has changed.
+  - **Windows `DEP0190` fix:** uses `shell: false` + explicit binary path (`node_modules/.bin/tsx` resolved at startup) instead of letting Node delegate to the shell, avoiding the deprecation warning on Node 22+ / Windows.
+  - **Scope:** demo/dev only; production deployment remains Docker Compose + Helm (ADR-026).
+- **Source:** Session 2026-05-13 — "I'll build a single Node script that boots all three services, opens Chrome, and tears everything down on Ctrl-C." Final validation: "All green: no DEP0190 warning, all three services healthy." PR #45 (`feat/scripts: one-command demo launcher with cascade teardown`), merged to main.
