@@ -10,5 +10,8 @@
 | STORY-004 | [Define voice-of-customer surface for dev team](STORY-004-voice-of-customer-surface.md) | EPIC-001 | backlog | 2026-04-28 | 2026-04-28 |
 | STORY-005 | [Decide mobile embedding strategy](STORY-005-mobile-embedding-strategy.md) | EPIC-001 | backlog | 2026-04-28 | 2026-04-28 |
 | STORY-006 | [Define proactive engine confidence and attention-budget model](STORY-006-proactive-engine-confidence.md) | EPIC-001 | backlog | 2026-04-28 | 2026-04-28 |
-| STORY-007 | [Build Expedia reference integration](STORY-007-expedia-reference-integration.md) | EPIC-002 | in-review | 2026-05-11 | 2026-05-11 |
-| STORY-008 | [Close 5 enterprise-onboarding gaps](STORY-008-close-onboarding-gaps.md) | EPIC-002 | in-review | 2026-05-11 | 2026-05-11 |
+| STORY-007 | [Build Expedia reference integration](STORY-007-expedia-reference-integration.md) | EPIC-002 | done | 2026-05-11 | 2026-05-12 |
+| STORY-008 | [Close 5 enterprise-onboarding gaps](STORY-008-close-onboarding-gaps.md) | EPIC-002 | done | 2026-05-11 | 2026-05-12 |
+| STORY-029 | [Proactive engine — multi-signal scoring + attention budget](STORY-029-proactive-engine-implementation.md) | EPIC-011 | done | 2026-05-12 | 2026-05-12 |
+| STORY-030 | [Capability eval pipeline + self-contained HTML dashboard](STORY-030-capability-eval-pipeline-dashboard.md) | EPIC-012 | done | 2026-05-12 | 2026-05-12 |
+| STORY-031 | [Phase 9 OSS-readiness deliverables](STORY-031-phase9-oss-readiness-deliverables.md) | EPIC-015 | done | 2026-05-12 | 2026-05-12 |

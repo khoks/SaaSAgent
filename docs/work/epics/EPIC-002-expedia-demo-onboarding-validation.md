@@ -1,9 +1,9 @@
 # EPIC-002 — Expedia enterprise demo + onboarding validation
 
-- **Status:** in-review
+- **Status:** done
 - **Initiative:** [INIT-003 — Build MVP runtime + embeddable shell](../initiatives/INIT-003-build-mvp.md)
 - **Created:** 2026-05-11
-- **Last updated:** 2026-05-11
+- **Last updated:** 2026-05-12
 - **PR:** khoks/SaaSAgent#30
 
 ## Why
@@ -18,5 +18,5 @@ The generic e-commerce demo didn't stress-test the developer-onboarding path. Bu
 
 | ID | Title | Status |
 |---|---|---|
-| [STORY-007](../stories/STORY-007-expedia-reference-integration.md) | Build Expedia reference integration | in-review |
-| [STORY-008](../stories/STORY-008-close-onboarding-gaps.md) | Close 5 enterprise-onboarding gaps | in-review |
+| [STORY-007](../stories/STORY-007-expedia-reference-integration.md) | Build Expedia reference integration | done |
+| [STORY-008](../stories/STORY-008-close-onboarding-gaps.md) | Close 5 enterprise-onboarding gaps | done |

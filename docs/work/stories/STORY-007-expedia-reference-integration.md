@@ -1,9 +1,9 @@
 # STORY-007 — Build Expedia reference integration
 
-- **Status:** in-review
+- **Status:** done
 - **Epic:** [EPIC-002 — Expedia enterprise demo + onboarding validation](../epics/EPIC-002-expedia-demo-onboarding-validation.md)
 - **Created:** 2026-05-11
-- **Last updated:** 2026-05-11
+- **Last updated:** 2026-05-12
 - **PR:** khoks/SaaSAgent#30
 
 ## User story
