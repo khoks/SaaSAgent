@@ -124,6 +124,7 @@ Rahul (PM + engineer) + Claude (AI engineer). No external hires.
 - OSS publish-gate checklist (8-item, Bucket-A filings as hard gate) ✅ 2026-05-12 ADR-039
 - Apache 2.0 license file added ✅ 2026-05-12
 - NOTICE file added ✅ 2026-05-12
+- `pnpm demo` one-command launcher (boots runtime + sub-agent + Vite, opens Chrome, Ctrl-C tears down) ✅ 2026-05-13 ADR-044
 - **Provisional patent filings** for high-novelty entries (per ADR-035) ❌ pending real-world action
 - WebView bridge (iOS + Android native shims) ❌ deferred
 - Helm chart hardened for production ❌ deferred

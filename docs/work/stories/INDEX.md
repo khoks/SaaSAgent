@@ -15,3 +15,4 @@
 | STORY-029 | [Proactive engine — multi-signal scoring + attention budget](STORY-029-proactive-engine-implementation.md) | EPIC-011 | done | 2026-05-12 | 2026-05-12 |
 | STORY-030 | [Capability eval pipeline + self-contained HTML dashboard](STORY-030-capability-eval-pipeline-dashboard.md) | EPIC-012 | done | 2026-05-12 | 2026-05-12 |
 | STORY-031 | [Phase 9 OSS-readiness deliverables](STORY-031-phase9-oss-readiness-deliverables.md) | EPIC-015 | done | 2026-05-12 | 2026-05-12 |
+| STORY-032 | [`pnpm demo` one-command demo launcher](STORY-032-pnpm-demo-one-command-launcher.md) | EPIC-015 | done | 2026-05-13 | 2026-05-13 |
