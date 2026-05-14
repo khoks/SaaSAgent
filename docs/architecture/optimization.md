@@ -59,3 +59,25 @@
 - The SonnetPlanner exposes `skill__<name>`, `tool__<name>`, `subagent__<name>` tool names to the model. The `ToolMapper.classify()` function splits on `__` prefix and dispatches to the correct executor in O(1) — no conditional per-capability logic.
 - Adding a new tier in the future requires: (a) a new prefix constant, (b) a new executor class, (c) one new branch in `ToolMapper` — nothing else.
 - **Source:** Phase 2.1b / P-002 disclosure.
+
+### Server-side quota enforcement before planner invocation (Phase 7)
+- When a user message arrives and the session's tier quota is already exhausted, the runtime **does not invoke the planner or UI Composer at all** — it immediately returns a synthetic `quota-exceeded` layout composed by the server directly (no model call). This prevents model spend on blocked turns entirely.
+- The quota check is in the WS user-message handler (`packages/runtime/src/transport/server.ts`), before the planner `plan()` call. Order: quota check → (if denied) synthesize layout → broadcast → return; (if allowed) quota consume → planner → composer → broadcast.
+- **Source:** Phase 7 session 2026-05-12 — "The layout content shows 'You asked: quota-exceeded' — confirms the planner was NOT invoked on the rejected turn." ADR-041.
+
+### QuotaBanner — zero-overhead quota display via shell-side state update
+- Quota remaining is rendered by a persistent `QuotaBanner` web-component in the WC shell; it reads `quotaStatus: {remaining, limit, tier, resetsAt, state}` directly from the SSE `ComposedLayoutMetadata` payload on every incoming layout event.
+- No extra planner round-trip or extra HTTP call is needed — the counter is piggy-backed on the already-in-flight layout event. Three visual states (`fine` / `warning` / `exceeded`) are pure CSS class toggles in the shell; no LLM or composer involvement.
+- **Source:** ADR-041; Phase 7 verification — "**QuotaBanner is visible: '4 of 5 requests remaining today (free tier).'**"
+
+### CapabilityEvalRunner ring buffer — bounded per-capability memory
+- `InMemoryCapabilityEvalRunner` maintains a fixed-size FIFO ring buffer (default: 100 entries) **per registered capability**. On every executor `onInvocation` callback, the oldest entry is evicted when the buffer is full.
+- This bounds memory usage to `O(capabilities × ring_buffer_size)` regardless of server uptime or traffic volume — no unbounded accumulation.
+- Three heuristics are auto-generated per invocation with zero configuration: `outcome-success` (no thrown exception / error envelope), `output-non-empty` (non-null and non-empty result.output), `latency-budget` (p95 < 2s default, host-configurable). No LLM call required for baseline quality monitoring.
+- **Source:** ADR-040; Phase 6 verification — "6 capabilities tracked (5 skills + 1 sub-agent + 1 tool). Worst-first ordering puts the failing ones at the top." PR #36.
+
+### Per-WS proactive tick — session-scoped GC via interval lifetime
+- The `ProactiveEngine` runs on a **per-WS 5-second `setInterval`** spawned in the WS `connection` handler, with a closure over per-session state (`lastUserMessageAt`, `evalSignalCount`, `domEventCount`, `sessionDepth`). The interval is explicitly cleared in the WS `close` handler.
+- This model costs one JS microtask per 5s per active WS connection — negligible. The interval's lifetime is exactly the WS session lifetime, so there is no stale-reference or memory-leak risk when connections drop.
+- Alternative (global cron across all sessions) would require a session registry with lock-contention; per-WS interval eliminates that complexity.
+- **Source:** ADR-042; Phase 5 implementation in `packages/runtime/src/transport/server.ts`.
