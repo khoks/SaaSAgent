@@ -166,6 +166,12 @@ function descriptorToTool(
  * Convert all three capability registries into ToolDefinition[] suitable for
  * the Anthropic tool_use API. Order: skills, tools, sub-agents (alphabetical
  * within each group). Empty registries → empty contribution.
+ *
+ * Defense-in-depth: after assembly, every emitted name is validated against
+ * Anthropic's regex. If any fails (e.g. a future refactor reintroduces a
+ * code path that bypasses qualifyToolName), this throws with a clear error
+ * naming the offending capability — far easier to debug than the opaque
+ * Anthropic 400 the API would otherwise return.
  */
 export function descriptorsToTools(
   skills: SkillRegistry,
@@ -185,6 +191,17 @@ export function descriptorsToTools(
     for (const name of Object.keys(subAgents.subAgents).sort()) {
       const d = subAgents.subAgents[name];
       if (d) out.push(descriptorToTool('subagent', d));
+    }
+  }
+  // Final guard. If we ever ship a regression where a tool name slips past
+  // sanitization, fail fast with a clear message — not the opaque Anthropic
+  // 400 ("tools.0.custom.name: String should match pattern ...").
+  for (let i = 0; i < out.length; i++) {
+    if (!isApiValidToolName(out[i]!.name)) {
+      throw new Error(
+        `[tool-mapper] tool[${i}].name "${out[i]!.name}" violates Anthropic's regex ^[a-zA-Z0-9_-]{1,128}$. ` +
+          `This indicates a bug in sanitization. Check the registered capability name and report.`,
+      );
     }
   }
   return out;
