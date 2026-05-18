@@ -1,9 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { SkillDescriptor, SubAgentDescriptor, ToolDescriptor } from '@saasagent/protocol';
 import {
+  buildToolNameResolver,
   descriptorsToTools,
+  isApiValidToolName,
   parseToolName,
   qualifyToolName,
+  sanitizeNameSegment,
   SKILL_PREFIX,
   SUBAGENT_PREFIX,
   TOOL_PREFIX,
@@ -62,9 +65,111 @@ describe('qualifyToolName + parseToolName', () => {
     expect(parseToolName('')).toBeNull();
   });
 
-  it('throws when the qualified name exceeds 64 chars', () => {
-    const longName = 'a'.repeat(60);
-    expect(() => qualifyToolName('skill', longName)).toThrow(/64-char/);
+  it('throws when the qualified name exceeds 128 chars (Anthropic limit)', () => {
+    // skill__ prefix is 7 chars; 122 + 7 = 129 → over limit
+    const longName = 'a'.repeat(122);
+    expect(() => qualifyToolName('skill', longName)).toThrow(/128-char/);
+  });
+
+  it('accepts names that fit within the 128-char limit', () => {
+    const ok = 'a'.repeat(120);
+    expect(() => qualifyToolName('skill', ok)).not.toThrow();
+  });
+});
+
+describe('sanitizeNameSegment + Anthropic regex compliance', () => {
+  it('passes through names that are already API-compliant', () => {
+    expect(sanitizeNameSegment('price-compare')).toBe('price-compare');
+    expect(sanitizeNameSegment('snake_case')).toBe('snake_case');
+    expect(sanitizeNameSegment('camelCase123')).toBe('camelCase123');
+  });
+
+  it('replaces dots with underscores (the user-reported failure mode)', () => {
+    expect(sanitizeNameSegment('expedia.search-flights')).toBe('expedia_search-flights');
+    expect(sanitizeNameSegment('a.b.c')).toBe('a_b_c');
+  });
+
+  it('replaces other invalid chars (/ : space etc.) with underscores', () => {
+    expect(sanitizeNameSegment('foo/bar')).toBe('foo_bar');
+    expect(sanitizeNameSegment('foo:bar')).toBe('foo_bar');
+    expect(sanitizeNameSegment('foo bar')).toBe('foo_bar');
+    expect(sanitizeNameSegment('!@#$%^&*()')).toBe('__________');
+  });
+
+  it('qualifyToolName sanitizes embedded dots (regression test for the reported bug)', () => {
+    const q = qualifyToolName('skill', 'expedia.search-flights');
+    expect(q).toBe('skill__expedia_search-flights');
+    expect(isApiValidToolName(q)).toBe(true);
+  });
+
+  it('every output of qualifyToolName passes the Anthropic regex', () => {
+    const inputs = [
+      ['skill', 'expedia.search-flights'],
+      ['tool', 'foo/bar:baz'],
+      ['subagent', 'travel-planner@v1'],
+      ['skill', 'has spaces in it'],
+      ['skill', 'price-compare'], // already valid — no-op
+    ] as const;
+    for (const [kind, name] of inputs) {
+      expect(isApiValidToolName(qualifyToolName(kind, name))).toBe(true);
+    }
+  });
+});
+
+describe('buildToolNameResolver', () => {
+  const sFooBar: SkillDescriptor = {
+    name: 'expedia.search-flights',
+    version: '1.0.0',
+    description: '...',
+    whenToUse: '...',
+    kind: 'in-process',
+  };
+  const tGetProduct: ToolDescriptor = {
+    name: 'foo/bar',
+    version: '1.0.0',
+    description: '...',
+    whenToUse: '...',
+    method: 'GET',
+    urlTemplate: 'http://x/',
+  };
+
+  it('maps sanitized qualified name back to original {kind, name}', () => {
+    const r = buildToolNameResolver(
+      { version: '1.0.0', skills: { 'expedia.search-flights': sFooBar } },
+      { version: '1.0.0', tools: { 'foo/bar': tGetProduct } },
+    );
+    expect(r.get('skill__expedia_search-flights')).toEqual({
+      kind: 'skill',
+      name: 'expedia.search-flights',
+    });
+    expect(r.get('tool__foo_bar')).toEqual({ kind: 'tool', name: 'foo/bar' });
+  });
+
+  it('no-op for names that are already API-compliant', () => {
+    const compliant: SkillDescriptor = { ...sFooBar, name: 'price-compare' };
+    const r = buildToolNameResolver(
+      { version: '1.0.0', skills: { 'price-compare': compliant } },
+      { version: '0.0.0', tools: {} },
+    );
+    expect(r.get('skill__price-compare')).toEqual({ kind: 'skill', name: 'price-compare' });
+  });
+
+  it('warns on sanitization collisions (foo.bar and foo_bar collide)', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const dotted: SkillDescriptor = { ...sFooBar, name: 'foo.bar' };
+      const undered: SkillDescriptor = { ...sFooBar, name: 'foo_bar' };
+      const r = buildToolNameResolver(
+        { version: '1.0.0', skills: { 'foo.bar': dotted, foo_bar: undered } },
+        { version: '0.0.0', tools: {} },
+      );
+      expect(r.size).toBe(1); // both collapse to skill__foo_bar
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('sanitized-name collision for skill__foo_bar'),
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

@@ -563,4 +563,71 @@ describe('SonnetPlanner', () => {
     expect(msg).toContain('Summary: a summary');
     expect(msg).toContain('When relevant: a when');
   });
+
+  /**
+   * Regression for the user-reported bug: an Expedia-shaped skill name
+   * 'expedia.search-flights' (contains a dot) violates the Anthropic
+   * tool-name regex `^[a-zA-Z0-9_-]{1,128}$`. The fix sanitizes the dot to
+   * underscore on the way OUT to the API and uses a per-plan resolver to
+   * map the sanitized name back to the original on the way IN.
+   *
+   * This test models a full round-trip: the mock model receives the
+   * sanitized name and returns a tool_use block with that sanitized name;
+   * the planner must dispatch to the originally-registered handler under
+   * the dotted name.
+   */
+  it('dispatches a tool_use that came back with a sanitized name back to the original handler', async () => {
+    const dottedSkill: SkillDescriptor = {
+      name: 'expedia.search-flights',
+      version: '1.0.0',
+      description: 'Search flights',
+      whenToUse: 'when the user wants flights',
+      kind: 'in-process',
+      inputSchema: { type: 'object', properties: { origin: { type: 'string' } } },
+    };
+    const { planner, provider, skillExecutor } = setup({
+      // The mock model "echoes" the sanitized form back as tool_use.name —
+      // exactly what the real Anthropic API does.
+      responses: [
+        {
+          stopReason: 'tool_use',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'tu_1',
+              name: 'skill__expedia_search-flights',
+              input: { origin: 'SFO' },
+            },
+          ],
+        },
+        { text: 'Found 3 flights from SFO.', stopReason: 'end_turn' },
+      ],
+      skills: [dottedSkill],
+    });
+    // Register the handler under the ORIGINAL (dotted) name. If the
+    // resolver fix is broken, dispatch would look up 'expedia_search-flights'
+    // and miss, returning unknown-skill.
+    let handlerCalledWith: unknown = null;
+    skillExecutor.registerHandler('expedia.search-flights', (input: unknown) => {
+      handlerCalledWith = input;
+      return { count: 3, route: 'SFO→NRT' };
+    });
+
+    const result = await planner.plan({
+      envelope: envelope({ payload: { text: 'find flights from SFO to Tokyo' } }),
+      context: baseContext,
+    });
+
+    // The planner must have invoked the skill under its registered (dotted) name.
+    expect(result.invocations).toHaveLength(1);
+    expect(result.invocations[0]!.name).toBe('expedia.search-flights');
+    expect(result.invocations[0]!.kind).toBe('skill');
+    expect(result.invocations[0]!.result.ok).toBe(true);
+    expect(handlerCalledWith).toEqual({ origin: 'SFO' });
+    // And the tool advertised TO the model must have the sanitized name.
+    const firstReq = provider.requests[0]!;
+    expect(firstReq.tools?.map((t) => t.name)).toContain('skill__expedia_search-flights');
+    // The original dotted form must NOT appear in what we send to the API.
+    expect(firstReq.tools?.map((t) => t.name)).not.toContain('skill__expedia.search-flights');
+  });
 });
