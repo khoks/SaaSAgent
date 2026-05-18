@@ -39,7 +39,12 @@ import type { SkillRegistryStore } from '../registry/skills.js';
 import type { SubAgentRegistryStore } from '../registry/subagents.js';
 import type { ToolRegistryStore } from '../registry/tools.js';
 
-import { descriptorsToTools, parseToolName } from './tool-mapper.js';
+import {
+  buildToolNameResolver,
+  descriptorsToTools,
+  parseToolName,
+  type ToolNameResolver,
+} from './tool-mapper.js';
 import type { Planner, PlanRequest, PlanResult, ToolInvocation } from './types.js';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
@@ -111,6 +116,15 @@ export class SonnetPlanner implements Planner {
     const subAgentsSnapshot = this.options.subAgentRegistry?.get();
     const featuresSnapshot = this.options.featureRegistry?.get();
     const toolDefs = descriptorsToTools(skillsSnapshot, toolsSnapshot, subAgentsSnapshot);
+    // Resolver bridges the Anthropic-safe sanitized qualified name (what the
+    // API sees) back to the originally-registered name in the executor
+    // registries. Without this, skills like 'expedia.search-flights' fail the
+    // API's `^[a-zA-Z0-9_-]{1,128}$` regex.
+    const nameResolver = buildToolNameResolver(
+      skillsSnapshot,
+      toolsSnapshot,
+      subAgentsSnapshot,
+    );
 
     const messages: ModelMessage[] = [
       {
@@ -152,7 +166,12 @@ export class SonnetPlanner implements Planner {
       const toolResults: ModelContentBlock[] = [];
       for (const block of response.content) {
         if (block.type !== 'tool_use') continue;
-        const result = await this.dispatchToolUse(block.name, block.id, block.input);
+        const result = await this.dispatchToolUse(
+          block.name,
+          block.id,
+          block.input,
+          nameResolver,
+        );
         if (result.invocation) invocations.push(result.invocation);
         toolResults.push(result.toolResult);
       }
@@ -194,8 +213,13 @@ export class SonnetPlanner implements Planner {
     qualifiedName: string,
     toolUseId: string,
     input: unknown,
+    nameResolver?: ToolNameResolver,
   ): Promise<{ invocation?: ToolInvocation; toolResult: ModelContentBlock }> {
-    const parsed = parseToolName(qualifiedName);
+    // Prefer the resolver (built per-plan from current registry snapshots) so
+    // sanitized API names map back to original registered names. Fall back to
+    // parseToolName for callers that don't pass a resolver (back-compat); the
+    // fallback is correct only when names contain no sanitized characters.
+    const parsed = nameResolver?.get(qualifiedName) ?? parseToolName(qualifiedName);
     if (!parsed) {
       return {
         toolResult: {
